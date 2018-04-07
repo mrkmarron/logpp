@@ -1,0 +1,73 @@
+% !TeX root = LanguageLevelLogging.tex
+This section describes opportunities, using language, runtime, or compiler support, to address 
+general challenges surrounding logging outlined in \autoref{sec:intro}. We can roughly divide 
+these into two classes -- performance oriented and functionality oriented. 
+
+\subsection{Logging Performance}
+\label{subsec:performancedesign}
+
+\begin{design}
+The cost of a \textbf{disabled logging} statement, one that is at a logging level that is disabled, 
+should have \textbf{zero-cost} at runtime. This includes both the direct cost of the logging action 
+and the indirect cost of of building a format string and processing any arguments. 
+\end{design}
+For logging frameworks that are included as libraries the compiler/JIT does not, in general, have 
+any deep understanding of the enabled/disabled semantics of the logger. As a result it will not be 
+able to fully eliminate dead-code associated with disabled logging statements and will pay an, 
+individually small but widespread, parasitic cost for these disabled logging statements. These 
+costs can be very difficult to diagnose, as they are widely dispersed and individually small, but can 
+add up to several percentage points of application runtime.
+
+To avoid these parasitic costs we propose including logging as a set of intrinsics included in the 
+specification of the programming language or, if that is not possible, adding compiler/JIT specializations. 
+Languages with macros provide a simple limited form of this support by allowing for a compile time flag 
+to completely eliminate disabled logging code. However, this solution is limited to code that is explicitly 
+contained in the macro and the enabled/disabled levels cannot be changed at runtime. 
+
+Finally, we observe as an additional advantage of lifting log semantics to the language specification level 
+allows us to statically verify logging uses. Common errors include format specifier violations~\cite{tyepcheckprintf} 
+and accidental state modification in the logging message computation. If the language semantics specify 
+logging API's then both of these error classes can be statically checked to avoid runtime errors or hisenbugs 
+that appear/disappear when logging levels are changed.
+
+\begin{design}
+The cost of an enabled logging statement has two components -- (1) the cost to compute the set of 
+arguments to the log statement and (2) the cost to write this data into the log. The cost of computing 
+the argument values is, in general unavoidable, and must be done on the hot path of execution. However, 
+the cost of (2) should be reduced and/or moved off hot path as much as possible.
+\end{design}
+Async-logging and immutability based tools asdf...
+
+
+
+
+
+The major issues this proposal is intended to address are:
+
+\noindent
+Lack of high performance logging primitives and fundamental logging challenges.
+\begin{enumerate}
+ \item Cost of writing data to the log -- particularly with data formatted via 
+    `util.inspect` and info such as timestamps.
+ \item Ongoing tension between log detail when triaging issues and cost of logging 
+    large amounts of 'uninteresting' data.
+\item Parasitic costs of disabled logging statements which still execute code to 
+    generate dead logging data (e.g., constructing unused strings).
+\item Compiler optimizations of both enabled and disabled logging statements.
+\end{enumerate}
+
+\subsection{Logging Functionality}
+\label{subsec:functionalitydesign}
+
+\noindent
+Challenges integrating log data from different sources and difficulty in post processing.
+\begin{enumerate}
+\item Difficulty in specifying uniform and appropriate logging levels across 
+    multiple packages -- and quite possibly multiple logging frameworks.
+\item Difficulty in ensuring all logging data is written to a consistent location 
+    across multiple packages -- and quite possibly multiple logging frameworks.
+\item Correlating fundamental information such as  
+    transaction ids, such as async context and HTTP requests, and to log relevant 
+    events in the core libraries with user logging data -- same for performance info.
+\end{enumerate}
+

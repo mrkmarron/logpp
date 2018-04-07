@@ -5,6 +5,17 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+# Tex temp files
+papers/languageLevelLogging/*.pdf
+papers/**/*.synctex.gz
+papers/**/*.aux
+papers/**/*.bbl
+papers/**/*.log
+papers/**/*.out
+papers/**/*.blg
+papers/**/*.fls
+papers/**/*.fdb_latexmk
+
 # Runtime data
 pids
 *.pid

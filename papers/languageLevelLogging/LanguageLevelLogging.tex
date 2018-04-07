@@ -1,0 +1,292 @@
+\documentclass[preprint]{sig-alternate-05-2015}
+
+\usepackage{times}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{xspace}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{balance}
+\usepackage{paralist}
+\usepackage{graphicx,color}
+
+\usepackage{subfig}
+
+\usepackage{listings} 
+\usepackage{color} %use color
+
+\newtheorem{design}{Design Principle}
+
+\definecolor{darkgray}{rgb}{.4,.4,.4}
+\definecolor{purple}{rgb}{0.65, 0.12, 0.82}
+
+%define Javascript language
+\lstdefinelanguage{JavaScript}{
+keywords={typeof, new, true, false, catch, function, return, null, undefined, try, catch, switch, var, if, in, while, do, else, case, break},
+keywordstyle=\color{blue}\bfseries,
+ndkeywords={class, export, boolean, throw, implements, import, this},
+ndkeywordstyle=\color{darkgray}\bfseries,
+identifierstyle=\color{black},
+sensitive=false,
+comment=[l]{//},
+morecomment=[s]{/*}{*/},
+commentstyle=\color{purple}\ttfamily,
+stringstyle=\color{red}\ttfamily,
+morestring=[b]',
+morestring=[b]"
+}
+ 
+\lstset{
+language=JavaScript,
+extendedchars=true,
+basicstyle=\footnotesize\ttfamily,
+showstringspaces=false,
+showspaces=false,
+numbers=left,
+numberstyle=\footnotesize,
+numbersep=9pt,
+tabsize=2,
+breaklines=true,
+showtabs=false,
+captionpos=b,
+xleftmargin=0.5cm
+}
+
+\usepackage[sort&compress]{natbib}
+
+% hyperref redefines a number of macros, so it should be last.  Empirically,
+% doing so eliminates compiler warnings.
+\usepackage[bookmarks, colorlinks]{hyperref}
+
+\newcommand{\projn}{\textsc{TurboLog}\xspace}
+\newcommand{\ourtitle}{Langauge, Runtime, and Compiler Aware Logging} 
+
+\newcommand{\todo}[1]{{\color{red}#1}}
+
+\newcommand{\eg}{\hbox{\emph{e.g.}}\xspace}
+\newcommand{\ie}{\hbox{\emph{i.e.}}\xspace}
+\newcommand{\etc}{\hbox{\emph{etc.}}\xspace}
+
+\newcommand\bench[1]{\textsf{\small #1}}
+\newcommand{\niceunitkloc}{\,{\small kloc}\xspace}
+\newcommand{\niceunitkb}{\,{\small KB}\xspace}
+\newcommand{\niceunitmb}{\,{\small MB}\xspace}
+\newcommand{\niceunitsec}{\,s\xspace}
+\newcommand{\niceunitpct}{\,\%\xspace}
+
+\newcommand{\codelines}[1]{#1\,kloc\xspace} 
+
+\newcommand{\console}[1]{\texttt{\small #1}}
+
+%% Document-specific hyperref options
+\hypersetup{
+pdftitle={\ourtitle},
+    plainpages=false,
+    linkcolor=blue, % Overriding these colors to black is somewhat unfortunate 
+    %citecolor=black, % b/c the defaults are useful in color.
+    citecolor=blue, % b/c the defaults are useful in color.
+    filecolor=black,
+    urlcolor=black,
+    pdfpagelabels
+}
+\def\sectionautorefname{Section}
+\def\subsectionautorefname{Section}
+
+\begin{document}
+
+\toappear{Draft Document -- Do NOT Redistribute.}
+
+% Copyright
+%\setcopyright{acmcopyright}
+%\setcopyright{acmlicensed}
+%\setcopyright{rightsretained}
+%\setcopyright{usgov}
+%\setcopyright{usgovmixed}
+%\setcopyright{cagov}
+%\setcopyright{cagovmixed}
+
+% DOI
+\doi{yyy}
+
+% ISBN
+\isbn{xxx}
+
+%Conference
+\conferenceinfo{TBD}{'17 TBD}
+\acmPrice{\$15.00}
+
+\title{\ourtitle}
+
+\numberofauthors{1}
+\author{
+% 1st. author
+Mark Marron\\
+       \affaddr{Microsoft Research, USA}\\
+       \email{marron@microsoft.com}
+}
+
+\maketitle
+
+\begin{abstract} 
+Logging is a fundamental part of the software development, deployment, and
+monitoring lifecycle but logging support is often provided as an afterthought or
+via a library API in a languages core runtime. We argue that given the critical
+nature of logging in modern development, the unique needs of the APIs involved,
+and the opportunities for optimizing it using semantic knowledge, logging should
+be included as a central part of the language and runtime designs. This paper
+presents a \emph{language level logging} design which includes support for
+logging functionality at all levels of a programming language including, syntax,
+runtime support, and hooks for DevOps integration.
+
+Using this integrated approach we build a logging system that supports near
+zero-costs for disabled log statements, low cost lazy-copying for enabled log
+statements, selective persistence of logging output, unified control of logging
+output across different libraries, and DevOps integration for use with modern
+cloud-based deployments. To evaluate these concepts we provide two
+implementations -- one fully integrated into the design of the \emph{fluent}
+programming language and a second, which has slightly reduced features and
+performance, but is available as a library for Node.js hosted JavaScript
+applications.
+\end{abstract}
+
+\category{CR-number}{subcategory}{third-level}
+
+% general terms are not compulsory anymore,
+% you may leave them out
+\terms
+term1, term2
+
+\keywords
+keyword1, keyword2
+
+\section{Introduction} 
+\label{sec:intro}
+Logging has always been a important tool for software developers in
+understanding their applications. However, as DevOps oriented workflows have
+become more prevalent, logging is becoming an even larger consideration when
+building applications. A key area driving this shift is the use of cloud-based
+applications and the integration of application monitoring dashboards, such as
+Stack Driver~\cite{StackDriver}, NSolid~\cite{NSolid}, or
+AppInsights~\cite{AppInsights}, which ingest logs from an application, correlate
+this information with other aspects of the system, and provide this in a useful
+dashboard format for developers. The additional value provided by these
+dashboards and the ability to quickly act on this data makes the inclusion of
+rich logging data an integral part of an applications development.
+
+Existing logging library implementations, as provided via core or third party
+libraries, are unable to satisfactorily meet the demands of logging in modern
+applications. As a result developers must use existing libraries with care to
+limit undesirable logging related performance impacts, work to direct logging
+output from core or third-party modules to the appropriate channels, and figure
+out how to effectively parse the data that is written from various sources.
+Consider the following sample JavaScript code which illustrates a number of
+concrete issues encountered by Node.js~\cite{Node} developers today.
+
+\begin{figure*}[t]
+\lstinputlisting[language=JavaScript,basicstyle=\small]{introExample.js}
+\label{sec:introExample}
+\caption{Example logging usage in JavaScript.}
+\end{figure*}
+
+The first is the challenge of different loggers being used in various parts of
+the code in this case \texttt{console.log} writing to the \texttt{stdout} and a
+popular framework called \texttt{Winston} which has been configured to write to
+a file. As a result some log output will appear on the console while other
+output will end up in a file. Further, if a developer changes the logging output
+level for \texttt{Winston}, from say \texttt{info} to \texttt{warn}, this will
+not change the output level of the \texttt{console} output. Developers can work
+around this to some degree by enforcing the use of a single logging framework
+for their code but they will not always be able to control the frameworks used
+by external libraries.
+
+The next challenge comes from the ad-hoc nature of log message formatting. In
+most cases the logging API's provided for developers are setup to take a format
+string and some formattable arguments. This is great for quick and easy outputs
+but quickly leads to a plethora of ad-hoc formats that cannot be easily parsed
+and loaded into dashboard or analytics tooling. Modern logging frameworks,
+log4j~\cite{log4j}, Winston~\cite{Winston}, Bunyan~\cite{Bunyan}, etc. provide
+some support for consistently formatting ans structuring output but
+fundamentally this problem is left as a problem development teams need to solve
+via coding conventions and reviews.
+
+In addition to these functionality issues there are also performance problems
+that plague existing logging solutions. One concern is that even if a given
+logging level is disabled, as \texttt{debug} and \texttt{trace} levels usually
+are, the code to generate and format the log message is still executed. This can
+lead to code that looks like it will not be executed but that in reality incurs
+large parasitic costs. This can be seen in the \texttt{logger.debug} statement
+in the example, which at the default level does not print to the log, but will
+still result in the creation of the literal object and generation of a format
+string on every execution of the loop. This cost leads developers to defensively
+remove these statements from code instead of depending on the runtime to
+eliminate their costs when deploying the application.
+
+Finally, there is the odd issue that, in many cases a developer only cares about
+much of the data in the log if/when there is actually an issue that needs to be
+investigated. In other cases this information represents pure execution overhead
+for the application. An example of this is the \texttt{logger.info} message
+about the args and result of the \texttt{check} call. In the case of a
+successful execution the content of this log statement is not useful and the
+cost of producing this plus the increased log footprint is pure overhead.
+However, if the \texttt{check} statement fails then having this information
+about what events led up to the failure may be critical in diagnosing/fixing the
+issue. In current logging frameworks this is an unavoidable conundrum and, in
+any case where the trace history is needed, the logging statements must be
+added.
+
+To address these issues we propose a new approach, \emph{language level
+logging}, in which logging is viewed as a first class feature in the
+design/implementation of a programming language and runtime instead of simply
+another library to be included. Taking this view enables us to leverage language
+semantics, focused compiler optimizations, and semantic knowledge in the runtime
+to provide a uniform and high performance logging API.
+
+\noindent
+The contributions of this paper include:
+\begin{itemize}
+\item The view that logging is a fundamental aspect of programming and should be
+included as a first class part of language, compiler, and runtime design.
+
+\item A novel logging technique that uses immutability semantics in the
+programming language to enable ultra-low cost logging which is
+5$\times$-100$\times$ faster than existing approaches.
+
+\item A novel dual-level approach to log generation and writing that allows a
+programmer to log execution data eagerly but only pay the cost of writting it to
+the log if it turns out to be interesting/relevant.
+
+\item Implementation of this technique in a new programming language,
+\emph{fluentpl}, which fully realizes the logging ideas in this paper. 
+
+\item An implementation in Node.js with the ChakraCore~\cite{NodeChakraCore} 
+JavaScript engine to demonstrate that key ideas can be applied to existing
+languages/runtimes and provide an production implementation for use in
+performance evaluations.
+\end{itemize}
+
+\section{Design}
+\label{sec:design}
+\input{design}
+
+\section{Implementation}
+
+\section{Evaluation}
+
+\section{Conclusion}
+
+\section{Notes} log output scheduling -- critical for devops/cloud integration
+-- should be background task
+
+
+\balance
+
+{
+\raggedright 
+
+\bibliographystyle{abbrv}
+\bibliography{bibfile} 
+}
+
+
+\end{document}
