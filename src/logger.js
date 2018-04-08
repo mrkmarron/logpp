@@ -16,16 +16,6 @@ const LoggingLevels = {
     ALL: 0xFF
 };
 
-/**
- * Tag values for system info logging levels.
- */
-const SystemInfoLevels = {
-    OFF: 0x0,
-    REQUEST: 0x100, // if enabled written into the log at INFO level.
-    ASYNC: 0x300, // if enabled written into the log at DEBUG level.
-    ALL: 0xF00
-};
-
 /*
  * Keep track of what categories have been enabled in the log.
  */
