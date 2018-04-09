@@ -1,5 +1,7 @@
 "use strict";
 
+const core = require("./core");
+
 ////
 //Valid expandos are:
 //#ip        -- ip address of the host
@@ -36,22 +38,6 @@ class FormatSyntaxError extends Error {
     }
 }
 
-//Default values we expand objects and arrays to
-const DEFAULT_EXPAND_DEPTH = 2;
-const DEFAULT_EXPAND_OBJECT_LENGTH = 1024;
-const DEFAULT_EXPAND_ARRAY_LENGTH = 128;
-
-/**
- * Tag values indicating the kind of each format entry
- */
-const FormatStringEntryKind = {
-    Literal: 1,
-    Expando: 2,
-    Basic: 3,
-    Compound: 4
-};
-exports.FormatStringEntryKind = FormatStringEntryKind;
-
 /**
  * Create a format string entry
  * @function
@@ -75,39 +61,39 @@ function generateSingletonFormatStringEntry(name, kind, label, tag, isSingleSlot
  * Object singletons for format entries
  */
 const s_formatStringEntrySingletons = {
-    HASH: generateSingletonFormatStringEntry("HASH", FormatStringEntryKind.Literal, "#", 1, true),
-    IP: generateSingletonFormatStringEntry("IP", FormatStringEntryKind.Expando, "#ip", 2, true),
-    APP: generateSingletonFormatStringEntry("APP", FormatStringEntryKind.Expando, "#app", 3, true),
-    MODULE: generateSingletonFormatStringEntry("MODULE", FormatStringEntryKind.Expando, "#module", 4, true),
-    SOURCE: generateSingletonFormatStringEntry("SOURCE", FormatStringEntryKind.Expando, "#source", 5, true),
-    WALLCLOCK: generateSingletonFormatStringEntry("WALLCLOCK", FormatStringEntryKind.Expando, "#wallclock", 6, true),
-    TIMESTAMP: generateSingletonFormatStringEntry("TIMESTAMP", FormatStringEntryKind.Expando, "#timestamp", 7, true),
-    CALLBACK: generateSingletonFormatStringEntry("CALLBACK", FormatStringEntryKind.Expando, "#callback", 8, true),
-    REQUEST: generateSingletonFormatStringEntry("REQUEST", FormatStringEntryKind.Expando, "#request", 9, true),
+    HASH: generateSingletonFormatStringEntry("HASH", core.FormatStringEntryKind.Literal, "#", 1, true),
+    IP: generateSingletonFormatStringEntry("IP", core.FormatStringEntryKind.Expando, "#ip", 2, true),
+    APP: generateSingletonFormatStringEntry("APP", core.FormatStringEntryKind.Expando, "#app", 3, true),
+    MODULE: generateSingletonFormatStringEntry("MODULE", core.FormatStringEntryKind.Expando, "#module", 4, true),
+    SOURCE: generateSingletonFormatStringEntry("SOURCE", core.FormatStringEntryKind.Expando, "#source", 5, true),
+    WALLCLOCK: generateSingletonFormatStringEntry("WALLCLOCK", core.FormatStringEntryKind.Expando, "#wallclock", 6, true),
+    TIMESTAMP: generateSingletonFormatStringEntry("TIMESTAMP", core.FormatStringEntryKind.Expando, "#timestamp", 7, true),
+    CALLBACK: generateSingletonFormatStringEntry("CALLBACK", core.FormatStringEntryKind.Expando, "#callback", 8, true),
+    REQUEST: generateSingletonFormatStringEntry("REQUEST", core.FormatStringEntryKind.Expando, "#request", 9, true),
 
-    DOLLAR: generateSingletonFormatStringEntry("DOLLAR", FormatStringEntryKind.Literal, "$", 10, true),
-    BOOL: generateSingletonFormatStringEntry("BOOL", FormatStringEntryKind.Basic, "b", 11, true), //${p:b}
-    NUMBER: generateSingletonFormatStringEntry("NUMBER", FormatStringEntryKind.Basic, "n", 12, true), //${p:n}
-    STRING: generateSingletonFormatStringEntry("STRING", FormatStringEntryKind.Basic, "s", 13, true), //${p:s}
-    DATE: generateSingletonFormatStringEntry("DATE", FormatStringEntryKind.Basic, "d", 14, true), //${p:d}
-    DATEISO: generateSingletonFormatStringEntry("DATEISO", FormatStringEntryKind.Basic, "d-iso", 15, true), //${p:d-iso}
-    DATEUTC: generateSingletonFormatStringEntry("DATEUTC", FormatStringEntryKind.Basic, "d-utc", 16, true), //${p:d-utc}
-    DATELOCAL: generateSingletonFormatStringEntry("DATELOCAL", FormatStringEntryKind.Basic, "d-local", 17, true), //${p:d-local}
-    GENERAL: generateSingletonFormatStringEntry("GENERAL", FormatStringEntryKind.Basic, "g", 18, false), //${p:g}
-    OBJECT: generateSingletonFormatStringEntry("OBJECT", FormatStringEntryKind.Compound, "o", 19, false), //${p:o<d,l>}
-    ARRAY: generateSingletonFormatStringEntry("ARRAY", FormatStringEntryKind.Compound, "a", 20, false) //${p:a<d,l>}
+    DOLLAR: generateSingletonFormatStringEntry("DOLLAR", core.FormatStringEntryKind.Literal, "$", 10, true),
+    BOOL: generateSingletonFormatStringEntry("BOOL", core.FormatStringEntryKind.Basic, "b", 11, true), //${p:b}
+    NUMBER: generateSingletonFormatStringEntry("NUMBER", core.FormatStringEntryKind.Basic, "n", 12, true), //${p:n}
+    STRING: generateSingletonFormatStringEntry("STRING", core.FormatStringEntryKind.Basic, "s", 13, true), //${p:s}
+    DATE: generateSingletonFormatStringEntry("DATE", core.FormatStringEntryKind.Basic, "d", 14, true), //${p:d}
+    DATEISO: generateSingletonFormatStringEntry("DATEISO", core.FormatStringEntryKind.Basic, "d-iso", 15, true), //${p:d-iso}
+    DATEUTC: generateSingletonFormatStringEntry("DATEUTC", core.FormatStringEntryKind.Basic, "d-utc", 16, true), //${p:d-utc}
+    DATELOCAL: generateSingletonFormatStringEntry("DATELOCAL", core.FormatStringEntryKind.Basic, "d-local", 17, true), //${p:d-local}
+    GENERAL: generateSingletonFormatStringEntry("GENERAL", core.FormatStringEntryKind.Basic, "g", 18, false), //${p:g}
+    OBJECT: generateSingletonFormatStringEntry("OBJECT", core.FormatStringEntryKind.Compound, "o", 19, false), //${p:o<d,l>}
+    ARRAY: generateSingletonFormatStringEntry("ARRAY", core.FormatStringEntryKind.Compound, "a", 20, false) //${p:a<d,l>}
 };
 
 const s_expandoEntries = Object.keys(s_formatStringEntrySingletons)
-    .filter(function (value) { return s_formatStringEntrySingletons[value].kind === FormatStringEntryKind.Expando; })
+    .filter(function (value) { return s_formatStringEntrySingletons[value].kind === core.FormatStringEntryKind.Expando; })
     .map(function (value) { return s_formatStringEntrySingletons[value]; });
 
 const s_basicFormatEntries = Object.keys(s_formatStringEntrySingletons)
-    .filter(function (value) { return s_formatStringEntrySingletons[value].kind === FormatStringEntryKind.Basic; })
+    .filter(function (value) { return s_formatStringEntrySingletons[value].kind === core.FormatStringEntryKind.Basic; })
     .map(function (value) { return s_formatStringEntrySingletons[value]; });
 
 const s_compoundFormatEntries = Object.keys(s_formatStringEntrySingletons)
-    .filter(function (value) { return s_formatStringEntrySingletons[value].kind === FormatStringEntryKind.Compound; })
+    .filter(function (value) { return s_formatStringEntrySingletons[value].kind === core.FormatStringEntryKind.Compound; })
     .map(function (value) { return s_formatStringEntrySingletons[value]; });
 
 const s_expandoStringRe = new RegExp("^(" +
@@ -127,60 +113,6 @@ const s_compoundFormatStringRe = new RegExp("^\\${(\\d+):(" +
         .map(function (value) { return value.label; })
         .join("|") +
     ")(<(\\d+|\\*)?,(\\d+|\\*)?>)}$");
-
-const TypeNameEnum = {
-    TUndefined: 1,
-    TNull: 2,
-    TBoolean: 3,
-    TNumber: 4,
-    TString: 5,
-
-    LastImmutableType: 5,
-
-    TDate: 6,
-
-    LastSimpleType: 5,
-
-    TFunction: 7,
-
-    TObject: 8,
-    TJsArray: 9,
-    TTypedArray: 10,
-
-    TUnknown: 11,
-
-    LastType: 12
-};
-exports.TypeNameEnum = TypeNameEnum;
-
-const TypeNameToFlagEnum = {
-    "[object Undefined]": TypeNameEnum.TUndefined,
-    "[object Null]": TypeNameEnum.TNull,
-    "[object Boolean]": TypeNameEnum.TBoolean,
-    "[object Number]": TypeNameEnum.TNumber,
-    "[object String]": TypeNameEnum.TString,
-    "[object Date]": TypeNameEnum.TDate,
-    "[object Function]": TypeNameEnum.TFunction,
-    "[object Object]": TypeNameEnum.TObject,
-    "[object Array]": TypeNameEnum.TJsArray,
-    "[object Float32Array]": TypeNameEnum.TTypedArray,
-    "[object Float64Array]": TypeNameEnum.TTypedArray,
-    "[object Int8Array]": TypeNameEnum.TTypedArray,
-    "[object Int16Array]": TypeNameEnum.TTypedArray,
-    "[object Int32Array]": TypeNameEnum.TTypedArray,
-    "[object Uint8Array]": TypeNameEnum.TTypedArray,
-    "[object Uint16Array]": TypeNameEnum.TTypedArray,
-    "[object Uint32Array]": TypeNameEnum.TTypedArray
-};
-
-/**
- * Get the enumeration tag for the type of value
- * @param {object} value
- * @returns TypeNameToFlagEnum value
- */
-function typeGetIdTag(value) {
-    return TypeNameToFlagEnum[toString.call(value)] || TypeNameEnum.TUnknown;
-}
 
 /**
  * Construct a msgFormat entry for a compound formatter.
@@ -211,12 +143,12 @@ function createMsgFormatEntry(formatTag, formatStringStart, formatStringEnd, arg
  * @returns {string}
  */
 function expandToJsonFormatter(jobj) {
-    const typeid = typeGetIdTag(jobj);
+    const typeid = core.getTypeNameEnum(jobj);
 
-    if ((typeid === TypeNameEnum.TUndefined) || (typeid === TypeNameEnum.TNull) || (typeid === TypeNameEnum.TBoolean) || (typeid === TypeNameEnum.TNumber)) {
+    if ((typeid === core.TypeNameEnum.TUndefined) || (typeid === core.TypeNameEnum.TNull) || (typeid === core.TypeNameEnum.TBoolean) || (typeid === core.TypeNameEnum.TNumber)) {
         return JSON.stringify(jobj);
     }
-    else if (typeid === TypeNameEnum.TString) {
+    else if (typeid === core.TypeNameEnum.TString) {
         if (s_expandoStringRe.test(jobj) || s_basicFormatStringRe.test(jobj) || s_compoundFormatStringRe.test(jobj)) {
             return jobj;
         }
@@ -224,7 +156,7 @@ function expandToJsonFormatter(jobj) {
             return "\"" + jobj + "\"";
         }
     }
-    else if (typeid === TypeNameEnum.TObject) {
+    else if (typeid === core.TypeNameEnum.TObject) {
         return "{ " +
             Object.keys(jobj)
                 .sort()
@@ -232,7 +164,7 @@ function expandToJsonFormatter(jobj) {
                 .join(", ") +
             " }";
     }
-    else if (typeid === TypeNameEnum.TJsArray) {
+    else if (typeid === core.TypeNameEnum.TJsArray) {
         return "[ " +
             jobj
                 .map(function (value) { return expandToJsonFormatter(value); })
@@ -319,10 +251,10 @@ function extractArgumentFormatSpecifier(fmtString, vpos) {
             const DL_STAR = 1073741824;
 
             if (fmtString.startsWith("o}", specPos)) {
-                return createMsgFormatEntry(s_formatStringEntrySingletons.OBJECT, vpos, specPos + "o}".length, argPosition, DEFAULT_EXPAND_DEPTH, DEFAULT_EXPAND_OBJECT_LENGTH);
+                return createMsgFormatEntry(s_formatStringEntrySingletons.OBJECT, vpos, specPos + "o}".length, argPosition, core.ExpandDefaults.Depth, core.ExpandDefaults.ObjectLength);
             }
             else if (fmtString.startsWith("a}", specPos)) {
-                return createMsgFormatEntry(s_formatStringEntrySingletons.ARRAY, vpos, specPos + "a}".length, argPosition, DEFAULT_EXPAND_DEPTH, DEFAULT_EXPAND_ARRAY_LENGTH);
+                return createMsgFormatEntry(s_formatStringEntrySingletons.ARRAY, vpos, specPos + "a}".length, argPosition, core.ExpandDefaults.Depth, core.ExpandDefaults.ArrayLength);
             }
             else {
                 s_formatDepthLengthRegex.lastIndex = specPos;
@@ -332,8 +264,8 @@ function extractArgumentFormatSpecifier(fmtString, vpos) {
                 }
 
                 const ttag = (dlMatch[1] === "o") ? s_formatStringEntrySingletons.OBJECT : s_formatStringEntrySingletons.ARRAY;
-                let tdepth = DEFAULT_EXPAND_DEPTH;
-                let tlength = (dlMatch[1] === "o") ? DEFAULT_EXPAND_OBJECT_LENGTH : DEFAULT_EXPAND_ARRAY_LENGTH;
+                let tdepth = core.ExpandDefaults.Depth;
+                let tlength = (dlMatch[1] === "o") ? core.ExpandDefaults.ObjectLength : core.ExpandDefaults.ArrayLength;
 
                 if (dlMatch[2] !== "") {
                     tdepth = (dlMatch[2] !== "*") ? Number.parseInt(dlMatch[2]) : DL_STAR;
@@ -392,8 +324,8 @@ function extractMsgFormat(fmtName, fmtInfo) {
 
     let fmtString = fmtInfo;
     if (typeof (fmtInfo) !== "string") {
-        const typeid = typeGetIdTag(fmtInfo);
-        if (typeid !== TypeNameEnum.TJsArray && typeid !== TypeNameEnum.TObject) {
+        const typeid = core.getTypeNameEnum(fmtInfo);
+        if (typeid !== core.TypeNameEnum.TJsArray && typeid !== core.TypeNameEnum.TObject) {
             throw new FormatSyntaxError("Format description options are string | object layout | array layout", undefined, 0);
         }
 

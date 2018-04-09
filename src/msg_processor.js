@@ -1,5 +1,7 @@
 "use strict";
 
+const core = require("./core");
+
 /**
  * Tag values indicating the kind of each entry in the fast log buffer
  */
@@ -59,7 +61,7 @@ function BlockList() {
  * @method
  */
 BlockList.prototype.clear = function () {
-    this.head.tags.fill(LogEntryTags_Clear, this.head.count);
+    this.head.tags.fill(LogEntryTags.Clear, this.head.count);
     this.head.data.fill(undefined, this.head.count);
     this.head.count = 0;
     this.head.next = null;
@@ -97,7 +99,7 @@ BlockList.prototype.addJsVarValueEntry = function (data) {
         this.tail = block;
     }
 
-    block.tags[block.count] = LogEntryTags_JsVarValue;
+    block.tags[block.count] = LogEntryTags.JsVarValue;
     block.data[block.count] = data;
     block.count++;
 };
@@ -121,17 +123,29 @@ BlockList.prototype.addTagOnlyEntry = function (tag) {
 /**
  * Add functions to process general values via lookup on typeid number in prototype array
  */
-const AddGeneralValue_RemainingTypesCallTable = new Array(TypeNameEnum_Limit);
+const AddGeneralValue_RemainingTypesCallTable = new Array(core.TypeNameEnum.TypeCount);
 AddGeneralValue_RemainingTypesCallTable.fill(null);
 
-AddGeneralValue_RemainingTypesCallTable[TypeNameEnum_Date] = function (blockList, value, depth) { blockList.addJsVarValueEntry(new Date(value)); };
-AddGeneralValue_RemainingTypesCallTable[TypeNameEnum_Function] = function (blockList, value, depth) { blockList.addJsVarValueEntry('[ #Function# ' + value.name + ' ]'); };
+AddGeneralValue_RemainingTypesCallTable[core.TypeNameEnum.TDate] = function (blockList, value, depth) {
+    blockList.addJsVarValueEntry(new Date(value));
+};
+AddGeneralValue_RemainingTypesCallTable[core.TypeNameEnum.TFunction] = function (blockList, value, depth) {
+    blockList.addJsVarValueEntry("[ #Function# " + value.name + " ]");
+};
 
-AddGeneralValue_RemainingTypesCallTable[TypeNameEnum_Object] = function (blockList, value, depth) { blockList.addExpandedObject(value, depth, DEFAULT_EXPAND_OBJECT_LENGTH); };
-AddGeneralValue_RemainingTypesCallTable[TypeNameEnum_JsArray] = function (blockList, value, depth) { blockList.addExpandedArray(value, depth, DEFAULT_EXPAND_ARRAY_LENGTH); };
-AddGeneralValue_RemainingTypesCallTable[TypeNameEnum_TypedArray] = function (blockList, value, depth) { blockList.addExpandedArray(value, depth, DEFAULT_EXPAND_ARRAY_LENGTH); };
+AddGeneralValue_RemainingTypesCallTable[core.TypeNameEnum.TObject] = function (blockList, value, depth) {
+    blockList.addExpandedObject(value, depth, core.ExpandDefaults.ObjectLength);
+};
+AddGeneralValue_RemainingTypesCallTable[core.TypeNameEnum.TJsArray] = function (blockList, value, depth) {
+    blockList.addExpandedArray(value, depth, core.ExpandDefaults.ArrayLength);
+};
+AddGeneralValue_RemainingTypesCallTable[core.TypeNameEnum.TTypedArray] = function (blockList, value, depth) {
+    blockList.addExpandedArray(value, depth, core.ExpandDefaults.ArrayLength);
+};
 
-AddGeneralValue_RemainingTypesCallTable[TypeNameEnum_Unknown] = function (blockList, value, depth) { blockList.addTagOnlyEntry(LogEntryTags_OpaqueObject); };
+AddGeneralValue_RemainingTypesCallTable[core.TypeNameEnum.TUnknown] = function (blockList, value, depth) {
+    blockList.addTagOnlyEntry(LogEntryTags.OpaqueValue);
+};
 
 /**
  * Add an expanded object value to the log
@@ -143,26 +157,26 @@ AddGeneralValue_RemainingTypesCallTable[TypeNameEnum_Unknown] = function (blockL
 BlockList.prototype.addExpandedObject = function (obj, depth, length) {
     //if the value is in the set and is currently processing
     if (this.jsonCycleMap.has(obj)) {
-        this.addTagOnlyEntry(LogEntryTags_CycleValue);
+        this.addTagOnlyEntry(LogEntryTags.CycleValue);
         return;
     }
 
     if (depth === 0) {
-        this.addTagOnlyEntry(LogEntryTags_OpaqueObject);
+        this.addTagOnlyEntry(LogEntryTags.OpaqueValue);
     }
     else {
         //Set processing as true for cycle detection
         this.jsonCycleMap.add(obj);
-        this.addTagOnlyEntry(LogEntryTags_LParen);
+        this.addTagOnlyEntry(LogEntryTags.LParen);
 
         let allowedLengthRemain = length;
-        for (let p in obj) {
-            this.addEntry(LogEntryTags_PropertyRecord, p);
+        for (const p in obj) {
+            this.addEntry(LogEntryTags.PropertyRecord, p);
 
             const value = obj[p];
-            const typeid = typeGetIdTag(value);
-            if (typeid <= TypeNameEnum_LastSimpleType) {
-                this.addJsVarValueEntry(value)
+            const typeid = core.getTypeNameEnum(value);
+            if (typeid <= core.TypeNameEnum.LastImmutableType) {
+                this.addJsVarValueEntry(value);
             }
             else {
                 (AddGeneralValue_RemainingTypesCallTable[typeid])(this, value, depth);
@@ -170,14 +184,14 @@ BlockList.prototype.addExpandedObject = function (obj, depth, length) {
 
             allowedLengthRemain--;
             if (allowedLengthRemain <= 0) {
-                this.addTagOnlyEntry(LogEntryTags_LengthBoundHit);
+                this.addTagOnlyEntry(LogEntryTags.LengthBoundHit);
                 break;
             }
         }
 
         //Set processing as false for cycle detection
         this.jsonCycleMap.delete(obj);
-        this.addTagOnlyEntry(LogEntryTags_RParen);
+        this.addTagOnlyEntry(LogEntryTags.RParen);
     }
 };
 
@@ -191,37 +205,37 @@ BlockList.prototype.addExpandedObject = function (obj, depth, length) {
 BlockList.prototype.addExpandedArray = function (obj, depth, length) {
     //if the value is in the set and is currently processing
     if (this.jsonCycleMap.has(obj)) {
-        this.addTagOnlyEntry(LogEntryTags_CycleValue);
+        this.addTagOnlyEntry(LogEntryTags.CycleValue);
         return;
     }
 
     if (depth === 0) {
-        this.addTagOnlyEntry(LogEntryTags_OpaqueObject);
+        this.addTagOnlyEntry(LogEntryTags.OpaqueValue);
     }
     else {
         //Set processing as true for cycle detection
         this.jsonCycleMap.add(obj);
-        this.addTagOnlyEntry(LogEntryTags_LBrack);
+        this.addTagOnlyEntry(LogEntryTags.LBrack);
 
         for (let i = 0; i < obj.length; ++i) {
             const value = obj[i];
-            const typeid = typeGetIdTag(value);
-            if (typeid <= TypeNameEnum_LastSimpleType) {
-                this.addJsVarValueEntry(value)
+            const typeid = core.getTypeNameEnum(value);
+            if (typeid <= core.TypeNameEnum.LastImmutableType) {
+                this.addJsVarValueEntry(value);
             }
             else {
                 (AddGeneralValue_RemainingTypesCallTable[typeid])(this, value, depth);
             }
 
             if (i >= length) {
-                this.addTagOnlyEntry(LogEntryTags_LengthBoundHit);
+                this.addTagOnlyEntry(LogEntryTags.LengthBoundHit);
                 break;
             }
         }
 
         //Set processing as false for cycle detection
         this.jsonCycleMap.delete(obj);
-        this.addTagOnlyEntry(LogEntryTags_RBrack);
+        this.addTagOnlyEntry(LogEntryTags.RBrack);
     }
 };
 
