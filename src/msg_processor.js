@@ -1,6 +1,7 @@
 "use strict";
 
 const core = require("./core");
+const msg_formats = require("./format_specifier");
 
 /**
  * Tag values indicating the kind of each entry in the fast log buffer
@@ -239,107 +240,156 @@ BlockList.prototype.addExpandedArray = function (obj, depth, length) {
     }
 };
 
-////////
-
 /**
- * A table that maps from basic format type enums to the typeid that is permissible for that formatter
+ * Get the caller info for this call to logMsg -- where the caller is k callframes up.
  */
-const FormatTypeToArgTypeCheckArray = new Array(FormatStringEntrySingleton_EnumLimit);
-FormatTypeToArgTypeCheckArray.fill(0);
+function getCallerLineInfo(env) {
+    const errstk = new Error()
+        .stack
+        .split("\n")
+        .slice(2)
+        .map((frame) => frame.substring(frame.indexOf("(") + 1, frame.lastIndexOf(")")))
+        .filter((frame) => !frame.includes(env.logger_path));
 
-FormatTypeToArgTypeCheckArray[FormatStringEntrySingletons.BOOL_VAL.enum] = TypeNameEnum_Boolean;
-FormatTypeToArgTypeCheckArray[FormatStringEntrySingletons.NUMBER_VAL.enum] = TypeNameEnum_Number;
-FormatTypeToArgTypeCheckArray[FormatStringEntrySingletons.STRING_VAL.enum] = TypeNameEnum_String;
+    return errstk;
+}
 
-const LogMessage_RemainingTypesCallTable = new Array(FormatStringEntrySingleton_EnumLimit);
-LogMessage_RemainingTypesCallTable.fill(null);
+//Explicitly get these values here to avoid repeated lookup in logMessage loop
+const FSE_KIND_LITERAL = core.FormatStringEntryKind.Literal;
+const FSE_KIND_EXPANDO = core.FormatStringEntryKind.Expando;
 
-LogMessage_RemainingTypesCallTable[FormatStringEntrySingletons.OBJECT_VAL.enum] = function (blockList, valueid, value, formatEntry) {
-    if (valueid === TypeNameEnum_Object) {
-        blockList.addExpandedObject(value, formatEntry.depth, formatEntry.length);
+const FORMAT_SOURCE_ENUM = msg_formats.FormatStringEntrySingletons.SOURCE.enum;
+const FORMAT_WALLCLOCK_ENUM = msg_formats.FormatStringEntrySingletons.WALLCLOCK.enum;
+const FORMAT_TIMESTAMP_ENUM = msg_formats.FormatStringEntrySingletons.TIMESTAMP.enum;
+
+const FORMAT_BOOL_ENUM = msg_formats.FormatStringEntrySingletons.BOOL.enum;
+const FORMAT_NUMBER_ENUM = msg_formats.FormatStringEntrySingletons.NUMBER.enum;
+const FORMAT_STRING_ENUM = msg_formats.FormatStringEntrySingletons.STRING.enum;
+const FORMAT_DATE_ENUM = msg_formats.FormatStringEntrySingletons.DATE.enum;
+const FORMAT_DATEISO_ENUM = msg_formats.FormatStringEntrySingletons.DATEISO.enum;
+const FORMAT_DATEUTC_ENUM = msg_formats.FormatStringEntrySingletons.DATEUTC.enum;
+const FORMAT_DATELOCAL_ENUM = msg_formats.FormatStringEntrySingletons.DATELOCAL.enum;
+
+const FORMAT_OBJECT_ENUM = msg_formats.FormatStringEntrySingletons.OBJECT.enum;
+const FORMAT_ARRAY_ENUM = msg_formats.FormatStringEntrySingletons.ARRAY.enum;
+
+const CORE_TBOOL_ENUM = core.TypeNameEnum.TBoolean;
+const CORE_TNUMBER_ENUM = core.TypeNameEnum.TNumber;
+const CORE_TSTRING_ENUM = core.TypeNameEnum.TString;
+const CORE_LAST_IMMUTABLE = core.TypeNameEnum.LastImmutableType;
+
+const CORE_TDATE_ENUM = core.TypeNameEnum.TDate;
+
+const CORE_TOBJECT_ENUM = core.TypeNameEnum.TObject;
+const CORE_TARRAY_ENUM = core.TypeNameEnum.TJsArray;
+
+BlockList.prototype.processImmutableHelper = function (valueok, value) {
+    if (valueok) {
+        this.addJsVarValueEntry(value);
     }
     else {
-        blockList.addTagOnlyEntry(LogEntryTags_JsBadFormatVar);
+        this.addTagOnlyEntry(LogEntryTags.JsBadFormatVar);
     }
 };
 
-LogMessage_RemainingTypesCallTable[FormatStringEntrySingletons.ARRAY_VAL.enum] = function (blockList, valueid, value, formatEntry) {
-    if ((valueid === TypeNameEnum_JsArray) || (valueid === TypeNameEnum_TypedArray)) {
-        blockList.addExpandedArray(value, formatEntry.depth, formatEntry.length);
+BlockList.prototype.processDateHelper = function (vtype, value) {
+    if (vtype === CORE_TDATE_ENUM) {
+        this.addJsVarValueEntry(value);
     }
     else {
-        blockList.addTagOnlyEntry(LogEntryTags_JsBadFormatVar);
+        this.addTagOnlyEntry(LogEntryTags.JsBadFormatVar);
     }
 };
 
 /**
  * Log a message into the logger
  * @method
- * @param {Object} macroInfo a record with the info for certain expando formatter entries
- * @param {Object} level the level the message is being logged at
+ * @param {Object} env a record with the info for certain environment/expando formatter entries
+ * @param {string} level the level the message is being logged at
+ * @param {string} category the category the message is being logged at
  * @param {Object} fmt the format of the message
  * @param {Array} args the arguments for the format message
  */
-BlockList.prototype.logMessage = function (macroInfo, level, fmt, args) {
-    this.addEntry(LogEntryTags_MsgFormat, fmt);
-    this.addEntry(LogEntryTags_MsgLevel, level);
+BlockList.prototype.logMessage = function (env, level, category, fmt, args) {
+    this.addEntry(LogEntryTags.MsgFormat, fmt);
+    this.addEntry(LogEntryTags.MsgLevel, level);
+    this.addEntry(LogEntryTags.MsgCategory, category);
 
     for (let i = 0; i < fmt.formatterArray.length; ++i) {
         const formatEntry = fmt.formatterArray[i];
         const formatSpec = formatEntry.format;
 
-        if (formatSpec.kind === FormatStringEntryKind_Literal) {
-            ; //don't need to do anything!
+        if (formatSpec.kind === FSE_KIND_LITERAL) {
+            //don't need to do anything!
         }
-        else if (formatSpec.kind === FormatStringEntryKind_Expando) {
-            if (formatSpec.enum <= FormatStringEntrySingleton_LastMacroInfoExpandoEnum) {
-                this.addJsVarValueEntry(macroInfo[formatSpec.name]);
+        else if (formatSpec.kind === FSE_KIND_EXPANDO) {
+            const specEnum = formatSpec.enum;
+            if (specEnum === FORMAT_SOURCE_ENUM) {
+                this.addJsVarValueEntry(getCallerLineInfo(env));
+            }
+            else if (specEnum === FORMAT_WALLCLOCK_ENUM) {
+                this.addJsVarValueEntry(Date.now());
+            }
+            else if (specEnum === FORMAT_TIMESTAMP_ENUM) {
+                this.addJsVarValueEntry(env.TIMESTAMP++);
             }
             else {
-                if (formatSpec === FormatStringEntrySingletons.MSG_NAME) {
-                    this.addJsVarValueEntry(fmt.name);
-                }
-                else {
-                    //TODO: remove this later but useful for initial testing
-                    assert(formatSpec === FormatStringEntrySingletons.WALLTIME, 'Should not be any other options');
-                    this.addJsVarValueEntry(Date.now());
-                }
+                this.addJsVarValueEntry(env[formatSpec.name]);
             }
         }
         else {
-            //TODO: remove this after we are done debugging a bit
-            assert(formatSpec.kind === FormatStringEntryKind_Basic || formatSpec.kind === FormatStringEntryKind_Compound, 'No other options');
-
             if (formatEntry.argPosition >= args.length) {
                 //We hit a bad format value so rather than let it propigate -- report and move on.
-                this.addTagOnlyEntry(LogEntryTags_JsBadFormatVar);
+                this.addTagOnlyEntry(LogEntryTags.JsBadFormatVar);
             }
             else {
                 const value = args[formatEntry.argPosition];
-                const typeid = typeGetIdTag(value);
+                const vtype = core.getTypeNameEnum(value);
 
-                if (formatSpec.enum <= FormatStringEntrySingleton_LastBasicFormatterEnum) {
-                    if (FormatTypeToArgTypeCheckArray[formatSpec.enum] === typeid) {
-                        this.addJsVarValueEntry(value);
-                    }
-                    else {
-                        this.addTagOnlyEntry(LogEntryTags_JsBadFormatVar);
-                    }
-                }
-                else if (formatSpec === FormatStringEntrySingletons.GENERAL_VAL) {
-                    if (typeid <= TypeNameEnum_LastSimpleType) {
-                        this.addJsVarValueEntry(value)
-                    }
-                    else {
-                        (AddGeneralValue_RemainingTypesCallTable[typeid])(this, typeid, value, formatEntry.depth);
-                    }
-                }
-                else {
-                    (LogMessage_RemainingTypesCallTable[formatSpec.enum])(this, typeid, fmt, value)
+                switch (formatSpec.enum) {
+                    case FORMAT_BOOL_ENUM:
+                        this.processImmutableHelper(vtype === CORE_TBOOL_ENUM, value);
+                        break;
+                    case FORMAT_NUMBER_ENUM:
+                        this.processImmutableHelper(vtype === CORE_TNUMBER_ENUM, value);
+                        break;
+                    case FORMAT_STRING_ENUM:
+                        this.processImmutableHelper(vtype === CORE_TSTRING_ENUM, value);
+                        break;
+                    case FORMAT_DATE_ENUM:
+                    case FORMAT_DATEISO_ENUM:
+                    case FORMAT_DATEUTC_ENUM:
+                    case FORMAT_DATELOCAL_ENUM:
+                        this.processDateHelper(vtype, value);
+                        break;
+                    case FORMAT_OBJECT_ENUM:
+                        if (vtype === CORE_TOBJECT_ENUM) {
+                            this.addExpandedObject(value, formatEntry.depth, formatEntry.length);
+                        }
+                        else {
+                            this.addTagOnlyEntry(LogEntryTags.JsBadFormatVar);
+                        }
+                        break;
+                    case FORMAT_ARRAY_ENUM:
+                        if (vtype === CORE_TARRAY_ENUM) {
+                            this.addExpandedObject(value, formatEntry.depth, formatEntry.length);
+                        }
+                        else {
+                            this.addTagOnlyEntry(LogEntryTags.JsBadFormatVar);
+                        }
+                        break;
+                    default:
+                        if (vtype <= CORE_LAST_IMMUTABLE) {
+                            this.addJsVarValueEntry(value);
+                        }
+                        else {
+                            (AddGeneralValue_RemainingTypesCallTable[vtype])(this, vtype, value, formatEntry.depth);
+                        }
+                        break;
                 }
             }
         }
     }
 
-    this.addTagOnlyEntry(LogEntryTags_MsgEndSentinal);
-}
+    this.addTagOnlyEntry(LogEntryTags.MsgEndSentinal);
+};

@@ -32,7 +32,7 @@ const TypeNameEnum = {
 
     TDate: 6,
 
-    LastSimpleType: 5,
+    LastSimpleType: 6,
 
     TFunction: 7,
 

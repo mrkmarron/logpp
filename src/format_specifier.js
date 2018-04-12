@@ -60,7 +60,7 @@ function generateSingletonFormatStringEntry(name, kind, label, tag, isSingleSlot
 /**
  * Object singletons for format entries
  */
-const s_formatStringEntrySingletons = {
+const FormatStringEntrySingletons = {
     HASH: generateSingletonFormatStringEntry("HASH", core.FormatStringEntryKind.Literal, "#", 1, true),
     IP: generateSingletonFormatStringEntry("IP", core.FormatStringEntryKind.Expando, "#ip", 2, true),
     APP: generateSingletonFormatStringEntry("APP", core.FormatStringEntryKind.Expando, "#app", 3, true),
@@ -81,20 +81,23 @@ const s_formatStringEntrySingletons = {
     DATELOCAL: generateSingletonFormatStringEntry("DATELOCAL", core.FormatStringEntryKind.Basic, "d-local", 17, true), //${p:d-local}
     GENERAL: generateSingletonFormatStringEntry("GENERAL", core.FormatStringEntryKind.Basic, "g", 18, false), //${p:g}
     OBJECT: generateSingletonFormatStringEntry("OBJECT", core.FormatStringEntryKind.Compound, "o", 19, false), //${p:o<d,l>}
-    ARRAY: generateSingletonFormatStringEntry("ARRAY", core.FormatStringEntryKind.Compound, "a", 20, false) //${p:a<d,l>}
+    ARRAY: generateSingletonFormatStringEntry("ARRAY", core.FormatStringEntryKind.Compound, "a", 20, false), //${p:a<d,l>}
+
+    ENUM_COUNT: 21
 };
+exports.FormatStringEntrySingletons = FormatStringEntrySingletons;
 
-const s_expandoEntries = Object.keys(s_formatStringEntrySingletons)
-    .filter(function (value) { return s_formatStringEntrySingletons[value].kind === core.FormatStringEntryKind.Expando; })
-    .map(function (value) { return s_formatStringEntrySingletons[value]; });
+const s_expandoEntries = Object.keys(FormatStringEntrySingletons)
+    .filter(function (value) { return FormatStringEntrySingletons[value].kind === core.FormatStringEntryKind.Expando; })
+    .map(function (value) { return FormatStringEntrySingletons[value]; });
 
-const s_basicFormatEntries = Object.keys(s_formatStringEntrySingletons)
-    .filter(function (value) { return s_formatStringEntrySingletons[value].kind === core.FormatStringEntryKind.Basic; })
-    .map(function (value) { return s_formatStringEntrySingletons[value]; });
+const s_basicFormatEntries = Object.keys(FormatStringEntrySingletons)
+    .filter(function (value) { return FormatStringEntrySingletons[value].kind === core.FormatStringEntryKind.Basic; })
+    .map(function (value) { return FormatStringEntrySingletons[value]; });
 
-const s_compoundFormatEntries = Object.keys(s_formatStringEntrySingletons)
-    .filter(function (value) { return s_formatStringEntrySingletons[value].kind === core.FormatStringEntryKind.Compound; })
-    .map(function (value) { return s_formatStringEntrySingletons[value]; });
+const s_compoundFormatEntries = Object.keys(FormatStringEntrySingletons)
+    .filter(function (value) { return FormatStringEntrySingletons[value].kind === core.FormatStringEntryKind.Compound; })
+    .map(function (value) { return FormatStringEntrySingletons[value]; });
 
 const s_expandoStringRe = new RegExp("^(" +
     s_expandoEntries
@@ -185,7 +188,7 @@ function expandToJsonFormatter(jobj) {
  */
 function extractExpandoSpecifier(fmtString, vpos) {
     if (fmtString.startsWith("##", vpos)) {
-        return createMsgFormatEntry(s_formatStringEntrySingletons.HASH, vpos, vpos + "##".length, -1, -1, -1);
+        return createMsgFormatEntry(FormatStringEntrySingletons.HASH, vpos, vpos + "##".length, -1, -1, -1);
     }
     else {
         const expando = s_expandoEntries.find(function (expando) { return fmtString.startsWith(expando.label, vpos); });
@@ -210,7 +213,7 @@ const s_formatDepthLengthRegex = /([o|a])<(\d+|\*)?,(\d+|\*)?>/y;
  */
 function extractArgumentFormatSpecifier(fmtString, vpos) {
     if (fmtString.startsWith("$$", vpos)) {
-        return createMsgFormatEntry(s_formatStringEntrySingletons.DOLLAR, vpos, vpos + "$$".length, -1, -1, -1);
+        return createMsgFormatEntry(FormatStringEntrySingletons.DOLLAR, vpos, vpos + "$$".length, -1, -1, -1);
     }
     else {
         if (!fmtString.startsWith("${", vpos)) {
@@ -251,10 +254,10 @@ function extractArgumentFormatSpecifier(fmtString, vpos) {
             const DL_STAR = 1073741824;
 
             if (fmtString.startsWith("o}", specPos)) {
-                return createMsgFormatEntry(s_formatStringEntrySingletons.OBJECT, vpos, specPos + "o}".length, argPosition, core.ExpandDefaults.Depth, core.ExpandDefaults.ObjectLength);
+                return createMsgFormatEntry(FormatStringEntrySingletons.OBJECT, vpos, specPos + "o}".length, argPosition, core.ExpandDefaults.Depth, core.ExpandDefaults.ObjectLength);
             }
             else if (fmtString.startsWith("a}", specPos)) {
-                return createMsgFormatEntry(s_formatStringEntrySingletons.ARRAY, vpos, specPos + "a}".length, argPosition, core.ExpandDefaults.Depth, core.ExpandDefaults.ArrayLength);
+                return createMsgFormatEntry(FormatStringEntrySingletons.ARRAY, vpos, specPos + "a}".length, argPosition, core.ExpandDefaults.Depth, core.ExpandDefaults.ArrayLength);
             }
             else {
                 s_formatDepthLengthRegex.lastIndex = specPos;
@@ -263,7 +266,7 @@ function extractArgumentFormatSpecifier(fmtString, vpos) {
                     throw new FormatSyntaxError("Bad position specifier in format", fmtString, s_formatDepthLengthRegex.lastIndex);
                 }
 
-                const ttag = (dlMatch[1] === "o") ? s_formatStringEntrySingletons.OBJECT : s_formatStringEntrySingletons.ARRAY;
+                const ttag = (dlMatch[1] === "o") ? FormatStringEntrySingletons.OBJECT : FormatStringEntrySingletons.ARRAY;
                 let tdepth = core.ExpandDefaults.Depth;
                 let tlength = (dlMatch[1] === "o") ? core.ExpandDefaults.ObjectLength : core.ExpandDefaults.ArrayLength;
 

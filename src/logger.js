@@ -1,7 +1,5 @@
 "use strict";
 
-const assert = require("assert");
-
 /**
  * Tag values for logging levels.
  */
@@ -16,7 +14,7 @@ const LoggingLevels = {
     ALL: 0xFF
 };
 
-/*
+/**
  * Keep track of what categories have been enabled in the log.
  */
 const EnabledLogCategories = {
