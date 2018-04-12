@@ -1,29 +1,6 @@
 "use strict";
 
-const core = require("./core");
-const msg_formats = require("./format_specifier");
-
-/**
- * Tag values indicating the kind of each entry in the fast log buffer
- */
-const LogEntryTags = {
-    Clear: 0,
-    MsgFormat: 1,
-    MsgLevel: 2,
-    MsgCategory: 3,
-    MsgEndSentinal: 4,
-    LParen: 5,
-    RParen: 6,
-    LBrack: 7,
-    RBrack: 8,
-    PropertyRecord: 9,
-    JsBadFormatVar: 10,
-    JsVarValue: 11,
-    LengthBoundHit: 12,
-    CycleValue: 13,
-    OpaqueValue: 14
-};
-exports.LogEntryTags = LogEntryTags;
+//const core = require("./core");
 
 /**
  * The number of entries we have in a msg block.
@@ -62,7 +39,7 @@ function BlockList() {
  * @method
  */
 BlockList.prototype.clear = function () {
-    this.head.tags.fill(LogEntryTags.Clear, this.head.count);
+    this.head.tags.fill(/*LogEntryTags_Clear*/ 0x0, this.head.count);
     this.head.data.fill(undefined, this.head.count);
     this.head.count = 0;
     this.head.next = null;
@@ -100,7 +77,7 @@ BlockList.prototype.addJsVarValueEntry = function (data) {
         this.tail = block;
     }
 
-    block.tags[block.count] = LogEntryTags.JsVarValue;
+    block.tags[block.count] = /*LogEntryTags_JsVarValue*/ 0xB;
     block.data[block.count] = data;
     block.count++;
 };
@@ -145,7 +122,7 @@ AddGeneralValue_RemainingTypesCallTable[core.TypeNameEnum.TTypedArray] = functio
 };
 
 AddGeneralValue_RemainingTypesCallTable[core.TypeNameEnum.TUnknown] = function (blockList, value, depth) {
-    blockList.addTagOnlyEntry(LogEntryTags.OpaqueValue);
+    blockList.addTagOnlyEntry(/*LogEntryTags_OpaqueValue*/ 0xF);
 };
 
 /**
@@ -158,21 +135,21 @@ AddGeneralValue_RemainingTypesCallTable[core.TypeNameEnum.TUnknown] = function (
 BlockList.prototype.addExpandedObject = function (obj, depth, length) {
     //if the value is in the set and is currently processing
     if (this.jsonCycleMap.has(obj)) {
-        this.addTagOnlyEntry(LogEntryTags.CycleValue);
+        this.addTagOnlyEntry(/*LogEntryTags_CycleValue*/ 0xD);
         return;
     }
 
     if (depth === 0) {
-        this.addTagOnlyEntry(LogEntryTags.OpaqueValue);
+        this.addTagOnlyEntry(/*LogEntryTags_OpaqueValue*/ 0xF);
     }
     else {
         //Set processing as true for cycle detection
         this.jsonCycleMap.add(obj);
-        this.addTagOnlyEntry(LogEntryTags.LParen);
+        this.addTagOnlyEntry(/*LogEntryTags_LParen*/ 0x5);
 
         let allowedLengthRemain = length;
         for (const p in obj) {
-            this.addEntry(LogEntryTags.PropertyRecord, p);
+            this.addEntry(/*LogEntryTags_PropertyRecord*/ 0x9, p);
 
             const value = obj[p];
             const typeid = core.getTypeNameEnum(value);
@@ -185,14 +162,14 @@ BlockList.prototype.addExpandedObject = function (obj, depth, length) {
 
             allowedLengthRemain--;
             if (allowedLengthRemain <= 0) {
-                this.addTagOnlyEntry(LogEntryTags.LengthBoundHit);
+                this.addTagOnlyEntry(/*LogEntryTags_LengthBoundHit*/ 0xC);
                 break;
             }
         }
 
         //Set processing as false for cycle detection
         this.jsonCycleMap.delete(obj);
-        this.addTagOnlyEntry(LogEntryTags.RParen);
+        this.addTagOnlyEntry(/*LogEntryTags_RParen*/ 0x6);
     }
 };
 
@@ -206,17 +183,17 @@ BlockList.prototype.addExpandedObject = function (obj, depth, length) {
 BlockList.prototype.addExpandedArray = function (obj, depth, length) {
     //if the value is in the set and is currently processing
     if (this.jsonCycleMap.has(obj)) {
-        this.addTagOnlyEntry(LogEntryTags.CycleValue);
+        this.addTagOnlyEntry(/*LogEntryTags_CycleValue*/ 0xD);
         return;
     }
 
     if (depth === 0) {
-        this.addTagOnlyEntry(LogEntryTags.OpaqueValue);
+        this.addTagOnlyEntry(/*LogEntryTags_OpaqueValue*/ 0xF);
     }
     else {
         //Set processing as true for cycle detection
         this.jsonCycleMap.add(obj);
-        this.addTagOnlyEntry(LogEntryTags.LBrack);
+        this.addTagOnlyEntry(/*LogEntryTags_LBrack*/ 0x7);
 
         for (let i = 0; i < obj.length; ++i) {
             const value = obj[i];
@@ -229,14 +206,14 @@ BlockList.prototype.addExpandedArray = function (obj, depth, length) {
             }
 
             if (i >= length) {
-                this.addTagOnlyEntry(LogEntryTags.LengthBoundHit);
+                this.addTagOnlyEntry(/*LogEntryTags_LengthBoundHit*/ 0xC);
                 break;
             }
         }
 
         //Set processing as false for cycle detection
         this.jsonCycleMap.delete(obj);
-        this.addTagOnlyEntry(LogEntryTags.RBrack);
+        this.addTagOnlyEntry(/*LogEntryTags_RBrack*/ 0x8);
     }
 };
 
@@ -255,23 +232,6 @@ function getCallerLineInfo(env) {
 }
 
 //Explicitly get these values here to avoid repeated lookup in logMessage loop
-const FSE_KIND_LITERAL = core.FormatStringEntryKind.Literal;
-const FSE_KIND_EXPANDO = core.FormatStringEntryKind.Expando;
-
-const FORMAT_SOURCE_ENUM = msg_formats.FormatStringEntrySingletons.SOURCE.enum;
-const FORMAT_WALLCLOCK_ENUM = msg_formats.FormatStringEntrySingletons.WALLCLOCK.enum;
-const FORMAT_TIMESTAMP_ENUM = msg_formats.FormatStringEntrySingletons.TIMESTAMP.enum;
-
-const FORMAT_BOOL_ENUM = msg_formats.FormatStringEntrySingletons.BOOL.enum;
-const FORMAT_NUMBER_ENUM = msg_formats.FormatStringEntrySingletons.NUMBER.enum;
-const FORMAT_STRING_ENUM = msg_formats.FormatStringEntrySingletons.STRING.enum;
-const FORMAT_DATE_ENUM = msg_formats.FormatStringEntrySingletons.DATE.enum;
-const FORMAT_DATEISO_ENUM = msg_formats.FormatStringEntrySingletons.DATEISO.enum;
-const FORMAT_DATEUTC_ENUM = msg_formats.FormatStringEntrySingletons.DATEUTC.enum;
-const FORMAT_DATELOCAL_ENUM = msg_formats.FormatStringEntrySingletons.DATELOCAL.enum;
-
-const FORMAT_OBJECT_ENUM = msg_formats.FormatStringEntrySingletons.OBJECT.enum;
-const FORMAT_ARRAY_ENUM = msg_formats.FormatStringEntrySingletons.ARRAY.enum;
 
 const CORE_TBOOL_ENUM = core.TypeNameEnum.TBoolean;
 const CORE_TNUMBER_ENUM = core.TypeNameEnum.TNumber;
@@ -288,7 +248,7 @@ BlockList.prototype.processImmutableHelper = function (valueok, value) {
         this.addJsVarValueEntry(value);
     }
     else {
-        this.addTagOnlyEntry(LogEntryTags.JsBadFormatVar);
+        this.addTagOnlyEntry(/*LogEntryTags_JsBadFormatVar*/ 0xA);
     }
 };
 
@@ -297,7 +257,7 @@ BlockList.prototype.processDateHelper = function (vtype, value) {
         this.addJsVarValueEntry(value);
     }
     else {
-        this.addTagOnlyEntry(LogEntryTags.JsBadFormatVar);
+        this.addTagOnlyEntry(/*LogEntryTags_JsBadFormatVar*/ 0xA);
     }
 };
 
@@ -311,26 +271,26 @@ BlockList.prototype.processDateHelper = function (vtype, value) {
  * @param {Array} args the arguments for the format message
  */
 BlockList.prototype.logMessage = function (env, level, category, fmt, args) {
-    this.addEntry(LogEntryTags.MsgFormat, fmt);
-    this.addEntry(LogEntryTags.MsgLevel, level);
-    this.addEntry(LogEntryTags.MsgCategory, category);
+    this.addEntry(/*LogEntryTags_MsgFormat*/ 0x1, fmt);
+    this.addEntry(/*LogEntryTags_MsgLevel*/ 0x2, level);
+    this.addEntry(/*LogEntryTags_MsgCategory*/ 0x3, category);
 
     for (let i = 0; i < fmt.formatterArray.length; ++i) {
         const formatEntry = fmt.formatterArray[i];
         const formatSpec = formatEntry.format;
 
-        if (formatSpec.kind === FSE_KIND_LITERAL) {
+        if (formatSpec.kind === /*FormatStringEntryKind_Literal*/ 0x1) {
             //don't need to do anything!
         }
-        else if (formatSpec.kind === FSE_KIND_EXPANDO) {
+        else if (formatSpec.kind === /*FormatStringEntryKind_Expando*/ 0x2) {
             const specEnum = formatSpec.enum;
-            if (specEnum === FORMAT_SOURCE_ENUM) {
+            if (specEnum === /*SingletonFormatStringEntry_SOURCE*/ 0x15) {
                 this.addJsVarValueEntry(getCallerLineInfo(env));
             }
-            else if (specEnum === FORMAT_WALLCLOCK_ENUM) {
+            else if (specEnum === /*SingletonFormatStringEntry_WALLCLOCK*/ 0x16) {
                 this.addJsVarValueEntry(Date.now());
             }
-            else if (specEnum === FORMAT_TIMESTAMP_ENUM) {
+            else if (specEnum === /*SingletonFormatStringEntry_TIMESTAMP*/ 0x17) {
                 this.addJsVarValueEntry(env.TIMESTAMP++);
             }
             else {
@@ -340,42 +300,41 @@ BlockList.prototype.logMessage = function (env, level, category, fmt, args) {
         else {
             if (formatEntry.argPosition >= args.length) {
                 //We hit a bad format value so rather than let it propigate -- report and move on.
-                this.addTagOnlyEntry(LogEntryTags.JsBadFormatVar);
+                this.addTagOnlyEntry(/*LogEntryTags_JsBadFormatVar*/ 0xA);
             }
             else {
                 const value = args[formatEntry.argPosition];
                 const vtype = core.getTypeNameEnum(value);
 
                 switch (formatSpec.enum) {
-                    case FORMAT_BOOL_ENUM:
+                    case /*SingletonFormatStringEntry_BOOL*/ 0x22:
                         this.processImmutableHelper(vtype === CORE_TBOOL_ENUM, value);
                         break;
-                    case FORMAT_NUMBER_ENUM:
+                    case /*SingletonFormatStringEntry_NUMBER*/ 0x23:
                         this.processImmutableHelper(vtype === CORE_TNUMBER_ENUM, value);
                         break;
-                    case FORMAT_STRING_ENUM:
+                    case /*SingletonFormatStringEntry_STRING*/ 0x24:
                         this.processImmutableHelper(vtype === CORE_TSTRING_ENUM, value);
                         break;
-                    case FORMAT_DATE_ENUM:
-                    case FORMAT_DATEISO_ENUM:
-                    case FORMAT_DATEUTC_ENUM:
-                    case FORMAT_DATELOCAL_ENUM:
+                    case /*SingletonFormatStringEntry_DATEISO*/ 0x25:
+                    case /*SingletonFormatStringEntry_DATEUTC*/ 0x26:
+                    case /*SingletonFormatStringEntry_DATELOCAL*/ 0x27:
                         this.processDateHelper(vtype, value);
                         break;
-                    case FORMAT_OBJECT_ENUM:
+                    case /*SingletonFormatStringEntry_OBJECT*/ 0x29:
                         if (vtype === CORE_TOBJECT_ENUM) {
                             this.addExpandedObject(value, formatEntry.depth, formatEntry.length);
                         }
                         else {
-                            this.addTagOnlyEntry(LogEntryTags.JsBadFormatVar);
+                            this.addTagOnlyEntry(/*LogEntryTags_JsBadFormatVar*/ 0xA);
                         }
                         break;
-                    case FORMAT_ARRAY_ENUM:
+                    case /*SingletonFormatStringEntry_ARRAY*/ 0x2A:
                         if (vtype === CORE_TARRAY_ENUM) {
                             this.addExpandedObject(value, formatEntry.depth, formatEntry.length);
                         }
                         else {
-                            this.addTagOnlyEntry(LogEntryTags.JsBadFormatVar);
+                            this.addTagOnlyEntry(/*LogEntryTags_JsBadFormatVar*/ 0xA);
                         }
                         break;
                     default:
@@ -391,5 +350,5 @@ BlockList.prototype.logMessage = function (env, level, category, fmt, args) {
         }
     }
 
-    this.addTagOnlyEntry(LogEntryTags.MsgEndSentinal);
+    this.addTagOnlyEntry(/*LogEntryTags_MsgEndSentinal*/ 0x4);
 };
