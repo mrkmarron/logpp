@@ -48,32 +48,32 @@
 //TypeNameEnum_TNumber 0x34
 //TypeNameEnum_TString 0x35
 //TypeNameEnum_LastImmutableType 0x35
-//TypeNameEnum_TDate 0x36,
+//TypeNameEnum_TDate 0x36
 //TypeNameEnum_TFunction 0x37
 //TypeNameEnum_TObject 0x38
 //TypeNameEnum_TJsArray 0x39
-//TypeNameEnum_TTypedArray 0x3A,
-//TypeNameEnum_TUnknown 0x3B,
+//TypeNameEnum_TTypedArray 0x3A
+//TypeNameEnum_TUnknown 0x3B
 //TypeNameEnum_TypeLimit 0x3C
 
 const TypeNameToFlagEnum = {
-    "[object Undefined]": /*TypeNameEnum_TUndefined*/ 0x31,
-    "[object Null]": /*TypeNameEnum_TNull*/ 0x32,
-    "[object Boolean]": /*TypeNameEnum_TBoolean*/ 0x33,
-    "[object Number]": /*TypeNameEnum_TNumber*/ 0x34,
-    "[object String]": /*TypeNameEnum_TString*/ 0x35,
-    "[object Date]": /*TypeNameEnum_TDate*/ 0x36,
-    "[object Function]": /*TypeNameEnum_TFunction*/ 0x37,
-    "[object Object]": /*TypeNameEnum_TObject*/ 0x38,
-    "[object Array]": /*TypeNameEnum_TJsArray*/ 0x39,
-    "[object Float32Array]": /*TypeNameEnum_TTypedArray*/ 0x3A,
-    "[object Float64Array]": /*TypeNameEnum_TTypedArray*/ 0x3A,
-    "[object Int8Array]": /*TypeNameEnum_TTypedArray*/ 0x3A,
-    "[object Int16Array]": /*TypeNameEnum_TTypedArray*/ 0x3A,
-    "[object Int32Array]": /*TypeNameEnum_TTypedArray*/ 0x3A,
-    "[object Uint8Array]": /*TypeNameEnum_TTypedArray*/ 0x3A,
-    "[object Uint16Array]": /*TypeNameEnum_TTypedArray*/ 0x3A,
-    "[object Uint32Array]": /*TypeNameEnum_TTypedArray*/ 0x3A
+    "[object Undefined]": /*TypeNameEnum_TUndefined*/0x31,
+    "[object Null]": /*TypeNameEnum_TNull*/0x32,
+    "[object Boolean]": /*TypeNameEnum_TBoolean*/0x33,
+    "[object Number]": /*TypeNameEnum_TNumber*/0x34,
+    "[object String]": /*TypeNameEnum_TString*/0x35,
+    "[object Date]": /*TypeNameEnum_TDate*/0x36,
+    "[object Function]": /*TypeNameEnum_TFunction*/0x37,
+    "[object Object]": /*TypeNameEnum_TObject*/0x38,
+    "[object Array]": /*TypeNameEnum_TJsArray*/0x39,
+    "[object Float32Array]": /*TypeNameEnum_TTypedArray*/0x3A,
+    "[object Float64Array]": /*TypeNameEnum_TTypedArray*/0x3A,
+    "[object Int8Array]": /*TypeNameEnum_TTypedArray*/0x3A,
+    "[object Int16Array]": /*TypeNameEnum_TTypedArray*/0x3A,
+    "[object Int32Array]": /*TypeNameEnum_TTypedArray*/0x3A,
+    "[object Uint8Array]": /*TypeNameEnum_TTypedArray*/0x3A,
+    "[object Uint16Array]": /*TypeNameEnum_TTypedArray*/0x3A,
+    "[object Uint32Array]": /*TypeNameEnum_TTypedArray*/0x3A
 };
 
 /**
@@ -82,7 +82,7 @@ const TypeNameToFlagEnum = {
  * @returns TypeNameToFlagEnum value
  */
 function getTypeNameEnum(value) {
-    return TypeNameToFlagEnum[toString.call(value)] || /*TypeNameEnum_TUnknown*/ 0x3B;
+    return TypeNameToFlagEnum[toString.call(value)] || /*TypeNameEnum_TUnknown*/0x3B;
 }
 exports.getTypeNameEnum = getTypeNameEnum;
 
