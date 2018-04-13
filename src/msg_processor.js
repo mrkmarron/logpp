@@ -157,7 +157,7 @@ BlockList.prototype.addExpandedObject = function (obj, depth, length) {
     }
 
     if (depth === 0) {
-        this.addTagOnlyEntry(/*LogEntryTags_OpaqueValue*/0xF);
+        this.addTagOnlyEntry(/*LogEntryTags_DepthBoundHit*/0x20);
     }
     else {
         //Set processing as true for cycle detection
@@ -205,7 +205,7 @@ BlockList.prototype.addExpandedArray = function (obj, depth, length) {
     }
 
     if (depth === 0) {
-        this.addTagOnlyEntry(/*LogEntryTags_OpaqueValue*/0xF);
+        this.addTagOnlyEntry(/*LogEntryTags_DepthBoundHit*/0x20);
     }
     else {
         //Set processing as true for cycle detection
@@ -563,78 +563,6 @@ BlockList.prototype.processMessagesForWrite_HardFlush = function (retainLevel, r
 
 
 
-
-
-/**
- * Constructor for a blockList emitter (creates string per entry at a time -- use with writters later)
- * @constructor
- * @param {Object} writer for the data
- */
-function Emitter(writer) {
-    this.blockList = null;
-    this.output = "";
-}
-
-Emitter.prototype.emitJsString = function (str) {
-    this.output += "\"" + str + "\"";
-};
-
-/**
- * Emit a simple var (JsVarValue tag)
- * @method
- * @param {Object} value
- */
-Emitter.prototype.emitSimpleVar = function (value) {
-    if (value === undefined) {
-        this.output += "undefined";
-    }
-    else if (value === null) {
-        this.output += "null";
-    }
-    else {
-        this.output += value.toString();
-    }
-};
-
-/**
- * Emit a special var as indicated by the tag
- * @method
- * @param {number} tag
- */
-Emitter.prototype.emitSpecialVar = function (tag) {
-    switch (tag) {
-        case LogEntryTags_JsBadFormatVar:
-            this.output += "\"<BadFormat>\"";
-            break;
-        case LogEntryTags_LengthBoundHit:
-            this.output += "\"<LengthBoundHit>\"";
-            break;
-        case LogEntryTags_CycleValue:
-            this.output += "\"<Cycle>\"";
-            break;
-        default:
-            this.output += "\"<Value>\"";
-            break;
-    }
-};
-
-/**
- * Append a new blocklist into the current one in this emitter
- * @method
- * @param {BlockList} blockList the data to add to the emitter worklist
- */
-Emitter.prototype.appendBlockList = function (blockList) {
-    if (this.blockList === null) {
-        if (blockList.head.count !== 0) {
-            this.blockList = blockList;
-            this.block = blockList.head;
-            this.pos = 0;
-        }
-    }
-    else {
-        assert(false, 'Need to add append code here!!!');
-    }
-}
 
 /**
  * Emit a single formatted message.

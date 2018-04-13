@@ -105,3 +105,4 @@ exports.getTypeNameEnum = getTypeNameEnum;
 //LogEntryTags_CycleValue 0xD
 //LogEntryTags_OpaqueValue 0xF
 //LogEntryTags_MsgWallTime 0x10
+//LogEntryTags_DepthBoundHit 0x20
