@@ -1,5 +1,6 @@
 "use strict";
 
+const assert = require("assert");
 const core = require("./core");
 
 /**
@@ -14,7 +15,9 @@ function createMsgBlock(previousBlock) {
         tags: new Uint8Array(s_msgBlockSize),
         data: new Array(s_msgBlockSize),
         next: null,
-        previous: previousBlock
+        previous: previousBlock,
+        partialPos: 0,
+        dataSize: -1
     };
 
     if (previousBlock) {
@@ -45,6 +48,20 @@ BlockList.prototype.clear = function () {
     this.head.next = null;
 
     this.tail = this.head;
+};
+
+/**
+ * Remove the head block data from this list
+ * @method
+ */
+BlockList.prototype.removeHeadBlock = function () {
+    if (this.head.next == null) {
+        this.clear();
+    }
+    else {
+        this.head = this.head.next;
+        this.head.previous = null;
+    }
 };
 
 /**
@@ -226,7 +243,7 @@ function getCallerLineInfo(env) {
         .split("\n")
         .slice(2)
         .map((frame) => frame.substring(frame.indexOf("(") + 1, frame.lastIndexOf(")")))
-        .filter((frame) => !frame.includes(env.logger_path));
+        .filter((frame) => !frame.includes(env.logger_path) && !frame.includes(env.msg_path));
 
     return errstk;
 }
@@ -255,16 +272,22 @@ BlockList.prototype.processDateHelper = function (vtype, value) {
  * Log a message into the logger
  * @method
  * @param {Object} env a record with the info for certain environment/expando formatter entries
- * @param {string} level the level the message is being logged at
+ * @param {number} level the level the message is being logged at
  * @param {string} category the category the message is being logged at
+ * @param {bool} doTimestamp if we want to include an internal timestamp in the log
  * @param {Object} fmt the format of the message
  * @param {Array} args the arguments for the format message
  */
-BlockList.prototype.logMessage = function (env, level, category, fmt, args) {
+BlockList.prototype.logMessage = function (env, level, category, doTimestamp, fmt, args) {
     this.addEntry(/*LogEntryTags_MsgFormat*/0x1, fmt);
     this.addEntry(/*LogEntryTags_MsgLevel*/0x2, level);
     this.addEntry(/*LogEntryTags_MsgCategory*/0x3, category);
 
+    if (doTimestamp) {
+        this.addEntry(/*LogEntryTags_MsgWallTime*/0x10, Date.now());
+    }
+
+    let incTimeStamp = false;
     for (let i = 0; i < fmt.formatterArray.length; ++i) {
         const formatEntry = fmt.formatterArray[i];
         const formatSpec = formatEntry.format;
@@ -281,7 +304,8 @@ BlockList.prototype.logMessage = function (env, level, category, fmt, args) {
                 this.addJsVarValueEntry(Date.now());
             }
             else if (specEnum === /*SingletonFormatStringEntry_TIMESTAMP*/0x17) {
-                this.addJsVarValueEntry(env.TIMESTAMP++);
+                this.addJsVarValueEntry(env.TIMESTAMP);
+                incTimeStamp = true;
             }
             else {
                 this.addJsVarValueEntry(env[formatSpec.name]);
@@ -340,5 +364,195 @@ BlockList.prototype.logMessage = function (env, level, category, fmt, args) {
         }
     }
 
+    if (incTimeStamp) {
+        env.TIMESTAMP++;
+    }
+
     this.addTagOnlyEntry(/*LogEntryTags_MsgEndSentinal*/0x4);
+};
+
+/**
+ * Check if the message (starting at this[cpos]) is enabled for writing at the given level
+ * @function
+ * @param {Object} cblock the current block we are processing
+ * @param {number} enabledLevel the logging level we want to retain
+ * @param {Object} enabledCategories the logging category we want to see if is enabled
+ * @returns {bool}
+ */
+function isEnabledForWrite(cblock, enabledLevel, enabledCategories) {
+    let levelblock = cblock;
+    let levelpos = cblock.partialPos + 1;
+    if (levelpos === levelblock.count) {
+        levelblock = levelblock.next;
+        levelpos = 0;
+    }
+
+    const loglevel = levelblock.data[levelpos];
+    if ((loglevel & enabledLevel) !== loglevel) {
+        return false;
+    }
+
+    let categoryblock = levelblock;
+    let categorypos = levelpos + 1;
+    if (categorypos === categoryblock.count) {
+        categoryblock = categoryblock.next;
+        categorypos = 0;
+    }
+
+    return enabledCategories[categoryblock.data[categorypos]];
+}
+
+/**
+ * Update the size information in a blocklist
+ */
+function updateBlocklistSizeInfo(iblock) {
+    let total = 0;
+
+    for (let cblock = iblock; cblock !== null; cblock = cblock.next) {
+        if (cblock.count === s_msgBlockSize && cblock.dataSize === -1) {
+            let size = s_msgBlockSize * 6; //backbone size
+            for (let pos = 0; pos < s_msgBlockSize; ++pos) {
+                const data = cblock.data[pos];
+                if (data === undefined || data === null) {
+                    //no extra size
+                }
+                else {
+                    const jstype = typeof (data);
+                    if (jstype === "string") {
+                        size += data.length;
+                    }
+                }
+            }
+            cblock.dataSize = size;
+        }
+
+        if (cblock.dataSize !== -1) {
+            total += cblock.dataSize;
+        }
+    }
+
+    return total;
+}
+
+function processSingleMessageForWrite_Helper(iblock, pendingWriteBlockList) {
+    let cblock = iblock;
+    while (cblock.tags[cblock.partialPos] !== /*LogEntryTags_MsgEndSentinal*/0x4) {
+        if (cblock.partialPos < cblock.count) {
+            pendingWriteBlockList.addEntry(cblock.tags[cblock.partialPos], cblock.data[cblock.partialPos]);
+            cblock.partialPos++;
+        }
+        else {
+            assert(cblock.next !== null, "We failed to complete formatting this message?");
+            cblock = cblock.next;
+        }
+    }
+    pendingWriteBlockList.addEntry(cblock.tags[cblock.partialPos], cblock.data[cblock.partialPos]);
+    cblock.partialPos++;
+
+    return cblock;
+}
+
+function processSingleMessageForDiscard_Helper(iblock) {
+    let cblock = iblock;
+    while (cblock.tags[cblock.partialPos] !== /*LogEntryTags_MsgEndSentinal*/0x4) {
+        if (cblock.partialPos < cblock.count) {
+            cblock.partialPos++;
+        }
+        else {
+            assert(cblock.next !== null, "We failed to complete formatting this message?");
+            cblock = cblock.next;
+        }
+    }
+    cblock.partialPos++;
+
+    return cblock;
+}
+
+function isSizeBoundOk(iblock, sizeLimit) {
+    return updateBlocklistSizeInfo(iblock) < sizeLimit;
+}
+
+function isTimeBoundOk(iblock, timeLimit) {
+    const tpos = iblock.partialPos + 3;
+    const now = Date.now();
+    if (tpos < iblock.count) {
+        assert(iblock.tags[tpos] === /*LogEntryTags_MsgWallTime*/0x10, "Missing timestamp?");
+        return (now - iblock.data[tpos]) < timeLimit;
+    }
+    else {
+        const nblock = iblock.next;
+        const npos = tpos % iblock.count;
+
+        assert(nblock.tags[tpos] === /*LogEntryTags_MsgWallTime*/0x10, "Missing timestamp?");
+        return (now - nblock.data[npos]) < timeLimit;
+    }
+}
+
+/**
+ * Filter out all the msgs that we want to drop when writing to disk and copy them to the pending write list -- use sizeLimit to manage data processing rolling buffer.
+ * @method
+ * @param {Object} retainLevel the logging level to retain at
+ * @param {Object} retainCategories the logging category we want to retain
+ * @param {Object} pendingWriteBlockList the block list to add into
+ * @param {number} sizeLimit is the amount of in-memory logging we are ok with
+ */
+BlockList.prototype.processMessagesForWrite_SizeRing = function (retainLevel, retainCategories, pendingWriteBlockList, sizeLimit) {
+    let cblock = this.head;
+    let keepProcessing = true;
+    while (keepProcessing) {
+        const nblock = isEnabledForWrite(cblock, retainLevel, retainCategories) ? processSingleMessageForWrite_Helper(cblock, pendingWriteBlockList) : processSingleMessageForDiscard_Helper(cblock, pendingWriteBlockList);
+        if (nblock !== cblock) {
+            keepProcessing = isSizeBoundOk(nblock, sizeLimit);
+            cblock = nblock;
+        }
+    }
+
+    while (this.head !== cblock) {
+        this.removeHeadBlock();
+    }
+};
+
+/**
+ * Filter out all the msgs that we want to drop when writing to disk and copy them to the pending write list -- use timeLimit to manage data processing rolling buffer.
+ * @method
+ * @param {Object} retainLevel the logging level to retain at
+ * @param {Object} retainCategories the logging category we want to retain
+ * @param {Object} pendingWriteBlockList the block list to add into
+ * @param {number} timeLimit is the amount of in-memory time we are ok with
+ */
+BlockList.prototype.processMessagesForWrite_TimeRing = function (retainLevel, retainCategories, pendingWriteBlockList, timeLimit) {
+    let cblock = this.head;
+    let keepProcessing = true;
+    while (keepProcessing) {
+        const nblock = isEnabledForWrite(cblock, retainLevel, retainCategories) ? processSingleMessageForWrite_Helper(cblock, pendingWriteBlockList) : processSingleMessageForDiscard_Helper(cblock, pendingWriteBlockList);
+        if (nblock !== cblock) {
+            keepProcessing = isTimeBoundOk(nblock, timeLimit);
+            cblock = nblock;
+        }
+    }
+
+    while (this.head !== cblock) {
+        this.removeHeadBlock();
+    }
+};
+
+/**
+ * Filter out all the msgs that we want to drop when writing to disk and copy them to the pending write list -- process all records.
+ * @method
+ * @param {Object} retainLevel the logging level to retain at
+ * @param {Object} retainCategories the logging category we want to retain
+ * @param {Object} pendingWriteBlockList the block list to add into
+ */
+BlockList.prototype.processMessagesForWrite_HardFlush = function (retainLevel, retainCategories, pendingWriteBlockList) {
+    let cblock = this.head;
+    while (cblock !== null) {
+        if (isEnabledForWrite(cblock, retainLevel, retainCategories)) {
+            cblock = processSingleMessageForWrite_Helper(cblock, pendingWriteBlockList);
+        }
+        else {
+            cblock = processSingleMessageForDiscard_Helper(cblock, pendingWriteBlockList);
+        }
+    }
+
+    this.clear();
 };

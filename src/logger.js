@@ -14,9 +14,3 @@ const LoggingLevels = {
     ALL: 0xFF
 };
 
-/**
- * Keep track of what categories have been enabled in the log.
- */
-const EnabledLogCategories = {
-
-};
