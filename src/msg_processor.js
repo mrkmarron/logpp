@@ -472,9 +472,8 @@ function isSizeBoundOk(iblock, sizeLimit) {
     return updateBlocklistSizeInfo(iblock) < sizeLimit;
 }
 
-function isTimeBoundOk(iblock, timeLimit) {
+function isTimeBoundOk(iblock, timeLimit, now) {
     const tpos = iblock.partialPos + 3;
-    const now = Date.now();
     if (tpos < iblock.count) {
         assert(iblock.tags[tpos] === /*LogEntryTags_MsgWallTime*/0x10, "Missing timestamp?");
         return (now - iblock.data[tpos]) < timeLimit;
@@ -502,6 +501,7 @@ BlockList.prototype.processMessagesForWrite_SizeRing = function (retainLevel, re
     while (keepProcessing) {
         const nblock = isEnabledForWrite(cblock, retainLevel, retainCategories) ? processSingleMessageForWrite_Helper(cblock, pendingWriteBlockList) : processSingleMessageForDiscard_Helper(cblock, pendingWriteBlockList);
         if (nblock !== cblock) {
+            //We can go under on memory usage so do this check per block written
             keepProcessing = isSizeBoundOk(nblock, sizeLimit);
             cblock = nblock;
         }
@@ -521,12 +521,16 @@ BlockList.prototype.processMessagesForWrite_SizeRing = function (retainLevel, re
  * @param {number} timeLimit is the amount of in-memory time we are ok with
  */
 BlockList.prototype.processMessagesForWrite_TimeRing = function (retainLevel, retainCategories, pendingWriteBlockList, timeLimit) {
+    const now = Date.now();
+
     let cblock = this.head;
     let keepProcessing = true;
     while (keepProcessing) {
         const nblock = isEnabledForWrite(cblock, retainLevel, retainCategories) ? processSingleMessageForWrite_Helper(cblock, pendingWriteBlockList) : processSingleMessageForDiscard_Helper(cblock, pendingWriteBlockList);
+
+        //We want to keep close to time bound in memory -- so check this per entry write instead of per block (as for memory)
+        keepProcessing = isTimeBoundOk(nblock, timeLimit, now);
         if (nblock !== cblock) {
-            keepProcessing = isTimeBoundOk(nblock, timeLimit);
             cblock = nblock;
         }
     }
@@ -555,4 +559,241 @@ BlockList.prototype.processMessagesForWrite_HardFlush = function (retainLevel, r
     }
 
     this.clear();
+};
+
+
+
+
+
+/**
+ * Constructor for a blockList emitter (creates string per entry at a time -- use with writters later)
+ * @constructor
+ * @param {Object} writer for the data
+ */
+function Emitter(writer) {
+    this.blockList = null;
+    this.output = "";
+}
+
+Emitter.prototype.emitJsString = function (str) {
+    this.output += "\"" + str + "\"";
+};
+
+/**
+ * Emit a simple var (JsVarValue tag)
+ * @method
+ * @param {Object} value
+ */
+Emitter.prototype.emitSimpleVar = function (value) {
+    if (value === undefined) {
+        this.output += "undefined";
+    }
+    else if (value === null) {
+        this.output += "null";
+    }
+    else {
+        this.output += value.toString();
+    }
+};
+
+/**
+ * Emit a special var as indicated by the tag
+ * @method
+ * @param {number} tag
+ */
+Emitter.prototype.emitSpecialVar = function (tag) {
+    switch (tag) {
+        case LogEntryTags_JsBadFormatVar:
+            this.output += "\"<BadFormat>\"";
+            break;
+        case LogEntryTags_LengthBoundHit:
+            this.output += "\"<LengthBoundHit>\"";
+            break;
+        case LogEntryTags_CycleValue:
+            this.output += "\"<Cycle>\"";
+            break;
+        default:
+            this.output += "\"<Value>\"";
+            break;
+    }
+};
+
+/**
+ * Append a new blocklist into the current one in this emitter
+ * @method
+ * @param {BlockList} blockList the data to add to the emitter worklist
+ */
+Emitter.prototype.appendBlockList = function (blockList) {
+    if (this.blockList === null) {
+        if (blockList.head.count !== 0) {
+            this.blockList = blockList;
+            this.block = blockList.head;
+            this.pos = 0;
+        }
+    }
+    else {
+        assert(false, 'Need to add append code here!!!');
+    }
+}
+
+/**
+ * Emit a single formatted message.
+ * @method
+ * @param {Object} fmt the format entry we want to output
+ */
+Emitter.prototype.emitFormatEntry = function (fmt) {
+    const formatArray = fmt.formatterArray;
+    const tailingFormatSegmentArray = fmt.tailingFormatStringSegmentArray;
+    let formatIndex = 0;
+
+    while (this.block.tags[this.pos] !== LogEntryTags_MsgEndSentinal) {
+        const tag = this.block.tags[this.pos];
+
+        if (tag === LogEntryTags_MsgLevel) {
+            const data = this.block.data[this.pos];
+            this.writer.emitMsgStart(fmt.formatName);
+
+            this.writer.emitFullString('level: ');
+            this.writer.emitFullString(data.label);
+
+            this.writer.emitFullString(', msg: ')
+            this.writer.emitFullString(fmt.initialFormatStringSegment);
+
+            this.advancePosition();
+        }
+        else {
+            if (tag === LogEntryTags_LParen) {
+                this.emitObjectEntry();
+                //position is advanced in call
+            }
+            else if (tag === LogEntryTags_LBrack) {
+                this.emitArrayEntry();
+                //position is advanced in call
+            }
+            else {
+                const data = this.block.data[this.pos];
+                const formatEntry = formatArray[formatIndex];
+                const formatSpec = formatEntry.format;
+
+                if (formatSpec.kind === FormatStringEntryKind_Literal) {
+                    this.writer.emitChar(formatEntry === FormatStringEntrySingletons.LITERAL_HASH ? '#' : '$');
+                }
+                else if (formatSpec.kind === FormatStringEntryKind_Expando) {
+                    if (formatSpec.enum <= FormatStringEntrySingleton_LastMacroInfoExpandoEnum) {
+                        this.writer.emitFullString(data.toString());
+                    }
+                    else {
+                        if (formatSpec === FormatStringEntrySingletons.MSG_NAME) {
+                            this.writer.emitFullString(data.toString());
+                        }
+                        else {
+                            this.writer.emitFullString(new Date(data).toISOString());
+                        }
+                    }
+                }
+                else {
+                    if (tag === LogEntryTags_JsVarValue) {
+                        this.emitSimpleVar(data);
+                    }
+                    else {
+                        this.emitSpecialVar(tag);
+                    }
+                }
+
+                this.advancePosition();
+            }
+
+            this.writer.emitFullString(tailingFormatSegmentArray[formatIndex]);
+            formatIndex++;
+        }
+    }
+
+    this.writer.emitMsgEnd();
+    this.advancePosition();
+}
+
+/**
+ * Emit an object entry
+ * @method
+ */
+Emitter.prototype.emitObjectEntry = function () {
+    this.writer.emitChar('{');
+    this.advancePosition();
+
+    let skipComma = true;
+    while (this.block.tags[this.pos] !== LogEntryTags_RParen) {
+        assert(this.block.tags[this.pos] === LogEntryTags_PropertyRecord, 'In an object entry but no property name???');
+
+        if (skipComma) {
+            skipComma = false;
+        }
+        else {
+            this.writer.emitFullString(', ');
+        }
+        this.emitJsString(this.block.data[this.pos]);
+        this.writer.emitFullString(': ');
+
+        this.advancePosition();
+
+        const tag = this.block.tags[this.pos];
+        if (tag === LogEntryTags_LParen) {
+            this.emitObjectEntry();
+        }
+        else if (tag === LogEntryTags_LBrack) {
+            this.emitArrayEntry();
+        }
+        else {
+            if (tag === LogEntryTags_JsVarValue) {
+                this.emitSimpleVar(this.block.data[this.pos]);
+            }
+            else {
+                this.emitSpecialVar(tag);
+            }
+
+            this.advancePosition();
+        }
+    }
+
+    this.writer.emitChar('}');
+    this.advancePosition();
+}
+
+/**
+ * Emit an array entry
+ * @method
+ */
+Emitter.prototype.emitArrayEntry = function () {
+    this.writer.emitChar('[');
+    this.advancePosition();
+
+    let skipComma = true;
+    while (this.block.tags[this.pos] !== LogEntryTags_RParen) {
+        if (skipComma) {
+            skipComma = false;
+        }
+        else {
+            this.writer.emitFullString(', ');
+        }
+
+        const tag = this.block.tags[this.pos];
+        if (tag === LogEntryTags_LParen) {
+            this.emitObjectEntry();
+        }
+        else if (tag === LogEntryTags_LBrack) {
+            this.emitArrayEntry();
+        }
+        else {
+            if (tag === LogEntryTags_JsVarValue) {
+                this.emitSimpleVar(this.block.data[this.pos]);
+            }
+            else {
+                this.emitSpecialVar(tag);
+            }
+
+            this.advancePosition();
+        }
+    }
+
+    this.writer.emitChar(']');
+    this.advancePosition();
 };
