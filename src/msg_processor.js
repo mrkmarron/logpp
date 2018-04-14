@@ -561,84 +561,113 @@ BlockList.prototype.processMessagesForWrite_HardFlush = function (retainLevel, r
     this.clear();
 };
 
+BlockList.prototype.readCurrentWriteTag = function () {
+    this.head.tags[this.head.partialPos];
+};
 
+BlockList.prototype.readCurrentWriteData = function () {
+    this.head.data[this.head.partialPos];
+};
 
+BlockList.prototype.advanceWritePos = function () {
+    this.head.partialPos++;
+
+    if (this.head.partialPos === this.head.count) {
+        this.removeHeadBlock();
+    }
+};
 
 /**
  * Emit a single formatted message.
  * @method
  * @param {Object} fmt the format entry we want to output
  */
-Emitter.prototype.emitFormatEntry = function (fmt) {
+BlockList.prototype.emitFormatEntry = function (formatter, doprefix) {
+    const fmt = this.readCurrentWriteData();
+    this.advanceWritePos();
+
+    if (!doprefix) {
+        this.advanceWritePos();
+        this.advanceWritePos();
+
+        if (this.readCurrentWriteTag() === /*LogEntryTags_MsgWallTime*/0x10) {
+            this.advanceWritePos();
+        }
+    }
+    else {
+        formatter.emitLiteralString(core.LoggingLevelToNameMap[this.readCurrentWriteData()]);
+        this.advanceWritePos();
+        formatter.emitChar("#");
+        formatter.emitLiteralString(this.readCurrentWriteData());
+        this.advanceWritePos();
+
+        if (this.readCurrentWriteTag() === /*LogEntryTags_MsgWallTime*/0x10) {
+            formatter.emitIsoTime(this.readCurrentWriteData());
+            this.advanceWritePos();
+        }
+
+        formatter.emitLiteralString(" -- ");
+    }
+
     const formatArray = fmt.formatterArray;
     const tailingFormatSegmentArray = fmt.tailingFormatStringSegmentArray;
     let formatIndex = 0;
 
-    while (this.block.tags[this.pos] !== LogEntryTags_MsgEndSentinal) {
-        const tag = this.block.tags[this.pos];
+    formatter.emitString(fmt.initialFormatStringSegment);
 
-        if (tag === LogEntryTags_MsgLevel) {
-            const data = this.block.data[this.pos];
-            this.writer.emitMsgStart(fmt.formatName);
+    while (this.readCurrentWriteTag() !== /*LogEntryTags_MsgEndSentinal*/0x4) {
+        const tag = this.readCurrentWriteTag();
 
-            this.writer.emitFullString('level: ');
-            this.writer.emitFullString(data.label);
-
-            this.writer.emitFullString(', msg: ')
-            this.writer.emitFullString(fmt.initialFormatStringSegment);
-
-            this.advancePosition();
+        if (tag === /*LogEntryTags_LParen*/0x5) {
+            this.emitObjectEntry();
+            //position is advanced in call
+        }
+        else if (tag === /*LogEntryTags_LBrack*/0x7) {
+            this.emitArrayEntry();
+            //position is advanced in call
         }
         else {
-            if (tag === LogEntryTags_LParen) {
-                this.emitObjectEntry();
-                //position is advanced in call
-            }
-            else if (tag === LogEntryTags_LBrack) {
-                this.emitArrayEntry();
-                //position is advanced in call
-            }
-            else {
-                const data = this.block.data[this.pos];
-                const formatEntry = formatArray[formatIndex];
-                const formatSpec = formatEntry.format;
+            const data = this.readCurrentWriteData();
+            const formatEntry = formatArray[formatIndex];
+            const formatSpec = formatEntry.format;
 
-                if (formatSpec.kind === FormatStringEntryKind_Literal) {
-                    this.writer.emitChar(formatEntry === FormatStringEntrySingletons.LITERAL_HASH ? '#' : '$');
+            if (formatSpec.kind === /*FormatStringEntryKind_Literal*/0x1) {
+                formatter.emitChar(formatEntry === /*SingletonFormatStringEntry_HASH*/0x11 ? "#" : "$");
+            }
+            else if (formatSpec.kind === /*FormatStringEntryKind_Expando*/0x2) {
+                const specEnum = formatSpec.enum;
+                if (specEnum === /*SingletonFormatStringEntry_SOURCE*/0x15) {
+                    formatter.emitCallStack(data);
                 }
-                else if (formatSpec.kind === FormatStringEntryKind_Expando) {
-                    if (formatSpec.enum <= FormatStringEntrySingleton_LastMacroInfoExpandoEnum) {
-                        this.writer.emitFullString(data.toString());
-                    }
-                    else {
-                        if (formatSpec === FormatStringEntrySingletons.MSG_NAME) {
-                            this.writer.emitFullString(data.toString());
-                        }
-                        else {
-                            this.writer.emitFullString(new Date(data).toISOString());
-                        }
-                    }
+                else if (specEnum === /*SingletonFormatStringEntry_WALLCLOCK*/0x16) {
+                    formatter.emitIsoTime(data);
+                }
+                else if (specEnum === /*SingletonFormatStringEntry_TIMESTAMP*/0x17) {
+                    formatter.emitNumber(data);
                 }
                 else {
-                    if (tag === LogEntryTags_JsVarValue) {
-                        this.emitSimpleVar(data);
-                    }
-                    else {
-                        this.emitSpecialVar(tag);
-                    }
+                    formatter.emitSimpleVar(data);
                 }
-
-                this.advancePosition();
+            }
+            else {
+                if (tag === /*LogEntryTags_JsVarValue*/0xB) {
+                    formatter.emitSimpleVarAsJS(data);
+                }
+                else {
+                    this.emitSpecialVar(tag);
+                }
             }
 
-            this.writer.emitFullString(tailingFormatSegmentArray[formatIndex]);
-            formatIndex++;
+            this.advanceWritePos();
         }
+
+        this.writer.emitFullString(tailingFormatSegmentArray[formatIndex]);
+        formatIndex++;
     }
 
-    this.writer.emitMsgEnd();
-    this.advancePosition();
-}
+    formatter.emitLiteralString("\n");
+    this.advanceWritePos();
+};
 
 /**
  * Emit an object entry

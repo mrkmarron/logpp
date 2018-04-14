@@ -1,5 +1,32 @@
 "use strict";
 
+/**
+ * Tag values for logging levels.
+ */
+const LoggingLevels = {
+    OFF: 0x0,
+    FATAL: 0x1,
+    ERROR: 0x3,
+    WARN: 0x7,
+    INFO: 0xF,
+    DEBUG: 0x1F,
+    TRACE: 0x3F,
+    ALL: 0xFF
+};
+exports.LoggingLevels = LoggingLevels;
+
+const LoggingLevelToNameMap = [];
+LoggingLevelToNameMap[0x0] = "OFF";
+LoggingLevelToNameMap[0x1] = "FATAL";
+LoggingLevelToNameMap[0x3] = "ERROR";
+LoggingLevelToNameMap[0x7] = "WARN";
+LoggingLevelToNameMap[0xF] = "INFO";
+LoggingLevelToNameMap[0x1F] = "DEBUG";
+LoggingLevelToNameMap[0x3F] = "TRACE";
+LoggingLevelToNameMap[0xFF] = "ALL";
+exports.LoggingLevelToNameMap = LoggingLevelToNameMap;
+
+
 /*
  * Default values we expand objects and arrays
  */

@@ -289,7 +289,7 @@ function extractArgumentFormatSpecifier(fmtString, vpos) {
  * @param {Array} fmtEntryArray the array of MsgFormatEntry objects
  * @param {string} initialFormatSegment the string that we want to emit at the start of the format
  * @param {Array} tailingFormatSegmentArray the strings that we want to emit in after each format specifier
- * @param {bool} areAllSingleSlotFormatters true of all the formatters use only a single slot
+ * @param {bool} areAllSingleSlotFormatters true if all the formatters use only a single slot
  * @returns {Object} our MsgFormat object
  */
 function createMsgFormat(fmtName, fmtString, maxArgPos, fmtEntryArray, initialFormatSegment, tailingFormatSegmentArray, areAllSingleSlotFormatters) {
