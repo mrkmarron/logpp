@@ -561,6 +561,10 @@ BlockList.prototype.processMessagesForWrite_HardFlush = function (retainLevel, r
     this.clear();
 };
 
+BlockList.prototype.hasEntriesToWrite = function () {
+    return this.head.partialPos !== this.head.count;
+};
+
 BlockList.prototype.readCurrentWriteTag = function () {
     this.head.tags[this.head.partialPos];
 };
@@ -578,9 +582,29 @@ BlockList.prototype.advanceWritePos = function () {
 };
 
 /**
+ * Emit K formatted messages.
+ * @method
+ * @param {Object} formatter the formatter that knows how to serialize data values
+ * @param {bool} doprefix true if we want to write a standard "LEVEL#CATEGORY TIME? -- " prefix
+ * @param {number} k number of messages to write
+ * @returns true if there is more to write or false otherwise
+ */
+BlockList.prototype.emitKEntries = function (formatter, doprefix, k) {
+    for (let i = 0; i < k; ++i) {
+        if (!this.hasEntriesToWrite()) {
+            return false;
+        }
+
+        this.emitFormatEntry(formatter, doprefix);
+    }
+    return true;
+};
+
+/**
  * Emit a single formatted message.
  * @method
- * @param {Object} fmt the format entry we want to output
+ * @param {Object} formatter the formatter that knows how to serialize data values
+ * @param {bool} doprefix true if we want to write a standard "LEVEL#CATEGORY TIME? -- " prefix
  */
 BlockList.prototype.emitFormatEntry = function (formatter, doprefix) {
     const fmt = this.readCurrentWriteData();
@@ -619,11 +643,11 @@ BlockList.prototype.emitFormatEntry = function (formatter, doprefix) {
         const tag = this.readCurrentWriteTag();
 
         if (tag === /*LogEntryTags_LParen*/0x5) {
-            this.emitObjectEntry();
+            this.emitObjectEntry(formatter);
             //position is advanced in call
         }
         else if (tag === /*LogEntryTags_LBrack*/0x7) {
-            this.emitArrayEntry();
+            this.emitArrayEntry(formatter);
             //position is advanced in call
         }
         else {
@@ -672,85 +696,85 @@ BlockList.prototype.emitFormatEntry = function (formatter, doprefix) {
 /**
  * Emit an object entry
  * @method
+ * @param {Object} formatter the formatter that knows how to serialize data values
  */
-Emitter.prototype.emitObjectEntry = function () {
-    this.writer.emitChar('{');
-    this.advancePosition();
+BlockList.prototype.emitObjectEntry = function (formatter) {
+    formatter.emitChar("{");
+    this.advanceWritePos();
 
     let skipComma = true;
-    while (this.block.tags[this.pos] !== LogEntryTags_RParen) {
-        assert(this.block.tags[this.pos] === LogEntryTags_PropertyRecord, 'In an object entry but no property name???');
-
+    while (this.block.tags[this.pos] !== /*LogEntryTags_RParen*/0x6) {
         if (skipComma) {
             skipComma = false;
         }
         else {
-            this.writer.emitFullString(', ');
+            formatter.emitLiteralString(", ");
         }
-        this.emitJsString(this.block.data[this.pos]);
-        this.writer.emitFullString(': ');
+        this.emitJsString(this.readCurrentWriteData());
+        formatter.emitLiteralString(": ");
 
-        this.advancePosition();
+        this.advanceWritePos();
 
         const tag = this.block.tags[this.pos];
-        if (tag === LogEntryTags_LParen) {
-            this.emitObjectEntry();
+        if (tag === /*LogEntryTags_LParen*/0x5) {
+            this.emitObjectEntry(formatter);
         }
-        else if (tag === LogEntryTags_LBrack) {
-            this.emitArrayEntry();
+        else if (tag === /*LogEntryTags_LBrack*/0x7) {
+            this.emitArrayEntry(formatter);
         }
         else {
-            if (tag === LogEntryTags_JsVarValue) {
-                this.emitSimpleVar(this.block.data[this.pos]);
+            if (tag === /*LogEntryTags_JsVarValue*/0xB) {
+                formatter.emitSimpleVarAsJS(this.readCurrentWriteData());
             }
             else {
                 this.emitSpecialVar(tag);
             }
 
-            this.advancePosition();
+            this.advanceWritePos();
         }
     }
 
-    this.writer.emitChar('}');
-    this.advancePosition();
-}
+    formatter.emitChar("}");
+    this.advanceWritePos();
+};
 
 /**
  * Emit an array entry
  * @method
+ * @param {Object} formatter the formatter that knows how to serialize data values
  */
-Emitter.prototype.emitArrayEntry = function () {
-    this.writer.emitChar('[');
-    this.advancePosition();
+BlockList.prototype.emitArrayEntry = function (formatter) {
+    formatter.emitChar("[");
+    this.advanceWritePos();
 
     let skipComma = true;
-    while (this.block.tags[this.pos] !== LogEntryTags_RParen) {
+    while (this.block.tags[this.pos] !== /*LogEntryTags_RBrack*/0x8) {
         if (skipComma) {
             skipComma = false;
         }
         else {
-            this.writer.emitFullString(', ');
+            formatter.emitLiteralString(", ");
         }
 
         const tag = this.block.tags[this.pos];
-        if (tag === LogEntryTags_LParen) {
-            this.emitObjectEntry();
+        if (tag === /*LogEntryTags_LParen*/0x5) {
+            this.emitObjectEntry(formatter);
         }
-        else if (tag === LogEntryTags_LBrack) {
-            this.emitArrayEntry();
+        else if (tag === /*LogEntryTags_LBrack*/0x7) {
+            this.emitArrayEntry(formatter);
         }
         else {
-            if (tag === LogEntryTags_JsVarValue) {
-                this.emitSimpleVar(this.block.data[this.pos]);
+            if (tag === /*LogEntryTags_JsVarValue*/0xB) {
+                formatter.emitSimpleVarAsJS(this.readCurrentWriteData());
             }
             else {
                 this.emitSpecialVar(tag);
             }
 
-            this.advancePosition();
+            this.advanceWritePos();
         }
     }
 
-    this.writer.emitChar(']');
-    this.advancePosition();
+    formatter.emitChar("]");
+    this.advanceWritePos();
 };

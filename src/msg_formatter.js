@@ -8,6 +8,16 @@ function JSONFormatter() {
     this.block = Buffer.allocUnsafe(1024);
     this.pos = 0;
 }
+exports.JSONFormatter = JSONFormatter;
+
+JSONFormatter.prototype.unlinkData = function () {
+    const res = this.block;
+
+    this.block = Buffer.allocUnsafe(1024);
+    this.pos = 0;
+
+    return res;
+}
 
 JSONFormatter.prototype.resize = function (reqsize) {
     const oldblock = this.block;
