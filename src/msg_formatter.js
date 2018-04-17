@@ -17,7 +17,7 @@ JSONFormatter.prototype.unlinkData = function () {
     this.pos = 0;
 
     return res;
-}
+};
 
 JSONFormatter.prototype.resize = function (reqsize) {
     const oldblock = this.block;

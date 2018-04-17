@@ -51,6 +51,19 @@ BlockList.prototype.clear = function () {
 };
 
 /**
+ * Count of the entries in the BlockList
+ * @method
+ * @returns number of entries in the BlockList
+ */
+BlockList.prototype.count = function () {
+    let tcount = 0;
+    for (let cblock = this.head; cblock !== null; cblock = cblock.next) {
+        tcount += (cblock.count - cblock.partialPos);
+    }
+    return tcount;
+};
+
+/**
  * Remove the head block data from this list
  * @method
  */
@@ -308,7 +321,7 @@ BlockList.prototype.logMessage = function (env, level, category, doTimestamp, fm
                 incTimeStamp = true;
             }
             else {
-                this.addJsVarValueEntry(env[formatSpec.name]);
+                this.addJsVarValueEntry(env.globalEnv[formatSpec.name]);
             }
         }
         else {
@@ -365,7 +378,7 @@ BlockList.prototype.logMessage = function (env, level, category, doTimestamp, fm
     }
 
     if (incTimeStamp) {
-        env.TIMESTAMP++;
+        env.globalEnv.TIMESTAMP++;
     }
 
     this.addTagOnlyEntry(/*LogEntryTags_MsgEndSentinal*/0x4);
