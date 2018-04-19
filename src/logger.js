@@ -1,5 +1,7 @@
 "use strict";
 
+const path = require("path");
+
 const core = require("./core");
 const specifier = require("./format_specifier");
 const processor = require("./msg_processor");
@@ -21,17 +23,48 @@ function doMsgLogCategory_NOP(category, fmt, ...args) { }
 function doMsgLogCond_NOP(cond, fmt, ...args) { }
 function doMsgLogCategoryCond_NOP(cond, fmt, ...args) { }
 
+function sanitizeLogLevel(level) {
+    if (level >= core.LoggingLevels.ALL) {
+        return core.LoggingLevels.ALL;
+    }
+    else if (level >= core.LoggingLevels.TRACE) {
+        return core.LoggingLevels.TRACE;
+    }
+    else if (level >= core.LoggingLevels.DEBUG) {
+        return core.LoggingLevels.DEBUG;
+    }
+    else if (level >= core.LoggingLevels.INFO) {
+        return core.LoggingLevels.INFO;
+    }
+    else if (level >= core.LoggingLevels.WARN) {
+        return core.LoggingLevels.WARN;
+    }
+    else if (level >= core.LoggingLevels.ERROR) {
+        return core.LoggingLevels.ERROR;
+    }
+    else if (level >= core.LoggingLevels.FATAL) {
+        return core.LoggingLevels.FATAL;
+    }
+    else {
+        return core.LoggingLevels.OFF;
+    }
+}
+
 /**
  * Constructor for the RootLogger
  * @constructor
  * @param {string} appName name of the root module (application)
- * @param {string} ip the ip address of the host
+ * @param {Object} the options object
  */
-function LoggerFactory(appName, ip) {
-    //Since this will be exposed to the user we want to protect the state from accidental modification.
+function LoggerFactory(appName, options) {
+    if (typeof (appName) !== "string") {
+        throw new Error(`Invalid argument for appName, ${appName}, must provide string.`);
+    }
+    options = options || {};
+
     //This state is common to all loggers and will be shared.
     const m_globalenv = {
-        IP: ip,
+        HOST: options.HOST || "localhost",
         APP: appName,
         TIMESTAMP: 0,
         CALLBACK: -1,
@@ -39,18 +72,23 @@ function LoggerFactory(appName, ip) {
     };
 
     //True if we want to include a standard prefix on each log message
-    const m_doPrefix = true;
+    const m_doPrefix = typeof (options.defaultPrefix) === "boolean" ? options.defaultPrefix : true;
 
     //Blocklists containing the information logged into memory and pending to write out
     const m_memoryBlockList = new processor.BlockList();
     const m_writeBlockList = new processor.BlockList();
 
-    let m_retainLevel = core.LoggingLevels.WARN;
-    let m_retainCategories = { "default": true };
+    let m_retainLevel = sanitizeLogLevel(typeof (options.retainLevel) === "number" ? options.retainLevel : core.LoggingLevels.WARN);
+    const m_retainCategories = { "default": true };
+    Object.getOwnPropertyNames(options.retainCategories).forEach((p) => {
+        if (typeof (options.retainCategories[p]) === "boolean") {
+            m_retainCategories[p] = options.retainCategories[p];
+        }
+    });
 
-    let m_doTimeLimit = true;
-    let m_maxBufferTime = 1000;
-    let m_maxBufferSize = 8192;
+    const m_doTimeLimit = options.bufferSizeLimit !== undefined ? false : true;
+    let m_maxBufferTime = typeof (options.bufferTimeLimit) === "number" ? options.bufferTimeLimit : 1000;
+    let m_maxBufferSize = typeof (options.bufferSizeLimit) === "number" ? options.bufferSizeLimit : 8192;
 
     const processentriescb = () => {
         const starttime = Date.now();
@@ -134,7 +172,9 @@ function LoggerFactory(appName, ip) {
 
         const m_env = {
             globalEnv: m_globalenv,
-            MODULE: moduleName
+            MODULE: moduleName,
+            logger_path: __filename,
+            msg_path: path.join(path.dirname(__filename), "msg_processor.js")
         };
 
         /**
@@ -145,6 +185,13 @@ function LoggerFactory(appName, ip) {
         };
 
         /**
+         * Get the logging level that is written out to the transporter
+         */
+        this.getRetainedLoggingLevel = function () {
+            return m_retainLevel;
+        };
+
+        /**
          * Get the logging categories enabled for this logger
          */
         this.getEnabledCategories = function () {
@@ -152,17 +199,66 @@ function LoggerFactory(appName, ip) {
         };
 
         /**
+         * Get the logging categories that are written out to the transporter
+         */
+        this.getRetainedEnabledCategories = function () {
+            return m_retainCategories;
+        };
+
+        /**
          * Set the logging level for this logger
          * @param {number} logLevel
          */
         this.setLoggingLevel = function (logLevel) {
-            if (s_rootLogger !== this) {
-                const enabledlevel = s_enabledSubLoggerNames.get(moduleName);
-                logLevel = enabledlevel !== undefined ? enabledlevel : s_defaultSubLoggerLevel;
+            if (typeof (logLevel) !== "number") {
+                return;
             }
 
-            m_memoryLogLevel = logLevel;
-            updateLoggingFunctions(this, m_memoryLogLevel);
+            try {
+                let slogLevel = sanitizeLogLevel(logLevel);
+                if (s_rootLogger !== this) {
+                    if (s_disabledSubLoggerNames.has(moduleName)) {
+                        slogLevel = core.LoggingLevels.OFF;
+                    }
+                    else {
+                        const enabledlevel = s_enabledSubLoggerNames.get(moduleName);
+                        slogLevel = enabledlevel !== undefined ? enabledlevel : s_defaultSubLoggerLevel;
+                    }
+                }
+
+                if (m_memoryLogLevel !== slogLevel) {
+                    m_memoryLogLevel = slogLevel;
+                    updateLoggingFunctions(this, m_memoryLogLevel);
+                }
+            }
+            catch (ex) {
+                console.error("Hard failure in setLoggingLevel -- " + ex.toString());
+            }
+        };
+
+        /**
+         * Set the retained logging level
+         * @param {number} logLevel
+         */
+        this.setRetainedLoggingLevel = function (logLevel) {
+            if (typeof (logLevel) !== "number") {
+                return;
+            }
+
+            try {
+                if (s_rootLogger !== this) {
+                    return;
+                }
+
+                const slogLevel = sanitizeLogLevel(logLevel);
+                if (m_retainLevel !== slogLevel) {
+                    m_memoryBlockList.processMessagesForWrite_HardFlush(false, slogLevel, m_retainCategories, m_writeBlockList);
+                    m_retainLevel = slogLevel;
+                }
+            }
+            catch (ex) {
+                console.error("Hard failure in setRetainedLoggingLevel -- " + ex.toString());
+            }
         };
 
         /**
@@ -170,6 +266,10 @@ function LoggerFactory(appName, ip) {
          * @param {string} category the category of messages to enable
          */
         this.enableLoggingCategory = function (category) {
+            if (typeof (category) !== "string") {
+                return;
+            }
+
             m_enabledCategories[category] = true;
         };
 
@@ -178,7 +278,112 @@ function LoggerFactory(appName, ip) {
          * @param {string} category the category of messages to disable
          */
         this.disableLoggingCategory = function (category) {
+            if (typeof (category) !== "string") {
+                return;
+            }
+
             m_enabledCategories[category] = false;
+        };
+
+
+        /**
+         * Enable the given category of log messages for sending to the transport
+         * @param {string} category the category of messages to enable
+         */
+        this.enableRetainedLoggingCategory = function (category) {
+            if (typeof (category) !== "string") {
+                return;
+            }
+
+            try {
+                if (s_rootLogger !== this) {
+                    return;
+                }
+
+                if (m_retainCategories[category] !== true) {
+                    m_memoryBlockList.processMessagesForWrite_HardFlush(false, m_retainLevel, m_retainCategories, m_writeBlockList);
+                    m_retainCategories[category] = true;
+                }
+            }
+            catch (ex) {
+                console.error("Hard failure in enableRetainedLoggingCategory -- " + ex.toString());
+            }
+        };
+
+        /**
+         * Disable the given category of log messages for sending to the transport
+         * @param {string} category the category of messages to disable
+         */
+        this.disableRetainedLoggingCategory = function (category) {
+            if (typeof (category) !== "string") {
+                return;
+            }
+
+            try {
+                if (s_rootLogger !== this) {
+                    return;
+                }
+
+                if (m_retainCategories[category] !== false) {
+                    m_memoryBlockList.processMessagesForWrite_HardFlush(false, m_retainLevel, m_retainCategories, m_writeBlockList);
+                    m_retainCategories[category] = false;
+                }
+            }
+            catch (ex) {
+                console.error("Hard failure in disableRetainedLoggingCategory -- " + ex.toString());
+            }
+        };
+
+        /**
+         * Set the ring buffer bound based on the age of the entires -- not older than the bound.
+         * We currently do not allow switching between size/time but you can change the value.
+         * @param {number} timeBound is the new time limit for the ring buffer
+         */
+        this.setBufferAsTimeLengthBound = function (timeBound) {
+            if (typeof (timeBound) !== "number" || timeBound <= 0) {
+                return;
+            }
+
+            try {
+                if (s_rootLogger !== this) {
+                    return;
+                }
+
+                if (!m_doTimeLimit) {
+                    return;
+                }
+
+                m_maxBufferTime = timeBound;
+            }
+            catch (ex) {
+                console.error("Hard failure in setBufferAsTimeLengthBound -- " + ex.toString());
+            }
+        };
+
+        /**
+         * Set the ring buffer bound based on the size of the entries -- not larger than the size bound
+         * We currently do not allow switching between size/time but you can change the value.
+         * @param {number} sizeBound is the new size limit for the ring buffer
+         */
+        this.setBufferAsSizeBound = function (sizeBound) {
+            if (typeof (sizeBound) !== "number" || sizeBound <= 0) {
+                return;
+            }
+
+            try {
+                if (s_rootLogger !== this) {
+                    return;
+                }
+
+                if (m_doTimeLimit) {
+                    return;
+                }
+
+                m_maxBufferSize = sizeBound;
+            }
+            catch (ex) {
+                console.error("Hard failure in setBufferAsSizeBound -- " + ex.toString());
+            }
         };
 
         /**
@@ -196,14 +401,32 @@ function LoggerFactory(appName, ip) {
          * Add a new format to the format map
          */
         this.addFormat = function (fmtName, fmtInfo) {
+            if (typeof (fmtName) !== "string") {
+                return;
+            }
+
             try {
                 const fmtObj = specifier.extractMsgFormat(fmtName, fmtInfo);
                 m_formatInfo.set(fmtName, fmtObj);
             }
             catch (ex) {
-                console.error("Hard failure in format extract -- " + ex.toString());
+                console.error("Hard failure in addFormat -- " + ex.toString());
             }
         };
+
+        function isImplicitFormat(fmtInfo) {
+            return typeof (fmtInfo) !== "string" || (fmtInfo.startsWith("%") && fmtInfo.endsWith("%"));
+        }
+
+        function generateImplicitFormat(fmtInfo, args) {
+            if (typeof (fmtInfo) === "string") {
+                return specifier.extractMsgFormat("implicit_format", fmtInfo.substr(1, fmtInfo.length - 2)); //trim %
+            }
+            else {
+                args.unshift(fmtInfo);
+                return specifier.extractMsgFormat("implicit_format", "%{0:g}");
+            }
+        }
 
         /**
          * TODO: add prefix (or postfix) formatters which will be inserted in all writes.
@@ -214,7 +437,7 @@ function LoggerFactory(appName, ip) {
             const fixedLevel = desiredLevel;
             return function (fmt, ...args) {
                 try {
-                    const fmti = m_formatInfo.get(fmt);
+                    const fmti = isImplicitFormat(fmt) ? generateImplicitFormat(fmt, args) : m_formatInfo.get(fmt);
                     if (fmti === undefined) {
                         console.error("Format name is not defined for this logger -- " + fmt);
                     }
@@ -235,7 +458,7 @@ function LoggerFactory(appName, ip) {
             return function (category, fmt, ...args) {
                 try {
                     if (m_enabledCategories[category]) {
-                        const fmti = m_formatInfo.get(fmt);
+                        const fmti = isImplicitFormat(fmt) ? generateImplicitFormat(fmt, args) : m_formatInfo.get(fmt);
                         if (fmti === undefined) {
                             console.error("Format name is not defined for this logger -- " + fmt);
                         }
@@ -257,7 +480,7 @@ function LoggerFactory(appName, ip) {
             return function (cond, fmt, ...args) {
                 if (cond) {
                     try {
-                        const fmti = m_formatInfo.get(fmt);
+                        const fmti = isImplicitFormat(fmt) ? generateImplicitFormat(fmt, args) : m_formatInfo.get(fmt);
                         if (fmti === undefined) {
                             console.error("Format name is not defined for this logger -- " + fmt);
                         }
@@ -280,7 +503,7 @@ function LoggerFactory(appName, ip) {
                 if (cond) {
                     try {
                         if (m_enabledCategories[category]) {
-                            const fmti = m_formatInfo.get(fmt);
+                            const fmti = isImplicitFormat(fmt) ? generateImplicitFormat(fmt, args) : m_formatInfo.get(fmt);
                             if (fmti === undefined) {
                                 console.error("Format name is not defined for this logger -- " + fmt);
                             }
@@ -335,7 +558,7 @@ function LoggerFactory(appName, ip) {
         */
         this.emitFullLogSync = function () {
             try {
-                m_memoryBlockList.processMessagesForWrite_HardFlush(s_rootLogger.getLoggingLevel(), s_rootLogger.getEnabledCategories(), m_writeBlockList);
+                m_memoryBlockList.processMessagesForWrite_HardFlush(true, core.LoggingLevels.ALL, {}, m_writeBlockList);
 
                 let donework = false;
                 while (!donework) {
@@ -346,7 +569,7 @@ function LoggerFactory(appName, ip) {
                 }
             }
             catch (ex) {
-                console.error("Hard failure in emit on issue notify -- " + ex.toString());
+                console.error("Hard failure in emit on emitFullLogSync -- " + ex.toString());
             }
         };
 
@@ -355,21 +578,41 @@ function LoggerFactory(appName, ip) {
         * @method
         * @param {string} subloggerName the name of the sub-logger to enable
         * @param {number} level the level that the sub-logger is allowed to emit at
-        * @returns {bool} true if this is the root logger and sub-logger was updated and false otherwise
         */
         this.enableSubLogger = function (subloggerName, level) {
+            if (typeof (subloggerName) !== "string" || typeof (level) !== "number") {
+                return;
+            }
+
             try {
                 if (s_rootLogger === this) {
                     s_enabledSubLoggerNames.add(subloggerName, level);
-                    return true;
-                }
-                else {
-                    return false;
+                    s_disabledSubLoggerNames.delete(subloggerName);
                 }
             }
             catch (ex) {
-                console.error("Hard failure in update sublogger state -- " + ex.toString());
-                return false;
+                console.error("Hard failure in enableSubLogger -- " + ex.toString());
+            }
+        };
+
+        /**
+        * Explicitly disable a specifc sub-logger -- entirely suppress the output from it
+        * @method
+        * @param {string} subloggerName the name of the sub-logger to enable
+        */
+        this.disableSubLogger = function (subloggerName) {
+            if (typeof (subloggerName) !== "string") {
+                return;
+            }
+
+            try {
+                if (s_rootLogger === this) {
+                    s_enabledSubLoggerNames.delete(subloggerName);
+                    s_disabledSubLoggerNames.add(subloggerName);
+                }
+            }
+            catch (ex) {
+                console.error("Hard failure in disableSubLogger -- " + ex.toString());
             }
         };
     }
@@ -387,6 +630,7 @@ let s_rootLogger = null;
 /**
  * Map of module names that are enabled for sub-logging + level cap override
  */
+const s_disabledSubLoggerNames = new Set();
 const s_enabledSubLoggerNames = new Map();
 const s_defaultSubLoggerLevel = core.LoggingLevels.WARN;
 
@@ -395,41 +639,97 @@ const s_defaultSubLoggerLevel = core.LoggingLevels.WARN;
  */
 const s_loggerMap = new Map();
 
+const s_options = {
+    host: "string",
+    emitCategories: "object",
+    defaultPrefix: "boolean",
+    retainLevel: "string",
+    retainCategories: "object",
+    bufferSizeLimit: "number",
+    bufferTimeLimit: "number"
+};
+
 /**
  * Logger constructor function.
  * @exports
  * @function
  * @param {string} name of the logger object to construct (calls with the same name will return an aliased logger object)
- * @param {string} memoryLevel is the level to log into the high performance rung buffer
- * @param {string} writeLevel is the level to log out to to stable storage
+ * @param {string} level is the level to log into the high performance ring buffer (undefined => default INFO)
+ * @param {Object} options an object with other options for the construction (undefined => default options)
  */
-module.exports = function (name, memoryLevel, writeLevel) {
-    if (memoryLevel.enum < writeLevel.enum) {
-        //have to at least put it in ring buffer if we want to output it
-        memoryLevel = writeLevel;
+module.exports = function (name, level, options) {
+    if (typeof (name) !== "string") {
+        throw new Error(`Expected name of logger but got ${name}`);
     }
 
-    let memlevelflag = core.LoggingLevels[memoryLevel] || core.LoggingLevels.INFO;
-    let writelevelflag = core.LoggingLevels[writeLevel] || core.LoggingLevels.WARN;
+    if (level === undefined) {
+        level = "INFO";
+    }
+    if (typeof (level) !== "string" || core.LoggingLevels[level] === undefined) {
+        throw new Error(`Expected logging level but got ${level}`);
+    }
+    const rlevel = core.LoggingLevels[level];
+
+    const ropts = {
+        host: require("os").hostname()
+    };
+
+    Object.getOwnPropertyNames(options).forEach((p) => {
+        if (s_options.hasOwnProperty(p)) {
+            const pval = options[p];
+            if (pval === null || pval === undefined || typeof (pval) != s_options[p]) {
+                throw new Error(`Invalid option "${p}" expected "${options[p]}" value but got ${pval}`);
+            }
+
+            if (p === "retainLevel") {
+                if (core.LoggingLevels[pval] === undefined) {
+                    throw new Error(`Expected logging level but got ${level}`);
+                }
+                ropts[p] = core.LoggingLevels[pval];
+            }
+            else {
+                ropts[p] = pval;
+            }
+        }
+    });
+
+    if (ropts.retainLevel !== undefined) {
+        ropts.retainLevel = Math.min(core.LoggingLevels.WARN, rlevel);
+    }
+    else {
+        ropts.retainLevel = Math.min(ropts.retainLevel, rlevel);
+    }
 
     //Lazy instantiate the logger factory
     if (s_loggerFactory === null) {
-        s_loggerFactory = new LoggerFactory(require.main.filename, require('os').hostname());
+        s_loggerFactory = new LoggerFactory(require.main.filename, ropts);
     }
 
     //Get the filename of the caller
-    const lfilename = extractUserSourceFile();
+    const cstack = new Error()
+    .stack
+    .split("\n")
+    .slice(1)
+    .map(function (frame) {
+        return frame.substring(frame.indexOf("(") + 1, frame.lastIndexOf(".js:") + 3);
+    });
+    const lfilename = cstack[cstack.length - 2];
 
     let logger = s_loggerMap.get(name);
     if (!logger) {
         if (require.main.filename !== lfilename) {
-            if (!s_enabledSubLoggerNames.has(name)) {
-                memlevelflag = s_disabledSubLoggerNames.has(name) ? LoggingLevels.OFF : LoggingLevels.WARN;
-                writelevelflag = s_disabledSubLoggerNames.has(name) ? LoggingLevels.OFF : LoggingLevels.ERROR;
+            if (s_disabledSubLoggerNames.has(lfilename)) {
+                ropts.retainLevel = core.LoggingLevels.OFF;
+            }
+            else {
+                const enabledlevel = s_enabledSubLoggerNames.get(lfilename);
+                ropts.retainLevel = enabledlevel !== undefined ? enabledlevel : s_defaultSubLoggerLevel;
             }
         }
 
-        logger = s_loggerFactory.createLogger(name, memlevelflag, writelevelflag);
+        logger = s_loggerFactory.createLogger(name, ropts);
+        logger.Levels = core.LoggingLevels;
+
         if (require.main.filename === lfilename) {
             s_rootLogger = logger;
         }

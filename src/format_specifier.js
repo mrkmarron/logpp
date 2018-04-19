@@ -4,7 +4,7 @@ const core = require("./core");
 
 ////
 //Valid expandos are:
-//#ip        -- ip address of the host
+//#host      -- name of the host
 //#app       -- name of the root app
 //#module    -- name of the module
 //#source    -- source location of log statment (file, line)
@@ -17,14 +17,14 @@ const core = require("./core");
 
 ////
 //Valid format specifiers are:
-//${p:b} -- a boolean value
-//${p:n} -- a number
-//${p:s} -- a string
-//${p:d-xxx} -- a date formatted as iso, utc, or local
-//${p:o<d,l>} -- an object expanded up to d levels (default is 2) at most l items in any level (default is * for objects 128 for arrays)
-//${p:a<d,l>} -- an array expanded up to d levels (default is 2) at most l items in any level (default is * for objects 128 for arrays)
-//${p:g} -- general value (general format applied -- no array expansion, object depth of 2)
-//$$ -- a literal $
+//%{p:b} -- a boolean value
+//%{p:n} -- a number
+//%{p:s} -- a string
+//%{p:d-xxx} -- a date formatted as iso, utc, or local
+//%{p:o<d,l>} -- an object expanded up to d levels (default is 2) at most l items in any level (default is * for objects 128 for arrays)
+//%{p:a<d,l>} -- an array expanded up to d levels (default is 2) at most l items in any level (default is * for objects 128 for arrays)
+//%{p:g} -- general value (general format applied -- no array expansion, object depth of 2)
+//%% -- a literal %
 ////
 
 /*
@@ -62,7 +62,7 @@ function generateSingletonFormatStringEntry(name, kind, label, tag, isSingleSlot
  */
 const FormatStringEntrySingletons = {
     HASH: generateSingletonFormatStringEntry("HASH", /*FormatStringEntryKind_Literal*/0x1, "#", /*SingletonFormatStringEntry_HASH*/0x11, true),
-    IP: generateSingletonFormatStringEntry("IP", /*FormatStringEntryKind_Expando*/0x2, "#ip", /*SingletonFormatStringEntry_IP*/0x12, true),
+    HOST: generateSingletonFormatStringEntry("HOST", /*FormatStringEntryKind_Expando*/0x2, "#host", /*SingletonFormatStringEntry_HOST*/0x12, true),
     APP: generateSingletonFormatStringEntry("APP", /*FormatStringEntryKind_Expando*/0x2, "#app", /*SingletonFormatStringEntry_APP*/0x13, true),
     MODULE: generateSingletonFormatStringEntry("MODULE", /*FormatStringEntryKind_Expando*/0x2, "#module", /*SingletonFormatStringEntry_MODULE*/0x14, true),
     SOURCE: generateSingletonFormatStringEntry("SOURCE", /*FormatStringEntryKind_Expando*/0x2, "#source", /*SingletonFormatStringEntry_SOURCE*/0x15, true),
@@ -71,16 +71,16 @@ const FormatStringEntrySingletons = {
     CALLBACK: generateSingletonFormatStringEntry("CALLBACK", /*FormatStringEntryKind_Expando*/0x2, "#callback", /*SingletonFormatStringEntry_CALLBACK*/0x18, true),
     REQUEST: generateSingletonFormatStringEntry("REQUEST", /*FormatStringEntryKind_Expando*/0x2, "#request", /*SingletonFormatStringEntry_REQUEST*/0x19, true),
 
-    DOLLAR: generateSingletonFormatStringEntry("DOLLAR", /*FormatStringEntryKind_Literal*/0x1, "$", /*SingletonFormatStringEntry_DOLLAR*/0x21, true),
-    BOOL: generateSingletonFormatStringEntry("BOOL", /*FormatStringEntryKind_Basic*/0x3, "b", /*SingletonFormatStringEntry_BOOL*/0x22, true), //${p:b}
-    NUMBER: generateSingletonFormatStringEntry("NUMBER", /*FormatStringEntryKind_Basic*/0x3, "n", /*SingletonFormatStringEntry_NUMBER*/0x23, true), //${p:n}
-    STRING: generateSingletonFormatStringEntry("STRING", /*FormatStringEntryKind_Basic*/0x3, "s", /*SingletonFormatStringEntry_STRING*/0x24, true), //${p:s}
-    DATEISO: generateSingletonFormatStringEntry("DATEISO", /*FormatStringEntryKind_Basic*/0x3, "di", /*SingletonFormatStringEntry_DATEISO*/0x26, true), //${p:d-iso}
-    DATEUTC: generateSingletonFormatStringEntry("DATEUTC", /*FormatStringEntryKind_Basic*/0x3, "du", /*SingletonFormatStringEntry_DATEUTC*/0x27, true), //${p:d-utc}
-    DATELOCAL: generateSingletonFormatStringEntry("DATELOCAL", /*FormatStringEntryKind_Basic*/0x3, "dl", /*SingletonFormatStringEntry_DATELOCAL*/0x28, true), //${p:d-local}
-    GENERAL: generateSingletonFormatStringEntry("GENERAL", /*FormatStringEntryKind_Basic*/0x3, "g", /*SingletonFormatStringEntry_GENERAL*/0x28, false), //${p:g}
-    OBJECT: generateSingletonFormatStringEntry("OBJECT", /*FormatStringEntryKind_Compound*/0x4, "o", /*SingletonFormatStringEntry_OBJECT*/0x29, false), //${p:o<d,l>}
-    ARRAY: generateSingletonFormatStringEntry("ARRAY", /*FormatStringEntryKind_Compound*/0x4, "a", /*SingletonFormatStringEntry_ARRAY*/0x2A, false) //${p:a<d,l>}
+    PERCENT: generateSingletonFormatStringEntry("PERCENT", /*FormatStringEntryKind_Literal*/0x1, "%", /*SingletonFormatStringEntry_PERCENT*/0x21, true),
+    BOOL: generateSingletonFormatStringEntry("BOOL", /*FormatStringEntryKind_Basic*/0x3, "b", /*SingletonFormatStringEntry_BOOL*/0x22, true), //%{p:b}
+    NUMBER: generateSingletonFormatStringEntry("NUMBER", /*FormatStringEntryKind_Basic*/0x3, "n", /*SingletonFormatStringEntry_NUMBER*/0x23, true), //%{p:n}
+    STRING: generateSingletonFormatStringEntry("STRING", /*FormatStringEntryKind_Basic*/0x3, "s", /*SingletonFormatStringEntry_STRING*/0x24, true), //%{p:s}
+    DATEISO: generateSingletonFormatStringEntry("DATEISO", /*FormatStringEntryKind_Basic*/0x3, "di", /*SingletonFormatStringEntry_DATEISO*/0x26, true), //%{p:d-iso}
+    DATEUTC: generateSingletonFormatStringEntry("DATEUTC", /*FormatStringEntryKind_Basic*/0x3, "du", /*SingletonFormatStringEntry_DATEUTC*/0x27, true), //%{p:d-utc}
+    DATELOCAL: generateSingletonFormatStringEntry("DATELOCAL", /*FormatStringEntryKind_Basic*/0x3, "dl", /*SingletonFormatStringEntry_DATELOCAL*/0x28, true), //%{p:d-local}
+    GENERAL: generateSingletonFormatStringEntry("GENERAL", /*FormatStringEntryKind_Basic*/0x3, "g", /*SingletonFormatStringEntry_GENERAL*/0x28, false), //%{p:g}
+    OBJECT: generateSingletonFormatStringEntry("OBJECT", /*FormatStringEntryKind_Compound*/0x4, "o", /*SingletonFormatStringEntry_OBJECT*/0x29, false), //%{p:o<d,l>}
+    ARRAY: generateSingletonFormatStringEntry("ARRAY", /*FormatStringEntryKind_Compound*/0x4, "a", /*SingletonFormatStringEntry_ARRAY*/0x2A, false) //%{p:a<d,l>}
 };
 
 const s_expandoEntries = Object.keys(FormatStringEntrySingletons)
@@ -208,15 +208,15 @@ const s_formatDepthLengthRegex = /([o|a])<(\d+|\*)?,(\d+|\*)?>/y;
  * @returns {Object} the expando MsgFormatEntry
  */
 function extractArgumentFormatSpecifier(fmtString, vpos) {
-    if (fmtString.startsWith("$$", vpos)) {
-        return createMsgFormatEntry(FormatStringEntrySingletons.DOLLAR, vpos, vpos + "$$".length, -1, -1, -1);
+    if (fmtString.startsWith("%%", vpos)) {
+        return createMsgFormatEntry(FormatStringEntrySingletons.PERCENT, vpos, vpos + "%%".length, -1, -1, -1);
     }
     else {
-        if (!fmtString.startsWith("${", vpos)) {
-            throw new FormatSyntaxError("Stray '$' in argument formatter", fmtString, vpos);
+        if (!fmtString.startsWith("%{", vpos)) {
+            throw new FormatSyntaxError("Stray '%' in argument formatter", fmtString, vpos);
         }
 
-        s_formatArgPosNumberRegex.lastIndex = vpos + "${".length;
+        s_formatArgPosNumberRegex.lastIndex = vpos + "%{".length;
 
         const argPositionMatch = s_formatArgPosNumberRegex.exec(fmtString);
         if (!argPositionMatch) {
@@ -228,7 +228,7 @@ function extractArgumentFormatSpecifier(fmtString, vpos) {
             throw new FormatSyntaxError("Bad position specifier in format", fmtString, s_formatArgPosNumberRegex.lastIndex);
         }
 
-        let specPos = vpos + "${".length + argPositionMatch[0].length;
+        let specPos = vpos + "%{".length + argPositionMatch[0].length;
         if (fmtString.charAt(specPos) !== ":") {
             throw new FormatSyntaxError("Bad formatting specifier", fmtString, specPos);
         }
@@ -340,7 +340,7 @@ function extractMsgFormat(fmtName, fmtInfo) {
     let maxArgPos = 0;
     while (cpos < fmtString.length) {
         const cchar = fmtString.charAt(cpos);
-        if (cchar !== "#" && cchar !== "$") {
+        if (cchar !== "#" && cchar !== "%") {
             cpos++;
         }
         else {

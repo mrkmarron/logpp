@@ -556,14 +556,15 @@ BlockList.prototype.processMessagesForWrite_TimeRing = function (retainLevel, re
 /**
  * Filter out all the msgs that we want to drop when writing to disk and copy them to the pending write list -- process all records.
  * @method
- * @param {Object} retainLevel the logging level to retain at
+ * @param {bool} forceall true if we want to ignore any level/category information and process everything
+ * @param {number} retainLevel the logging level to retain at
  * @param {Object} retainCategories the logging category we want to retain
  * @param {Object} pendingWriteBlockList the block list to add into
  */
-BlockList.prototype.processMessagesForWrite_HardFlush = function (retainLevel, retainCategories, pendingWriteBlockList) {
+BlockList.prototype.processMessagesForWrite_HardFlush = function (forceall, retainLevel, retainCategories, pendingWriteBlockList) {
     let cblock = this.head;
     while (cblock !== null) {
-        if (isEnabledForWrite(cblock, retainLevel, retainCategories)) {
+        if (forceall || isEnabledForWrite(cblock, retainLevel, retainCategories)) {
             cblock = processSingleMessageForWrite_Helper(cblock, pendingWriteBlockList);
         }
         else {
@@ -669,7 +670,7 @@ BlockList.prototype.emitFormatEntry = function (formatter, doprefix) {
             const formatSpec = formatEntry.format;
 
             if (formatSpec.kind === /*FormatStringEntryKind_Literal*/0x1) {
-                formatter.emitChar(formatEntry === /*SingletonFormatStringEntry_HASH*/0x11 ? "#" : "$");
+                formatter.emitChar(formatEntry === /*SingletonFormatStringEntry_HASH*/0x11 ? "#" : "%");
             }
             else if (formatSpec.kind === /*FormatStringEntryKind_Expando*/0x2) {
                 const specEnum = formatSpec.enum;

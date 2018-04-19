@@ -46,7 +46,7 @@ exports.LoggingLevelToNameMap = LoggingLevelToNameMap;
  * Enum values for the format string singletons
  */
 //SingletonFormatStringEntry_HASH 0x11
-//SingletonFormatStringEntry_IP 0x12
+//SingletonFormatStringEntry_HOST 0x12
 //SingletonFormatStringEntry_APP 0x13
 //SingletonFormatStringEntry_MODULE 0x14
 //SingletonFormatStringEntry_SOURCE 0x15
@@ -55,7 +55,7 @@ exports.LoggingLevelToNameMap = LoggingLevelToNameMap;
 //SingletonFormatStringEntry_CALLBACK 0x18
 //SingletonFormatStringEntry_REQUEST 0x19
 
-//SingletonFormatStringEntry_DOLLAR 0x21
+//SingletonFormatStringEntry_PERCENT 0x21
 //SingletonFormatStringEntry_BOOL 0x22
 //SingletonFormatStringEntry_NUMBER 0x23
 //SingletonFormatStringEntry_STRING 0x24
