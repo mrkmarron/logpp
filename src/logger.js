@@ -51,6 +51,31 @@ function sanitizeLogLevel(level) {
 }
 
 /**
+ * From the option object tag build the appropriate transporter
+ * @param {string} kind the kind of transporter we want to build (default to Console)
+ * @param {Object} options optional info needed to construct specified transports
+ * @param {Function} transporterrorcb the error callback on transporter related errors
+ * @returns {Object} the transporter object
+ */
+function buildTransporter(kind, options, transporterrorcb) {
+    if (kind === "String") {
+        return new transporters.StringTransport(transporterrorcb);
+    }
+    else {
+        return new transporters.ConsoleTransport(transporterrorcb);
+    }
+}
+
+/**
+ * From the option string tag build the appropriate formatter
+ * @param {string} kind the kind of formatter we want to build (default to JSON)
+ * @returns {Object} the formatter object
+ */
+function buildFormatter(kind) {
+    return new formatters.JSONFormatter();
+}
+
+/**
  * Constructor for the RootLogger
  * @constructor
  * @param {string} appName name of the root module (application)
@@ -140,8 +165,8 @@ function LoggerFactory(appName, options) {
         console.error("Error in transport -- " + err.toString());
     };
 
-    let m_formatter = new formatters.JSONFormatter();
-    let m_transport = new transporters.ConsoleTransport(transporterrorcb);
+    let m_formatter = buildFormatter(options.formatter);
+    let m_transport = buildTransporter(options.transporter, options, transporterrorcb);
 
     /**
      * Create a logger for a given module
@@ -414,6 +439,10 @@ function LoggerFactory(appName, options) {
             }
         };
 
+        //
+        //TODO: allow add "formats" from JSON object or file for nice organization
+        //
+
         function isImplicitFormat(fmtInfo) {
             return typeof (fmtInfo) !== "string" || (fmtInfo.startsWith("%") && fmtInfo.endsWith("%"));
         }
@@ -646,7 +675,10 @@ const s_options = {
     retainLevel: "string",
     retainCategories: "object",
     bufferSizeLimit: "number",
-    bufferTimeLimit: "number"
+    bufferTimeLimit: "number",
+    formatter: "string",
+    transporter: "string"
+    //TODO: when we have other transporters (io, network) need to support config options here
 };
 
 /**
@@ -707,12 +739,12 @@ module.exports = function (name, level, options) {
 
     //Get the filename of the caller
     const cstack = new Error()
-    .stack
-    .split("\n")
-    .slice(1)
-    .map(function (frame) {
-        return frame.substring(frame.indexOf("(") + 1, frame.lastIndexOf(".js:") + 3);
-    });
+        .stack
+        .split("\n")
+        .slice(1)
+        .map(function (frame) {
+            return frame.substring(frame.indexOf("(") + 1, frame.lastIndexOf(".js:") + 3);
+        });
     const lfilename = cstack[cstack.length - 2];
 
     let logger = s_loggerMap.get(name);

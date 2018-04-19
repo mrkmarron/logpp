@@ -2,11 +2,12 @@
 
 const fs = require("fs");
 
+///////////////////////////////////////////////
+
 /**
- * console transport constructor
+ * Console transport constructor
  * @constructor
- * @param {Function} draincb the callback to handle the drain
-* @param {Function} errorcb the callback to handle an error
+ * @param {Function} errorcb the callback to handle an error
  */
 function ConsoleTransport(errorcb) {
     process.stdout.once("error", errorcb);
@@ -33,5 +34,40 @@ ConsoleTransport.prototype.writeDataSync = function (chunk) {
  * @param {Function} readycb set the callback for when more data is ready to be written
  */
 ConsoleTransport.prototype.setReadyCallback = function (readycb) {
-    return process.stdout.once("drain", readycb);
+    process.stdout.once("drain", readycb);
+};
+
+///////////////////////////////////////////////
+
+/**
+ * String transport constructor
+ * @constructor
+ * @param {Function} errorcb the callback to handle an error
+ */
+function StringTransport(errorcb) {
+    this.data = "";
+}
+exports.StringTransport = StringTransport;
+
+/**
+ * @param {Buffer} chunk the data to write out to the transport
+ * @returns true if ready to accept more data and false otherwise
+ */
+ConsoleTransport.prototype.writeData = function (chunk) {
+    this.data += chunk.toString();
+    return true;
+};
+
+/**
+ * @param {Buffer} chunk the data to write out to the transport
+ */
+ConsoleTransport.prototype.writeDataSync = function (chunk) {
+    this.data += chunk.toString();
+};
+
+/**
+ * @param {Function} readycb set the callback for when more data is ready to be written
+ */
+ConsoleTransport.prototype.setReadyCallback = function (readycb) {
+    setImmediate(readycb);
 };
