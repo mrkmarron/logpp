@@ -59,10 +59,10 @@ function sanitizeLogLevel(level) {
  */
 function buildTransporter(kind, options, transporterrorcb) {
     if (kind === "String") {
-        return new transporters.StringTransport(transporterrorcb);
+        return new transporters.createStringTransport(transporterrorcb);
     }
     else {
-        return new transporters.ConsoleTransport(transporterrorcb);
+        return new transporters.createConsoleTransport(transporterrorcb);
     }
 }
 
@@ -72,7 +72,7 @@ function buildTransporter(kind, options, transporterrorcb) {
  * @returns {Object} the formatter object
  */
 function buildFormatter(kind) {
-    return new formatters.JSONFormatter();
+    return new formatters.createJSONFormatter();
 }
 
 /**
@@ -89,7 +89,7 @@ function LoggerFactory(appName, options) {
 
     //This state is common to all loggers and will be shared.
     const m_globalenv = {
-        HOST: options.HOST || "localhost",
+        HOST: options.host || "localhost",
         APP: appName,
         TIMESTAMP: 0,
         CALLBACK: -1,
@@ -100,14 +100,15 @@ function LoggerFactory(appName, options) {
     const m_doPrefix = typeof (options.defaultPrefix) === "boolean" ? options.defaultPrefix : true;
 
     //Blocklists containing the information logged into memory and pending to write out
-    const m_memoryBlockList = new processor.BlockList();
-    const m_writeBlockList = new processor.BlockList();
+    const m_memoryBlockList = new processor.createBlockList();
+    const m_writeBlockList = new processor.createBlockList();
 
     let m_retainLevel = sanitizeLogLevel(typeof (options.retainLevel) === "number" ? options.retainLevel : core.LoggingLevels.WARN);
-    const m_retainCategories = { "default": true };
-    Object.getOwnPropertyNames(options.retainCategories).forEach((p) => {
-        if (typeof (options.retainCategories[p]) === "boolean") {
-            m_retainCategories[p] = options.retainCategories[p];
+    const m_retainCategories = {};
+    const ctg = options.retainCategories || { "default": true };
+    Object.getOwnPropertyNames(ctg).forEach((p) => {
+        if (typeof (ctg[p]) === "boolean") {
+            m_retainCategories[p] = ctg[p];
         }
     });
 
@@ -193,7 +194,13 @@ function LoggerFactory(appName, options) {
 
         //Level that this logger will record at going into memory
         let m_memoryLogLevel = options.memoryLogLevel;
-        const m_enabledCategories = options.enabledCategories;
+        const m_enabledCategories = {};
+        const ctg = options.retainCategories || { "default": true };
+        Object.getOwnPropertyNames(ctg).forEach((p) => {
+            if (typeof (ctg[p]) === "boolean") {
+                m_enabledCategories[p] = ctg[p];
+            }
+        });
 
         const m_env = {
             globalEnv: m_globalenv,
@@ -551,33 +558,33 @@ function LoggerFactory(appName, options) {
         }
 
         function updateLoggingFunctions(logger, logLevel) {
-            this.fatal = isLevelEnabledForLogging(core.LoggingLevels.FATAL, m_memoryLogLevel) ? getMsgLogWLevelGenerator(core.LoggingLevels.FATAL) : doMsgLog_NOP;
-            this.error = isLevelEnabledForLogging(core.LoggingLevels.ERROR, m_memoryLogLevel) ? getMsgLogWLevelGenerator(core.LoggingLevels.ERROR) : doMsgLog_NOP;
-            this.warn = isLevelEnabledForLogging(core.LoggingLevels.WARN, m_memoryLogLevel) ? getMsgLogWLevelGenerator(core.LoggingLevels.WARN) : doMsgLog_NOP;
-            this.info = isLevelEnabledForLogging(core.LoggingLevels.INFO, m_memoryLogLevel) ? getMsgLogWLevelGenerator(core.LoggingLevels.INFO) : doMsgLog_NOP;
-            this.debug = isLevelEnabledForLogging(core.LoggingLevels.DEBUG, m_memoryLogLevel) ? getMsgLogWLevelGenerator(core.LoggingLevels.DEBUG) : doMsgLog_NOP;
-            this.trace = isLevelEnabledForLogging(core.LoggingLevels.TRACE, m_memoryLogLevel) ? getMsgLogWLevelGenerator(core.LoggingLevels.TRACE) : doMsgLog_NOP;
+            logger.fatal = isLevelEnabledForLogging(core.LoggingLevels.FATAL, m_memoryLogLevel) ? getMsgLogWLevelGenerator(core.LoggingLevels.FATAL) : doMsgLog_NOP;
+            logger.error = isLevelEnabledForLogging(core.LoggingLevels.ERROR, m_memoryLogLevel) ? getMsgLogWLevelGenerator(core.LoggingLevels.ERROR) : doMsgLog_NOP;
+            logger.warn = isLevelEnabledForLogging(core.LoggingLevels.WARN, m_memoryLogLevel) ? getMsgLogWLevelGenerator(core.LoggingLevels.WARN) : doMsgLog_NOP;
+            logger.info = isLevelEnabledForLogging(core.LoggingLevels.INFO, m_memoryLogLevel) ? getMsgLogWLevelGenerator(core.LoggingLevels.INFO) : doMsgLog_NOP;
+            logger.debug = isLevelEnabledForLogging(core.LoggingLevels.DEBUG, m_memoryLogLevel) ? getMsgLogWLevelGenerator(core.LoggingLevels.DEBUG) : doMsgLog_NOP;
+            logger.trace = isLevelEnabledForLogging(core.LoggingLevels.TRACE, m_memoryLogLevel) ? getMsgLogWLevelGenerator(core.LoggingLevels.TRACE) : doMsgLog_NOP;
 
-            this.fatalCategory = isLevelEnabledForLogging(core.LoggingLevels.FATAL, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategory(core.LoggingLevels.FATAL) : doMsgLogCategory_NOP;
-            this.errorCategory = isLevelEnabledForLogging(core.LoggingLevels.ERROR, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategory(core.LoggingLevels.ERROR) : doMsgLogCategory_NOP;
-            this.warnCategory = isLevelEnabledForLogging(core.LoggingLevels.WARN, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategory(core.LoggingLevels.WARN) : doMsgLogCategory_NOP;
-            this.infoCategory = isLevelEnabledForLogging(core.LoggingLevels.INFO, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategory(core.LoggingLevels.INFO) : doMsgLogCategory_NOP;
-            this.debugCategory = isLevelEnabledForLogging(core.LoggingLevels.DEBUG, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategory(core.LoggingLevels.DEBUG) : doMsgLogCategory_NOP;
-            this.traceCategory = isLevelEnabledForLogging(core.LoggingLevels.TRACE, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategory(core.LoggingLevels.TRACE) : doMsgLogCategory_NOP;
+            logger.fatalCategory = isLevelEnabledForLogging(core.LoggingLevels.FATAL, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategory(core.LoggingLevels.FATAL) : doMsgLogCategory_NOP;
+            logger.errorCategory = isLevelEnabledForLogging(core.LoggingLevels.ERROR, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategory(core.LoggingLevels.ERROR) : doMsgLogCategory_NOP;
+            logger.warnCategory = isLevelEnabledForLogging(core.LoggingLevels.WARN, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategory(core.LoggingLevels.WARN) : doMsgLogCategory_NOP;
+            logger.infoCategory = isLevelEnabledForLogging(core.LoggingLevels.INFO, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategory(core.LoggingLevels.INFO) : doMsgLogCategory_NOP;
+            logger.debugCategory = isLevelEnabledForLogging(core.LoggingLevels.DEBUG, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategory(core.LoggingLevels.DEBUG) : doMsgLogCategory_NOP;
+            logger.traceCategory = isLevelEnabledForLogging(core.LoggingLevels.TRACE, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategory(core.LoggingLevels.TRACE) : doMsgLogCategory_NOP;
 
-            this.fatalIf = isLevelEnabledForLogging(core.LoggingLevels.FATAL, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCond(core.LoggingLevels.FATAL) : doMsgLogCond_NOP;
-            this.errorIf = isLevelEnabledForLogging(core.LoggingLevels.ERROR, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCond(core.LoggingLevels.ERROR) : doMsgLogCond_NOP;
-            this.warnIf = isLevelEnabledForLogging(core.LoggingLevels.WARN, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCond(core.LoggingLevels.WARN) : doMsgLogCond_NOP;
-            this.infoIf = isLevelEnabledForLogging(core.LoggingLevels.INFO, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCond(core.LoggingLevels.INFO) : doMsgLogCond_NOP;
-            this.debugIf = isLevelEnabledForLogging(core.LoggingLevels.DEBUG, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCond(core.LoggingLevels.DEBUG) : doMsgLogCond_NOP;
-            this.traceIf = isLevelEnabledForLogging(core.LoggingLevels.TRACE, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCond(core.LoggingLevels.TRACE) : doMsgLogCond_NOP;
+            logger.fatalIf = isLevelEnabledForLogging(core.LoggingLevels.FATAL, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCond(core.LoggingLevels.FATAL) : doMsgLogCond_NOP;
+            logger.errorIf = isLevelEnabledForLogging(core.LoggingLevels.ERROR, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCond(core.LoggingLevels.ERROR) : doMsgLogCond_NOP;
+            logger.warnIf = isLevelEnabledForLogging(core.LoggingLevels.WARN, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCond(core.LoggingLevels.WARN) : doMsgLogCond_NOP;
+            logger.infoIf = isLevelEnabledForLogging(core.LoggingLevels.INFO, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCond(core.LoggingLevels.INFO) : doMsgLogCond_NOP;
+            logger.debugIf = isLevelEnabledForLogging(core.LoggingLevels.DEBUG, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCond(core.LoggingLevels.DEBUG) : doMsgLogCond_NOP;
+            logger.traceIf = isLevelEnabledForLogging(core.LoggingLevels.TRACE, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCond(core.LoggingLevels.TRACE) : doMsgLogCond_NOP;
 
-            this.fatalCategoryIf = isLevelEnabledForLogging(core.LoggingLevels.FATAL, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategoryCond(core.LoggingLevels.FATAL) : doMsgLogCategoryCond_NOP;
-            this.errorCategoryIf = isLevelEnabledForLogging(core.LoggingLevels.ERROR, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategoryCond(core.LoggingLevels.ERROR) : doMsgLogCategoryCond_NOP;
-            this.warnCategoryIf = isLevelEnabledForLogging(core.LoggingLevels.WARN, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategoryCond(core.LoggingLevels.WARN) : doMsgLogCategoryCond_NOP;
-            this.infoCategoryIf = isLevelEnabledForLogging(core.LoggingLevels.INFO, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategoryCond(core.LoggingLevels.INFO) : doMsgLogCategoryCond_NOP;
-            this.debugCategoryIf = isLevelEnabledForLogging(core.LoggingLevels.DEBUG, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategoryCond(core.LoggingLevels.DEBUG) : doMsgLogCategoryCond_NOP;
-            this.traceCategoryIf = isLevelEnabledForLogging(core.LoggingLevels.TRACE, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategoryCond(core.LoggingLevels.TRACE) : doMsgLogCategoryCond_NOP;
+            logger.fatalCategoryIf = isLevelEnabledForLogging(core.LoggingLevels.FATAL, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategoryCond(core.LoggingLevels.FATAL) : doMsgLogCategoryCond_NOP;
+            logger.errorCategoryIf = isLevelEnabledForLogging(core.LoggingLevels.ERROR, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategoryCond(core.LoggingLevels.ERROR) : doMsgLogCategoryCond_NOP;
+            logger.warnCategoryIf = isLevelEnabledForLogging(core.LoggingLevels.WARN, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategoryCond(core.LoggingLevels.WARN) : doMsgLogCategoryCond_NOP;
+            logger.infoCategoryIf = isLevelEnabledForLogging(core.LoggingLevels.INFO, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategoryCond(core.LoggingLevels.INFO) : doMsgLogCategoryCond_NOP;
+            logger.debugCategoryIf = isLevelEnabledForLogging(core.LoggingLevels.DEBUG, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategoryCond(core.LoggingLevels.DEBUG) : doMsgLogCategoryCond_NOP;
+            logger.traceCategoryIf = isLevelEnabledForLogging(core.LoggingLevels.TRACE, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategoryCond(core.LoggingLevels.TRACE) : doMsgLogCategoryCond_NOP;
         }
         updateLoggingFunctions(this, m_memoryLogLevel);
 
@@ -644,6 +651,10 @@ function LoggerFactory(appName, options) {
                 console.error("Hard failure in disableSubLogger -- " + ex.toString());
             }
         };
+
+        this.__diagnosticOutput = function () {
+            return m_transport.data;
+        };
     }
 }
 
@@ -669,7 +680,6 @@ const s_defaultSubLoggerLevel = core.LoggingLevels.WARN;
 const s_loggerMap = new Map();
 
 const s_options = {
-    host: "string",
     emitCategories: "object",
     defaultPrefix: "boolean",
     retainLevel: "string",
@@ -703,7 +713,8 @@ module.exports = function (name, level, options) {
     const rlevel = core.LoggingLevels[level];
 
     const ropts = {
-        host: require("os").hostname()
+        host: require("os").hostname(),
+        memoryLogLevel: rlevel
     };
 
     Object.getOwnPropertyNames(options).forEach((p) => {
@@ -726,10 +737,10 @@ module.exports = function (name, level, options) {
     });
 
     if (ropts.retainLevel !== undefined) {
-        ropts.retainLevel = Math.min(core.LoggingLevels.WARN, rlevel);
+        ropts.retainLevel = Math.min(ropts.retainLevel, rlevel);
     }
     else {
-        ropts.retainLevel = Math.min(ropts.retainLevel, rlevel);
+        ropts.retainLevel = Math.min(core.LoggingLevels.WARN, rlevel);
     }
 
     //Lazy instantiate the logger factory
@@ -745,7 +756,7 @@ module.exports = function (name, level, options) {
         .map(function (frame) {
             return frame.substring(frame.indexOf("(") + 1, frame.lastIndexOf(".js:") + 3);
         });
-    const lfilename = cstack[cstack.length - 2];
+    const lfilename = cstack[1];
 
     let logger = s_loggerMap.get(name);
     if (!logger) {

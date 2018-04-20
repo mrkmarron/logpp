@@ -9,3 +9,6 @@ logpp.info("Fixed_Hello");
 //logpp.info(logpp.Fixed_Hello);
 
 logpp.emitFullLogSync();
+
+const data = logpp.__diagnosticOutput();
+console.log(data);

@@ -331,7 +331,6 @@ function extractMsgFormat(fmtName, fmtInfo) {
         fmtString = expandToJsonFormatter(fmtInfo);
     }
 
-
     if (s_newlineRegex.test(fmtString)) {
         throw new FormatSyntaxError("Format cannot contain newlines", undefined, 0);
     }

@@ -8,7 +8,6 @@ function JSONFormatter() {
     this.block = Buffer.allocUnsafe(1024);
     this.pos = 0;
 }
-exports.JSONFormatter = JSONFormatter;
 
 JSONFormatter.prototype.unlinkData = function () {
     const res = this.block;
@@ -136,4 +135,8 @@ JSONFormatter.prototype.emitSpecialVar = function (tag) {
             this.emitLiteralString("\"<Value>\"");
             break;
     }
+};
+
+exports.createJSONFormatter = function () {
+    return new JSONFormatter();
 };

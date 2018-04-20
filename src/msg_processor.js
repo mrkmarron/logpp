@@ -792,3 +792,7 @@ BlockList.prototype.emitArrayEntry = function (formatter) {
     formatter.emitChar("]");
     this.advanceWritePos();
 };
+
+exports.createBlockList = function () {
+    return new BlockList();
+};
