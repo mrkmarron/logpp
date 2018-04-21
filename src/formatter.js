@@ -10,7 +10,8 @@ function JSONFormatter() {
 }
 
 JSONFormatter.prototype.unlinkData = function () {
-    const res = this.block;
+    const res = Buffer.allocUnsafe(this.pos);
+    this.block.copy(res, 0, 0, this.pos);
 
     this.block = Buffer.allocUnsafe(1024);
     this.pos = 0;

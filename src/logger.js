@@ -602,8 +602,8 @@ function InMemoryLog() {
  * @method
  */
 InMemoryLog.prototype.clear = function () {
-    this.head.tags.fill(/*LogEntryTags_Clear*/0x0, this.head.epos);
-    this.head.data.fill(undefined, this.head.epos);
+    this.head.tags.fill(/*LogEntryTags_Clear*/0x0, 0, this.head.epos);
+    this.head.data.fill(undefined, 0, this.head.epos);
     this.head.spos = 0;
     this.head.epos = 0;
     this.head.next = null;
@@ -1047,13 +1047,13 @@ function isSizeBoundOk(iblock, sizeLimit) {
 }
 
 function isTimeBoundOk(iblock, timeLimit, now) {
-    const tpos = iblock.partialPos + 3;
-    if (tpos < iblock.count) {
+    const tpos = iblock.spos + 3;
+    if (tpos < iblock.epos) {
         return (iblock.tags[tpos] !== /*LogEntryTags_MsgWallTime*/0x22) || (now - iblock.data[tpos]) < timeLimit;
     }
     else {
         const nblock = iblock.next;
-        const npos = tpos % iblock.count;
+        const npos = tpos % iblock.epos;
 
         return (nblock.tags[npos] !== /*LogEntryTags_MsgWallTime*/0x22) || (now - nblock.data[npos]) < timeLimit;
     }
@@ -1079,16 +1079,18 @@ InMemoryLog.prototype.processMessagesForWrite = function (formatterLog, retainLe
             processSingleMessageForWrite_Helper(cblock, formatterLog) :
             processSingleMessageForDiscard_Helper(cblock);
 
-        const keepProcessingTime = isTimeBoundOk(nblock, timeLimit, now);
+        if (hasMoreDataToWrite(cblock)) {
+            const keepProcessingTime = isTimeBoundOk(nblock, timeLimit, now);
 
-        let keepProcessingSize = true;
-        if (nblock !== cblock) {
-            //We can go under on memory usage so do this check per block written
-            keepProcessingSize = isSizeBoundOk(nblock, sizeLimit);
-            cblock = nblock;
+            let keepProcessingSize = true;
+            if (nblock !== cblock) {
+                //We can go under on memory usage so do this check per block written
+                keepProcessingSize = isSizeBoundOk(nblock, sizeLimit);
+                cblock = nblock;
+            }
+
+            keepProcessing = keepProcessingTime || keepProcessingSize;
         }
-
-        keepProcessing = keepProcessingTime || keepProcessingSize;
     }
 
     while (this.head !== cblock) {
@@ -1106,8 +1108,8 @@ InMemoryLog.prototype.processMessagesForWrite = function (formatterLog, retainLe
  */
 InMemoryLog.prototype.processMessagesForWrite_HardFlush = function (formatterLog, forceall, retainLevel, retainCategories) {
     let cblock = this.head;
-    while (cblock !== null) {
-        if (hasMoreDataToWrite(cblock) && (forceall || isEnabledForWrite(cblock, retainLevel, retainCategories))) {
+    while (hasMoreDataToWrite(cblock)) {
+        if (forceall || isEnabledForWrite(cblock, retainLevel, retainCategories)) {
             cblock = processSingleMessageForWrite_Helper(cblock, formatterLog);
         }
         else {
@@ -1158,6 +1160,22 @@ function FormatterLog() {
 }
 
 /**
+ * Clear the contents of the InMemoryLog
+ * @method
+ */
+FormatterLog.prototype.clear = function () {
+    this.head.tags.fill(/*LogEntryTags_Clear*/0x0, 0, this.head.epos);
+    this.head.data.fill(0, 0, this.head.epos);
+    this.head.strings.fill(undefined, 0, this.head.stringPos);
+    this.head.spos = 0;
+    this.head.epos = 0;
+    this.head.stringPos = 0;
+    this.head.next = null;
+
+    this.tail = this.head;
+};
+
+/**
  * Add an entry to the InMemoryLog
  * @method
  * @param {number} tag the tag for the entry
@@ -1166,7 +1184,7 @@ function FormatterLog() {
 FormatterLog.prototype.addEntry = function (tag, data) {
     let block = this.tail;
     if (block.epos === /*MemoryMsgBlockSize*/256) {
-        block = createMemoryMsgBlock(block);
+        block = createFormatterMsgBlock(block);
         this.tail = block;
     }
 
@@ -1240,11 +1258,11 @@ FormatterLog.prototype.hasEntriesToWrite = function () {
 };
 
 FormatterLog.prototype.getCurrentWriteTag = function () {
-    this.head.tags[this.head.spos];
+    return this.head.tags[this.head.spos];
 };
 
 FormatterLog.prototype.getCurrentWriteData = function () {
-    this.head.data[this.head.spos];
+    return this.head.data[this.head.spos];
 };
 
 FormatterLog.prototype.getStringForIdx = function (idx) {
@@ -1291,25 +1309,28 @@ FormatterLog.prototype.emitKEntries = function (formatter, doprefix, k) {
  * @param {bool} doprefix true if we want to write a standard "LEVEL#CATEGORY TIME? -- " prefix
  */
 FormatterLog.prototype.emitFormatEntry = function (formatter, doprefix) {
-    const fmt = s_fmtMap.get(this.readCurrentWriteData());
+    const fmt = s_fmtMap.get(this.getCurrentWriteData());
     this.advanceWritePos();
 
     if (!doprefix) {
         this.advanceWritePos();
         this.advanceWritePos();
 
-        if (this.readCurrentWriteTag() === /*LogEntryTags_MsgWallTime*/0x22) {
+        if (this.getCurrentWriteTag() === /*LogEntryTags_MsgWallTime*/0x22) {
             this.advanceWritePos();
         }
     }
     else {
-        formatter.emitLiteralString(LoggingLevelToNameMap[this.readCurrentWriteData()]);
+        formatter.emitLiteralString(LoggingLevelToNameMap[this.getCurrentWriteData()]);
         this.advanceWritePos();
-        formatter.emitChar("#");
-        formatter.emitLiteralString(this.readCurrentWriteData());
+        formatter.emitLiteralChar("#");
+
+        const categoryidx = this.getCurrentWriteData();
+        formatter.emitLiteralString(categoryidx === -1 ? "default" : this.getStringForIdx(categoryidx));
         this.advanceWritePos();
 
-        if (this.readCurrentWriteTag() === /*LogEntryTags_MsgWallTime*/0x22) {
+        if (this.getCurrentWriteTag() === /*LogEntryTags_MsgWallTime*/0x22) {
+            formatter.emitLiteralString(" @ ");
             formatter.emitLiteralString((new Date(this.getCurrentWriteData())).toISOString());
             this.advanceWritePos();
         }
@@ -1323,8 +1344,8 @@ FormatterLog.prototype.emitFormatEntry = function (formatter, doprefix) {
 
     formatter.emitString(fmt.initialFormatStringSegment);
 
-    while (this.readCurrentWriteTag() !== /*LogEntryTags_MsgEndSentinal*/0x4) {
-        const tag = this.readCurrentWriteTag();
+    while (this.getCurrentWriteTag() !== /*LogEntryTags_MsgEndSentinal*/0x4) {
+        const tag = this.getCurrentWriteTag();
 
         if (tag === /*LogEntryTags_LParen*/0x5) {
             this.emitObjectEntry(formatter);
@@ -1340,7 +1361,7 @@ FormatterLog.prototype.emitFormatEntry = function (formatter, doprefix) {
             const formatSpec = formatEntry.format;
 
             if (formatSpec.kind === /*FormatStringEntryKind_Literal*/0x1) {
-                formatter.emitChar(formatEntry === /*SingletonFormatStringEntry_HASH*/0x11 ? "#" : "%");
+                formatter.emitLiteralChar(formatEntry === /*SingletonFormatStringEntry_HASH*/0x11 ? "#" : "%");
             }
             else if (formatSpec.kind === /*FormatStringEntryKind_Expando*/0x2) {
                 const specEnum = formatSpec.enum;
@@ -1441,7 +1462,7 @@ FormatterLog.prototype.emitVarTagEntry = function (formatter) {
  * @param {Object} formatter the formatter that knows how to serialize data values
  */
 FormatterLog.prototype.emitObjectEntry = function (formatter) {
-    formatter.emitChar("{");
+    formatter.emitLiteralChar("{");
     this.advanceWritePos();
 
     let skipComma = true;
@@ -1470,7 +1491,7 @@ FormatterLog.prototype.emitObjectEntry = function (formatter) {
         }
     }
 
-    formatter.emitChar("}");
+    formatter.emitLiteralChar("}");
     this.advanceWritePos();
 };
 
@@ -1480,7 +1501,7 @@ FormatterLog.prototype.emitObjectEntry = function (formatter) {
  * @param {Object} formatter the formatter that knows how to serialize data values
  */
 FormatterLog.prototype.emitArrayEntry = function (formatter) {
-    formatter.emitChar("[");
+    formatter.emitLiteralChar("[");
     this.advanceWritePos();
 
     let skipComma = true;
@@ -1505,7 +1526,7 @@ FormatterLog.prototype.emitArrayEntry = function (formatter) {
         }
     }
 
-    formatter.emitChar("]");
+    formatter.emitLiteralChar("]");
     this.advanceWritePos();
 };
 
