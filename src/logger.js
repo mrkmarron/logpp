@@ -427,7 +427,7 @@ function extractArgumentFormatSpecifier(fmtString, vpos) {
         }
 
         if (basicFormatOption) {
-            const fendpos = basicFormatOption.label.length + 1; //"fmt}".length
+            const fendpos = specPos + basicFormatOption.label.length + 1; //"fmt}".length
             return createMsgFormatEntry(basicFormatOption, vpos, fendpos, argPosition, -1, -1);
         }
         else {
@@ -906,8 +906,11 @@ InMemoryLog.prototype.logMessage = function (env, level, category, doTimestamp, 
                 this.addJsVarValueEntry(Date.now());
             }
             else if (specEnum === /*SingletonFormatStringEntry_TIMESTAMP*/0x17) {
-                this.addJsVarValueEntry(env.TIMESTAMP);
+                this.addJsVarValueEntry(env.globalEnv.TIMESTAMP);
                 incTimeStamp = true;
+            }
+            else if (specEnum === /*SingletonFormatStringEntry_MODULE*/0x14) {
+                this.addJsVarValueEntry(env[formatSpec.name]);
             }
             else {
                 this.addJsVarValueEntry(env.globalEnv[formatSpec.name]);
@@ -1199,11 +1202,11 @@ FormatterLog.prototype.addEntry = function (tag, data) {
             const dtype = typeof (data);
             if (dtype === "boolean") {
                 block.tags[block.epos] = /*LogEntryTags_JsVarValue_Bool*/0x32;
-                block.data[block.epos] = dtype ? 1 : 0;
+                block.data[block.epos] = data ? 1 : 0;
             }
             else if (dtype === "number") {
                 block.tags[block.epos] = /*LogEntryTags_JsVarValue_Number*/0x34;
-                block.data[block.epos] = dtype;
+                block.data[block.epos] = data;
             }
             else if (dtype === "string") {
                 block.tags[block.epos] = /*LogEntryTags_JsVarValue_String*/0x38;
@@ -1344,80 +1347,86 @@ FormatterLog.prototype.emitFormatEntry = function (formatter, doprefix) {
 
     formatter.emitString(fmt.initialFormatStringSegment);
 
-    while (this.getCurrentWriteTag() !== /*LogEntryTags_MsgEndSentinal*/0x4) {
-        const tag = this.getCurrentWriteTag();
+    for (formatIndex = 0; formatIndex < formatArray.length; formatIndex++) {
+        const formatEntry = formatArray[formatIndex];
+        const formatSpec = formatEntry.format;
 
-        if (tag === /*LogEntryTags_LParen*/0x5) {
-            this.emitObjectEntry(formatter);
-            //position is advanced in call
+        if (formatSpec.kind === /*FormatStringEntryKind_Literal*/0x1) {
+            formatter.emitLiteralChar(formatSpec.enum === /*SingletonFormatStringEntry_HASH*/0x11 ? "#" : "%");
         }
-        else if (tag === /*LogEntryTags_LBrack*/0x7) {
-            this.emitArrayEntry(formatter);
-            //position is advanced in call
-        }
-        else {
+        else if (formatSpec.kind === /*FormatStringEntryKind_Expando*/0x2) {
             const data = this.getCurrentWriteData();
-            const formatEntry = formatArray[formatIndex];
-            const formatSpec = formatEntry.format;
-
-            if (formatSpec.kind === /*FormatStringEntryKind_Literal*/0x1) {
-                formatter.emitLiteralChar(formatEntry === /*SingletonFormatStringEntry_HASH*/0x11 ? "#" : "%");
+            const specEnum = formatSpec.enum;
+            if (specEnum === /*SingletonFormatStringEntry_SOURCE*/0x15) {
+                formatter.emitCallStack(this.getStringForIdx(data));
             }
-            else if (formatSpec.kind === /*FormatStringEntryKind_Expando*/0x2) {
-                const specEnum = formatSpec.enum;
-                if (specEnum === /*SingletonFormatStringEntry_SOURCE*/0x15) {
-                    formatter.emitCallStack(data);
-                }
-                else if (specEnum === /*SingletonFormatStringEntry_WALLCLOCK*/0x16) {
-                    formatter.emitLiteralString((new Date(data)).toISOString());
-                }
-                else if (specEnum === /*SingletonFormatStringEntry_TIMESTAMP*/0x17) {
-                    formatter.emitNumber(data);
-                }
-                else {
-                    this.emitVarTagEntry(formatter);
-                }
+            else if (specEnum === /*SingletonFormatStringEntry_WALLCLOCK*/0x16) {
+                formatter.emitLiteralString((new Date(data)).toISOString());
+            }
+            else if (specEnum === /*SingletonFormatStringEntry_TIMESTAMP*/0x17 || specEnum === /*SingletonFormatStringEntry_CALLBACK*/0x18 || specEnum === /*SingletonFormatStringEntry_REQUEST*/0x19) {
+                formatter.emitNumber(data);
             }
             else {
-                const vtag = this.getCurrentWriteTag();
-                if (vtag === /*LogEntryTags_JsBadFormatVar*/0xA) {
-                    this.emitVarTagEntry(formatter);
-                }
-                else {
-                    switch (formatSpec.enum) {
-                        case /*SingletonFormatStringEntry_BOOL*/0x22:
-                            formatter.emitLiteralString(data === 1 ? "true" : "false");
-                            break;
-                        case /*SingletonFormatStringEntry_NUMBER*/0x23:
-                            formatter.emitNumber(data);
-                            break;
-                        case /*SingletonFormatStringEntry_STRING*/0x24:
-                            formatter.emitJsString(this.getStringForIdx(data));
-                            break;
-                        case /*SingletonFormatStringEntry_DATEISO*/0x25:
-                            formatter.emitLiteralString((new Date(data)).toISOString());
-                            break;
-                        case /*SingletonFormatStringEntry_DATEUTC*/0x26:
-                            formatter.emitLiteralString((new Date(data)).toUTCString());
-                            break;
-                        case /*SingletonFormatStringEntry_DATELOCAL*/0x27:
-                            formatter.emitLiteralString((new Date(data)).toString());
-                            break;
-                        default:
-                            this.emitVarTagEntry(formatter);
-                            break;
-                    }
-                }
+                formatter.emitJsString(this.getStringForIdx(data));
             }
-
             this.advanceWritePos();
         }
+        else {
+            const tag = this.getCurrentWriteTag();
+            const data = this.getCurrentWriteData();
 
-        this.writer.emitFullString(tailingFormatSegmentArray[formatIndex]);
-        formatIndex++;
+            if (tag === /*LogEntryTags_JsBadFormatVar*/0xA) {
+                this.emitVarTagEntry(formatter);
+                this.advanceWritePos();
+            }
+            else {
+                switch (formatSpec.enum) {
+                    case /*SingletonFormatStringEntry_BOOL*/0x22:
+                        formatter.emitLiteralString(data === 1 ? "true" : "false");
+                        this.advanceWritePos();
+                        break;
+                    case /*SingletonFormatStringEntry_NUMBER*/0x23:
+                        formatter.emitNumber(data);
+                        this.advanceWritePos();
+                        break;
+                    case /*SingletonFormatStringEntry_STRING*/0x24:
+                        formatter.emitJsString(this.getStringForIdx(data));
+                        this.advanceWritePos();
+                        break;
+                    case /*SingletonFormatStringEntry_DATEISO*/0x25:
+                        formatter.emitLiteralString((new Date(data)).toISOString());
+                        this.advanceWritePos();
+                        break;
+                    case /*SingletonFormatStringEntry_DATEUTC*/0x26:
+                        formatter.emitLiteralString((new Date(data)).toUTCString());
+                        this.advanceWritePos();
+                        break;
+                    case /*SingletonFormatStringEntry_DATELOCAL*/0x27:
+                        formatter.emitLiteralString((new Date(data)).toString());
+                        this.advanceWritePos();
+                        break;
+                    case /*LogEntryTags_LParen*/0x5:
+                        this.emitObjectEntry(formatter);
+                        //position is advanced in call
+                        break;
+                    case /*LogEntryTags_LBrack*/0x7:
+                        this.emitArrayEntry(formatter);
+                        //position is advanced in call
+                        break;
+                    default:
+                        this.emitVarTagEntry(formatter);
+                        this.advanceWritePos();
+                        break;
+                }
+            }
+        }
+
+        formatter.emitLiteralString(tailingFormatSegmentArray[formatIndex]);
     }
 
     formatter.emitLiteralString("\n");
+
+    assert(this.getCurrentWriteTag() === /*LogEntryTags_MsgEndSentinal*/0x4, "We messed up something.");
     this.advanceWritePos();
 };
 
@@ -1701,7 +1710,6 @@ function LoggerFactory(appName, options) {
             globalEnv: m_globalenv,
             MODULE: moduleName,
             logger_path: __filename,
-            msg_path: path.join(path.dirname(__filename), "msg_processor.js")
         };
 
         /**
@@ -2154,7 +2162,10 @@ function LoggerFactory(appName, options) {
         };
 
         this.__diagnosticOutput = function () {
-            return m_transport.data;
+            const res = m_transport.data.trim();
+            m_transport.data = "";
+
+            return res;
         };
     }
 }

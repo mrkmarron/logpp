@@ -73,13 +73,14 @@ JSONFormatter.prototype.emitNumber = function (value) {
 };
 
 JSONFormatter.prototype.emitCallStack = function (cstack) {
-    const csstr = JSON.stringify(cstack);
-    const bytelen = Buffer.byteLength(csstr, "utf8");
-    if ((this.pos + bytelen) >= this.block.length) {
-        this.resize(this.pos + bytelen);
+    const bytelen = Buffer.byteLength(cstack, "utf8");
+    if ((this.pos + bytelen + 2) >= this.block.length) {
+        this.resize(this.pos + bytelen + 2);
     }
 
-    this.pos += this.block.write(csstr, this.pos, bytelen, "utf8");
+    this.pos += this.block.write("\"", this.pos, 1, "utf8");
+    this.pos += this.block.write(cstack, this.pos, bytelen, "utf8");
+    this.pos += this.block.write("\"", this.pos, 1, "utf8");
 };
 
 JSONFormatter.prototype.emitSpecialVar = function (tag) {
