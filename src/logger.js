@@ -9,6 +9,11 @@ const path = require("path");
 //  we actually put in the code where needed (so no need to load in bytecode and very obvious for JIT).
 
 /**
+ * Global map of ids -> format specifications
+ */
+const s_fmtMap = new Map();
+
+/**
  * Tag values for logging levels.
  */
 const LoggingLevels = {
@@ -32,6 +37,32 @@ LoggingLevelToNameMap[0x1F] = "DEBUG";
 LoggingLevelToNameMap[0x3F] = "TRACE";
 LoggingLevelToNameMap[0xFF] = "ALL";
 
+function sanitizeLogLevel(level) {
+    if (level >= LoggingLevels.ALL) {
+        return LoggingLevels.ALL;
+    }
+    else if (level >= LoggingLevels.TRACE) {
+        return LoggingLevels.TRACE;
+    }
+    else if (level >= LoggingLevels.DEBUG) {
+        return LoggingLevels.DEBUG;
+    }
+    else if (level >= LoggingLevels.INFO) {
+        return LoggingLevels.INFO;
+    }
+    else if (level >= LoggingLevels.WARN) {
+        return LoggingLevels.WARN;
+    }
+    else if (level >= LoggingLevels.ERROR) {
+        return LoggingLevels.ERROR;
+    }
+    else if (level >= LoggingLevels.FATAL) {
+        return LoggingLevels.FATAL;
+    }
+    else {
+        return LoggingLevels.OFF;
+    }
+}
 
 /*
  * Default values we expand objects and arrays
@@ -466,10 +497,11 @@ const s_newlineRegex = /(\n|\r)/;
  * Takes a message format string and converts it to our internal format structure.
  * @function
  * @param {string} fmtName the name of the format
+ * @param {number} fmtId the numeric id to be associated with this format
  * @param {string|Object} fmtString the raw format string or a JSON style format
  * @returns {Object} our MsgFormat object
  */
-function extractMsgFormat(fmtName, fmtInfo) {
+function extractMsgFormat(fmtName, fmtId, fmtInfo) {
     let cpos = 0;
 
     if (typeof (fmtName) !== "string") {
@@ -522,7 +554,7 @@ function extractMsgFormat(fmtName, fmtInfo) {
         tailingFormatSegmentArray.push(fmtString.substr(start, end - start));
     }
 
-    return createMsgFormat(fmtName, fmtString, maxArgPos, fArray, initialFormatSegment, tailingFormatSegmentArray, allBasicFormatters);
+    return createMsgFormat(fmtName, fmtId, fmtString, maxArgPos, fArray, initialFormatSegment, tailingFormatSegmentArray, allBasicFormatters);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1076,10 +1108,10 @@ InMemoryLog.prototype.processMessagesForWrite_HardFlush = function (formatterLog
     let cblock = this.head;
     while (cblock !== null) {
         if (hasMoreDataToWrite(cblock) && (forceall || isEnabledForWrite(cblock, retainLevel, retainCategories))) {
-            cblock = processSingleMessageForWrite_Helper(formatterLog, cblock);
+            cblock = processSingleMessageForWrite_Helper(cblock, formatterLog);
         }
         else {
-            cblock = processSingleMessageForDiscard_Helper(formatterLog, cblock);
+            cblock = processSingleMessageForDiscard_Helper(cblock, formatterLog);
         }
     }
 
@@ -1121,7 +1153,7 @@ function createFormatterMsgBlock(previousBlock) {
  * @constructor
  */
 function FormatterLog() {
-    this.head = createMemoryMsgBlock(null);
+    this.head = createFormatterMsgBlock(null);
     this.tail = this.head;
 }
 
@@ -1259,7 +1291,7 @@ FormatterLog.prototype.emitKEntries = function (formatter, doprefix, k) {
  * @param {bool} doprefix true if we want to write a standard "LEVEL#CATEGORY TIME? -- " prefix
  */
 FormatterLog.prototype.emitFormatEntry = function (formatter, doprefix) {
-    const fmt = this.readCurrentWriteData();
+    const fmt = s_fmtMap.get(this.readCurrentWriteData());
     this.advanceWritePos();
 
     if (!doprefix) {
@@ -1477,13 +1509,11 @@ FormatterLog.prototype.emitArrayEntry = function (formatter) {
     this.advanceWritePos();
 };
 
+/////////////////////////////////////////////////////////////////////////////////////////////////
+//Define the actual logger
 
-
-
-
-
-
-const transporters = require("./log_transport");
+const formatters = require("./formatter");
+const transporters = require("./transport");
 const scheduler = require("./scheduler").createScheduler(250, 50);
 
 //number of elements to stringify into write buffer at a time
@@ -1498,33 +1528,6 @@ function doMsgLog_NOP(fmt, ...args) { }
 function doMsgLogCategory_NOP(category, fmt, ...args) { }
 function doMsgLogCond_NOP(cond, fmt, ...args) { }
 function doMsgLogCategoryCond_NOP(cond, fmt, ...args) { }
-
-function sanitizeLogLevel(level) {
-    if (level >= core.LoggingLevels.ALL) {
-        return core.LoggingLevels.ALL;
-    }
-    else if (level >= core.LoggingLevels.TRACE) {
-        return core.LoggingLevels.TRACE;
-    }
-    else if (level >= core.LoggingLevels.DEBUG) {
-        return core.LoggingLevels.DEBUG;
-    }
-    else if (level >= core.LoggingLevels.INFO) {
-        return core.LoggingLevels.INFO;
-    }
-    else if (level >= core.LoggingLevels.WARN) {
-        return core.LoggingLevels.WARN;
-    }
-    else if (level >= core.LoggingLevels.ERROR) {
-        return core.LoggingLevels.ERROR;
-    }
-    else if (level >= core.LoggingLevels.FATAL) {
-        return core.LoggingLevels.FATAL;
-    }
-    else {
-        return core.LoggingLevels.OFF;
-    }
-}
 
 /**
  * From the option object tag build the appropriate transporter
@@ -1574,12 +1577,13 @@ function LoggerFactory(appName, options) {
 
     //True if we want to include a standard prefix on each log message
     const m_doPrefix = typeof (options.defaultPrefix) === "boolean" ? options.defaultPrefix : true;
+    const m_doTimeLimit = true;
 
     //Blocklists containing the information logged into memory and pending to write out
-    const m_memoryBlockList = new processor.createBlockList();
-    const m_writeBlockList = new processor.createBlockList();
+    const m_inMemoryLog = new InMemoryLog();
+    const m_formatterLog = new FormatterLog();
 
-    let m_retainLevel = sanitizeLogLevel(typeof (options.retainLevel) === "number" ? options.retainLevel : core.LoggingLevels.WARN);
+    let m_retainLevel = sanitizeLogLevel(typeof (options.retainLevel) === "number" ? options.retainLevel : LoggingLevels.WARN);
     const m_retainCategories = {};
     const ctg = options.retainCategories || { "default": true };
     Object.getOwnPropertyNames(ctg).forEach((p) => {
@@ -1588,7 +1592,6 @@ function LoggerFactory(appName, options) {
         }
     });
 
-    const m_doTimeLimit = options.bufferSizeLimit !== undefined ? false : true;
     let m_maxBufferTime = typeof (options.bufferTimeLimit) === "number" ? options.bufferTimeLimit : 1000;
     let m_maxBufferSize = typeof (options.bufferSizeLimit) === "number" ? options.bufferSizeLimit : 8192;
 
@@ -1600,15 +1603,10 @@ function LoggerFactory(appName, options) {
         let timelimit = false;
 
         try {
-            if (m_doTimeLimit) {
-                m_memoryBlockList.processMessagesForWrite_TimeRing(m_retainLevel, m_retainCategories, m_writeBlockList, m_maxBufferTime);
-            }
-            else {
-                m_memoryBlockList.processMessagesForWrite_SizeRing(m_retainLevel, m_retainCategories, m_writeBlockList, m_maxBufferSize);
-            }
+            m_inMemoryLog.processMessagesForWrite(m_formatterLog, m_retainLevel, m_retainCategories, m_maxBufferTime, m_maxBufferSize);
 
             while (!donework && !waitflush && !timelimit) {
-                donework = !m_writeBlockList.emitKEntries(m_formatter, m_doPrefix, m_writeGroupSize);
+                donework = !m_formatterLog.emitKEntries(m_formatter, m_doPrefix, m_writeGroupSize);
 
                 const dataBlock = m_formatter.unlinkData();
                 waitflush = !m_transport.writeData(dataBlock);
@@ -1726,7 +1724,7 @@ function LoggerFactory(appName, options) {
                 let slogLevel = sanitizeLogLevel(logLevel);
                 if (s_rootLogger !== this) {
                     if (s_disabledSubLoggerNames.has(moduleName)) {
-                        slogLevel = core.LoggingLevels.OFF;
+                        slogLevel = LoggingLevels.OFF;
                     }
                     else {
                         const enabledlevel = s_enabledSubLoggerNames.get(moduleName);
@@ -1760,7 +1758,7 @@ function LoggerFactory(appName, options) {
 
                 const slogLevel = sanitizeLogLevel(logLevel);
                 if (m_retainLevel !== slogLevel) {
-                    m_memoryBlockList.processMessagesForWrite_HardFlush(false, slogLevel, m_retainCategories, m_writeBlockList);
+                    m_inMemoryLog.processMessagesForWrite_HardFlush(m_formatterLog, false, slogLevel, m_retainCategories);
                     m_retainLevel = slogLevel;
                 }
             }
@@ -1809,7 +1807,7 @@ function LoggerFactory(appName, options) {
                 }
 
                 if (m_retainCategories[category] !== true) {
-                    m_memoryBlockList.processMessagesForWrite_HardFlush(false, m_retainLevel, m_retainCategories, m_writeBlockList);
+                    m_inMemoryLog.processMessagesForWrite_HardFlush(m_formatterLog, false, m_retainLevel, m_retainCategories);
                     m_retainCategories[category] = true;
                 }
             }
@@ -1833,7 +1831,7 @@ function LoggerFactory(appName, options) {
                 }
 
                 if (m_retainCategories[category] !== false) {
-                    m_memoryBlockList.processMessagesForWrite_HardFlush(false, m_retainLevel, m_retainCategories, m_writeBlockList);
+                    m_inMemoryLog.processMessagesForWrite_HardFlush(m_formatterLog, false, m_retainLevel, m_retainCategories);
                     m_retainCategories[category] = false;
                 }
             }
@@ -1844,20 +1842,15 @@ function LoggerFactory(appName, options) {
 
         /**
          * Set the ring buffer bound based on the age of the entires -- not older than the bound.
-         * We currently do not allow switching between size/time but you can change the value.
          * @param {number} timeBound is the new time limit for the ring buffer
          */
-        this.setBufferAsTimeLengthBound = function (timeBound) {
+        this.setTimeLengthBound = function (timeBound) {
             if (typeof (timeBound) !== "number" || timeBound <= 0) {
                 return;
             }
 
             try {
                 if (s_rootLogger !== this) {
-                    return;
-                }
-
-                if (!m_doTimeLimit) {
                     return;
                 }
 
@@ -1870,20 +1863,15 @@ function LoggerFactory(appName, options) {
 
         /**
          * Set the ring buffer bound based on the size of the entries -- not larger than the size bound
-         * We currently do not allow switching between size/time but you can change the value.
          * @param {number} sizeBound is the new size limit for the ring buffer
          */
-        this.setBufferAsSizeBound = function (sizeBound) {
+        this.setBufferSizeBound = function (sizeBound) {
             if (typeof (sizeBound) !== "number" || sizeBound <= 0) {
                 return;
             }
 
             try {
                 if (s_rootLogger !== this) {
-                    return;
-                }
-
-                if (m_doTimeLimit) {
                     return;
                 }
 
@@ -1914,8 +1902,9 @@ function LoggerFactory(appName, options) {
             }
 
             try {
-                const fmtObj = specifier.extractMsgFormat(fmtName, fmtInfo);
+                const fmtObj = extractMsgFormat(fmtName, s_fmtMap.size, fmtInfo);
                 m_formatInfo.set(fmtName, fmtObj);
+                s_fmtMap.set(fmtObj.formatId, fmtObj);
             }
             catch (ex) {
                 console.error("Hard failure in addFormat -- " + ex.toString());
@@ -1931,13 +1920,28 @@ function LoggerFactory(appName, options) {
         }
 
         function generateImplicitFormat(fmtInfo, args) {
+            //Get the line string of the caller
+            const cstack = new Error()
+                .stack
+                .split("\n")
+                .slice(2);
+            const lfilename = cstack[0];
+
+            if (m_formatInfo.has(lfilename)) {
+                return m_formatInfo.get(lfilename);
+            }
+
+            let fmtObj = undefined;
             if (typeof (fmtInfo) === "string") {
-                return specifier.extractMsgFormat("implicit_format", fmtInfo.substr(1, fmtInfo.length - 2)); //trim %
+                fmtObj = extractMsgFormat("implicit_format", s_fmtMap.size, fmtInfo.substr(1, fmtInfo.length - 2)); //trim %
             }
             else {
                 args.unshift(fmtInfo);
-                return specifier.extractMsgFormat("implicit_format", "%{0:g}");
+                fmtObj = extractMsgFormat("implicit_format", s_fmtMap.size, "%{0:g}");
             }
+
+            m_formatInfo.set(lfilename, fmtObj);
+            s_fmtMap.set(fmtObj.formatId, fmtObj);
         }
 
         /**
@@ -1954,7 +1958,7 @@ function LoggerFactory(appName, options) {
                         console.error("Format name is not defined for this logger -- " + fmt);
                     }
 
-                    m_memoryBlockList.logMessage(m_env, fixedLevel, "default", m_doTimeLimit, fmti, args);
+                    m_inMemoryLog.logMessage(m_env, fixedLevel, "default", m_doTimeLimit, fmti, args);
                     if (scheduler.notify()) {
                         setTimeout(processentriescb, scheduler.getCurrentSchedulingWait());
                     }
@@ -1975,7 +1979,7 @@ function LoggerFactory(appName, options) {
                             console.error("Format name is not defined for this logger -- " + fmt);
                         }
 
-                        m_memoryBlockList.logMessage(m_env, fixedLevel, category, m_doTimeLimit, fmti, args);
+                        m_inMemoryLog.logMessage(m_env, fixedLevel, category, m_doTimeLimit, fmti, args);
                         if (scheduler.notify()) {
                             setTimeout(processentriescb, scheduler.getCurrentSchedulingWait());
                         }
@@ -1997,7 +2001,7 @@ function LoggerFactory(appName, options) {
                             console.error("Format name is not defined for this logger -- " + fmt);
                         }
 
-                        m_memoryBlockList.logMessage(m_env, fixedLevel, "default", m_doTimeLimit, fmti, args);
+                        m_inMemoryLog.logMessage(m_env, fixedLevel, "default", m_doTimeLimit, fmti, args);
                         if (scheduler.notify()) {
                             setTimeout(processentriescb, scheduler.getCurrentSchedulingWait());
                         }
@@ -2020,7 +2024,7 @@ function LoggerFactory(appName, options) {
                                 console.error("Format name is not defined for this logger -- " + fmt);
                             }
 
-                            m_memoryBlockList.logMessage(m_env, fixedLevel, category, m_doTimeLimit, fmti, args);
+                            m_inMemoryLog.logMessage(m_env, fixedLevel, category, m_doTimeLimit, fmti, args);
                             if (scheduler.notify()) {
                                 setTimeout(processentriescb, scheduler.getCurrentSchedulingWait());
                             }
@@ -2034,33 +2038,33 @@ function LoggerFactory(appName, options) {
         }
 
         function updateLoggingFunctions(logger, logLevel) {
-            logger.fatal = isLevelEnabledForLogging(core.LoggingLevels.FATAL, m_memoryLogLevel) ? getMsgLogWLevelGenerator(core.LoggingLevels.FATAL) : doMsgLog_NOP;
-            logger.error = isLevelEnabledForLogging(core.LoggingLevels.ERROR, m_memoryLogLevel) ? getMsgLogWLevelGenerator(core.LoggingLevels.ERROR) : doMsgLog_NOP;
-            logger.warn = isLevelEnabledForLogging(core.LoggingLevels.WARN, m_memoryLogLevel) ? getMsgLogWLevelGenerator(core.LoggingLevels.WARN) : doMsgLog_NOP;
-            logger.info = isLevelEnabledForLogging(core.LoggingLevels.INFO, m_memoryLogLevel) ? getMsgLogWLevelGenerator(core.LoggingLevels.INFO) : doMsgLog_NOP;
-            logger.debug = isLevelEnabledForLogging(core.LoggingLevels.DEBUG, m_memoryLogLevel) ? getMsgLogWLevelGenerator(core.LoggingLevels.DEBUG) : doMsgLog_NOP;
-            logger.trace = isLevelEnabledForLogging(core.LoggingLevels.TRACE, m_memoryLogLevel) ? getMsgLogWLevelGenerator(core.LoggingLevels.TRACE) : doMsgLog_NOP;
+            logger.fatal = isLevelEnabledForLogging(LoggingLevels.FATAL, m_memoryLogLevel) ? getMsgLogWLevelGenerator(LoggingLevels.FATAL) : doMsgLog_NOP;
+            logger.error = isLevelEnabledForLogging(LoggingLevels.ERROR, m_memoryLogLevel) ? getMsgLogWLevelGenerator(LoggingLevels.ERROR) : doMsgLog_NOP;
+            logger.warn = isLevelEnabledForLogging(LoggingLevels.WARN, m_memoryLogLevel) ? getMsgLogWLevelGenerator(LoggingLevels.WARN) : doMsgLog_NOP;
+            logger.info = isLevelEnabledForLogging(LoggingLevels.INFO, m_memoryLogLevel) ? getMsgLogWLevelGenerator(LoggingLevels.INFO) : doMsgLog_NOP;
+            logger.debug = isLevelEnabledForLogging(LoggingLevels.DEBUG, m_memoryLogLevel) ? getMsgLogWLevelGenerator(LoggingLevels.DEBUG) : doMsgLog_NOP;
+            logger.trace = isLevelEnabledForLogging(LoggingLevels.TRACE, m_memoryLogLevel) ? getMsgLogWLevelGenerator(LoggingLevels.TRACE) : doMsgLog_NOP;
 
-            logger.fatalCategory = isLevelEnabledForLogging(core.LoggingLevels.FATAL, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategory(core.LoggingLevels.FATAL) : doMsgLogCategory_NOP;
-            logger.errorCategory = isLevelEnabledForLogging(core.LoggingLevels.ERROR, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategory(core.LoggingLevels.ERROR) : doMsgLogCategory_NOP;
-            logger.warnCategory = isLevelEnabledForLogging(core.LoggingLevels.WARN, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategory(core.LoggingLevels.WARN) : doMsgLogCategory_NOP;
-            logger.infoCategory = isLevelEnabledForLogging(core.LoggingLevels.INFO, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategory(core.LoggingLevels.INFO) : doMsgLogCategory_NOP;
-            logger.debugCategory = isLevelEnabledForLogging(core.LoggingLevels.DEBUG, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategory(core.LoggingLevels.DEBUG) : doMsgLogCategory_NOP;
-            logger.traceCategory = isLevelEnabledForLogging(core.LoggingLevels.TRACE, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategory(core.LoggingLevels.TRACE) : doMsgLogCategory_NOP;
+            logger.fatalCategory = isLevelEnabledForLogging(LoggingLevels.FATAL, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategory(LoggingLevels.FATAL) : doMsgLogCategory_NOP;
+            logger.errorCategory = isLevelEnabledForLogging(LoggingLevels.ERROR, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategory(LoggingLevels.ERROR) : doMsgLogCategory_NOP;
+            logger.warnCategory = isLevelEnabledForLogging(LoggingLevels.WARN, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategory(LoggingLevels.WARN) : doMsgLogCategory_NOP;
+            logger.infoCategory = isLevelEnabledForLogging(LoggingLevels.INFO, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategory(LoggingLevels.INFO) : doMsgLogCategory_NOP;
+            logger.debugCategory = isLevelEnabledForLogging(LoggingLevels.DEBUG, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategory(LoggingLevels.DEBUG) : doMsgLogCategory_NOP;
+            logger.traceCategory = isLevelEnabledForLogging(LoggingLevels.TRACE, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategory(LoggingLevels.TRACE) : doMsgLogCategory_NOP;
 
-            logger.fatalIf = isLevelEnabledForLogging(core.LoggingLevels.FATAL, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCond(core.LoggingLevels.FATAL) : doMsgLogCond_NOP;
-            logger.errorIf = isLevelEnabledForLogging(core.LoggingLevels.ERROR, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCond(core.LoggingLevels.ERROR) : doMsgLogCond_NOP;
-            logger.warnIf = isLevelEnabledForLogging(core.LoggingLevels.WARN, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCond(core.LoggingLevels.WARN) : doMsgLogCond_NOP;
-            logger.infoIf = isLevelEnabledForLogging(core.LoggingLevels.INFO, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCond(core.LoggingLevels.INFO) : doMsgLogCond_NOP;
-            logger.debugIf = isLevelEnabledForLogging(core.LoggingLevels.DEBUG, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCond(core.LoggingLevels.DEBUG) : doMsgLogCond_NOP;
-            logger.traceIf = isLevelEnabledForLogging(core.LoggingLevels.TRACE, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCond(core.LoggingLevels.TRACE) : doMsgLogCond_NOP;
+            logger.fatalIf = isLevelEnabledForLogging(LoggingLevels.FATAL, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCond(LoggingLevels.FATAL) : doMsgLogCond_NOP;
+            logger.errorIf = isLevelEnabledForLogging(LoggingLevels.ERROR, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCond(LoggingLevels.ERROR) : doMsgLogCond_NOP;
+            logger.warnIf = isLevelEnabledForLogging(LoggingLevels.WARN, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCond(LoggingLevels.WARN) : doMsgLogCond_NOP;
+            logger.infoIf = isLevelEnabledForLogging(LoggingLevels.INFO, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCond(LoggingLevels.INFO) : doMsgLogCond_NOP;
+            logger.debugIf = isLevelEnabledForLogging(LoggingLevels.DEBUG, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCond(LoggingLevels.DEBUG) : doMsgLogCond_NOP;
+            logger.traceIf = isLevelEnabledForLogging(LoggingLevels.TRACE, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCond(LoggingLevels.TRACE) : doMsgLogCond_NOP;
 
-            logger.fatalCategoryIf = isLevelEnabledForLogging(core.LoggingLevels.FATAL, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategoryCond(core.LoggingLevels.FATAL) : doMsgLogCategoryCond_NOP;
-            logger.errorCategoryIf = isLevelEnabledForLogging(core.LoggingLevels.ERROR, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategoryCond(core.LoggingLevels.ERROR) : doMsgLogCategoryCond_NOP;
-            logger.warnCategoryIf = isLevelEnabledForLogging(core.LoggingLevels.WARN, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategoryCond(core.LoggingLevels.WARN) : doMsgLogCategoryCond_NOP;
-            logger.infoCategoryIf = isLevelEnabledForLogging(core.LoggingLevels.INFO, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategoryCond(core.LoggingLevels.INFO) : doMsgLogCategoryCond_NOP;
-            logger.debugCategoryIf = isLevelEnabledForLogging(core.LoggingLevels.DEBUG, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategoryCond(core.LoggingLevels.DEBUG) : doMsgLogCategoryCond_NOP;
-            logger.traceCategoryIf = isLevelEnabledForLogging(core.LoggingLevels.TRACE, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategoryCond(core.LoggingLevels.TRACE) : doMsgLogCategoryCond_NOP;
+            logger.fatalCategoryIf = isLevelEnabledForLogging(LoggingLevels.FATAL, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategoryCond(LoggingLevels.FATAL) : doMsgLogCategoryCond_NOP;
+            logger.errorCategoryIf = isLevelEnabledForLogging(LoggingLevels.ERROR, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategoryCond(LoggingLevels.ERROR) : doMsgLogCategoryCond_NOP;
+            logger.warnCategoryIf = isLevelEnabledForLogging(LoggingLevels.WARN, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategoryCond(LoggingLevels.WARN) : doMsgLogCategoryCond_NOP;
+            logger.infoCategoryIf = isLevelEnabledForLogging(LoggingLevels.INFO, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategoryCond(LoggingLevels.INFO) : doMsgLogCategoryCond_NOP;
+            logger.debugCategoryIf = isLevelEnabledForLogging(LoggingLevels.DEBUG, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategoryCond(LoggingLevels.DEBUG) : doMsgLogCategoryCond_NOP;
+            logger.traceCategoryIf = isLevelEnabledForLogging(LoggingLevels.TRACE, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategoryCond(LoggingLevels.TRACE) : doMsgLogCategoryCond_NOP;
         }
         updateLoggingFunctions(this, m_memoryLogLevel);
 
@@ -2070,11 +2074,11 @@ function LoggerFactory(appName, options) {
         */
         this.emitFullLogSync = function () {
             try {
-                m_memoryBlockList.processMessagesForWrite_HardFlush(true, core.LoggingLevels.ALL, {}, m_writeBlockList);
+                m_inMemoryLog.processMessagesForWrite_HardFlush(m_formatterLog, true, LoggingLevels.ALL, {});
 
                 let donework = false;
                 while (!donework) {
-                    donework = !m_writeBlockList.emitKEntries(m_formatter, m_doPrefix, m_writeGroupSize);
+                    donework = !m_formatterLog.emitKEntries(m_formatter, m_doPrefix, m_writeGroupSize);
 
                     const dataBlock = m_formatter.unlinkData();
                     m_transport.writeDataSync(dataBlock);
@@ -2148,7 +2152,7 @@ let s_rootLogger = null;
  */
 const s_disabledSubLoggerNames = new Set();
 const s_enabledSubLoggerNames = new Map();
-const s_defaultSubLoggerLevel = core.LoggingLevels.WARN;
+const s_defaultSubLoggerLevel = LoggingLevels.WARN;
 
 /**
  * Map of the loggers created for various module names
@@ -2183,10 +2187,10 @@ module.exports = function (name, level, options) {
     if (level === undefined) {
         level = "INFO";
     }
-    if (typeof (level) !== "string" || core.LoggingLevels[level] === undefined) {
+    if (typeof (level) !== "string" || LoggingLevels[level] === undefined) {
         throw new Error(`Expected logging level but got ${level}`);
     }
-    const rlevel = core.LoggingLevels[level];
+    const rlevel = LoggingLevels[level];
 
     const ropts = {
         host: require("os").hostname(),
@@ -2201,10 +2205,10 @@ module.exports = function (name, level, options) {
             }
 
             if (p === "retainLevel") {
-                if (core.LoggingLevels[pval] === undefined) {
+                if (LoggingLevels[pval] === undefined) {
                     throw new Error(`Expected logging level but got ${level}`);
                 }
-                ropts[p] = core.LoggingLevels[pval];
+                ropts[p] = LoggingLevels[pval];
             }
             else {
                 ropts[p] = pval;
@@ -2216,7 +2220,7 @@ module.exports = function (name, level, options) {
         ropts.retainLevel = Math.min(ropts.retainLevel, rlevel);
     }
     else {
-        ropts.retainLevel = Math.min(core.LoggingLevels.WARN, rlevel);
+        ropts.retainLevel = Math.min(LoggingLevels.WARN, rlevel);
     }
 
     //Lazy instantiate the logger factory
@@ -2232,13 +2236,13 @@ module.exports = function (name, level, options) {
         .map(function (frame) {
             return frame.substring(frame.indexOf("(") + 1, frame.lastIndexOf(".js:") + 3);
         });
-    const lfilename = cstack[1];
+    const lfilename = cstack[0];
 
     let logger = s_loggerMap.get(name);
     if (!logger) {
         if (require.main.filename !== lfilename) {
             if (s_disabledSubLoggerNames.has(lfilename)) {
-                ropts.retainLevel = core.LoggingLevels.OFF;
+                ropts.retainLevel = LoggingLevels.OFF;
             }
             else {
                 const enabledlevel = s_enabledSubLoggerNames.get(lfilename);
@@ -2247,7 +2251,7 @@ module.exports = function (name, level, options) {
         }
 
         logger = s_loggerFactory.createLogger(name, ropts);
-        logger.Levels = core.LoggingLevels;
+        logger.Levels = LoggingLevels;
 
         if (require.main.filename === lfilename) {
             s_rootLogger = logger;
