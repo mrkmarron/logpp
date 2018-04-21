@@ -71,15 +71,6 @@ JSONFormatter.prototype.emitNumber = function (value) {
     this.pos += this.block.write(nstr, this.pos, nstr.length, "utf8");
 };
 
-JSONFormatter.prototype.emitIsoTime = function (tv) {
-    const tvstr = (new Date(tv)).toISOString();
-    if ((this.pos + tvstr.length) >= this.block.length) {
-        this.resize(this.pos + tvstr.length);
-    }
-
-    this.pos += this.block.write(tvstr, this.pos, tvstr.length, "utf8");
-};
-
 JSONFormatter.prototype.emitCallStack = function (cstack) {
     const csstr = JSON.stringify(cstack);
     const bytelen = Buffer.byteLength(csstr, "utf8");
@@ -90,49 +81,25 @@ JSONFormatter.prototype.emitCallStack = function (cstack) {
     this.pos += this.block.write(csstr, this.pos, bytelen, "utf8");
 };
 
-JSONFormatter.prototype.emitSimpleVar = function (value) {
-    if (value === undefined) {
-        this.emitLiteralString("undefined");
-    }
-    else if (value === null) {
-        this.emitLiteralString("null");
-    }
-    else {
-        this.emitString(value);
-    }
-};
-
-JSONFormatter.prototype.emitSimpleVarAsJS = function (value) {
-    if (value === undefined) {
-        this.emitLiteralString("undefined");
-    }
-    else if (value === null) {
-        this.emitLiteralString("null");
-    }
-    else if (typeof (value) === "string") {
-        this.emitJsString(value);
-    }
-    else {
-        this.emitString(value.toString());
-    }
-};
-
 JSONFormatter.prototype.emitSpecialVar = function (tag) {
     switch (tag) {
         case /*LogEntryTags_JsBadFormatVar*/0xA:
             this.emitLiteralString("\"<BadFormat>\"");
             break;
         case /*LogEntryTags_LengthBoundHit*/0xC:
-            this.emitLiteralString("\"<LengthBound>\"");
+            this.emitLiteralString("\"...\"");
             break;
         case /*LogEntryTags_DepthBoundHit*/0x20:
-            this.emitLiteralString("\"<DepthBound>\"");
+            this.emitLiteralString("\"{...}\"");
+            break;
+        case /*LogEntryTags_DepthBoundArray*/0x21:
+            this.emitLiteralString("\"[...]\"");
             break;
         case /*LogEntryTags_CycleValue*/0xD:
             this.emitLiteralString("\"<Cycle>\"");
             break;
         default:
-            this.emitLiteralString("\"<Value>\"");
+            this.emitLiteralString("\"<OpaqueValue>\"");
             break;
     }
 };
