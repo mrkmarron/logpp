@@ -75,9 +75,9 @@ logpp.addFormat("Basic_PERCENT", "Hello %%");
 logpp.addFormat("Basic_Bool", "%{0:b}");
 logpp.addFormat("Basic_Number", "%{0:n}");
 logpp.addFormat("Basic_String", "%{0:s}");
-//SingletonFormatStringEntry_DATEISO 0x25
-//SingletonFormatStringEntry_DATEUTC 0x26
-//SingletonFormatStringEntry_DATELOCAL 0x27
+logpp.addFormat("Basic_DateISO", "%{0:di}");
+logpp.addFormat("Basic_DateUTC", "%{0:du}");
+logpp.addFormat("Basic_DateLocal", "%{0:dl}");
 logpp.addFormat("Basic_General", "%{0:s}");
 logpp.addFormat("Basic_Object", "%{0:o}");
 logpp.addFormat("Basic_Array", "%{0:a}");
@@ -86,10 +86,10 @@ const basictests = [
     { fmt: "Basic_Hello", arg: undefined, oktest: (res) => res === "Hello World!!!" },
 
     { fmt: "Basic_HASH", arg: undefined, oktest: (res) => res === "#" },
-    { fmt: "Basic_HOST", arg: undefined, oktest: (res) => res === "\"" + os.hostname() + "\"" },
-    { fmt: "Basic_APP", arg: undefined, oktest: (res) => res === "\"" + __filename.toString() + "\"" },
-    { fmt: "Basic_MODULE", arg: undefined, oktest: (res) => res === "\"basic\"" },
-    { fmt: "Basic_SOURCE", arg: undefined, oktest: (res) => res === "\"" + __filename.toString() + ":10:15\"" },
+    { fmt: "Basic_HOST", arg: undefined, oktest: (res) => res === os.hostname() },
+    { fmt: "Basic_APP", arg: undefined, oktest: (res) => res === __filename.toString() },
+    { fmt: "Basic_MODULE", arg: undefined, oktest: (res) => res === "basic" },
+    { fmt: "Basic_SOURCE", arg: undefined, oktest: (res) => res === __filename.toString() + ":10:15" },
     { fmt: "Basic_WALLCLOCK", arg: undefined, oktest: (res) => !Number.isNaN(Date.parse(res)) && (new Date() - Date.parse(res)) >= 0 },
     { fmt: "Basic_TIMESTAMP", arg: undefined, oktest: (res) => res === "0" },
     { fmt: "Basic_TIMESTAMP", arg: undefined, oktest: (res) => res === "1" },
@@ -108,6 +108,18 @@ const basictests = [
     { fmt: "Basic_String", arg: "", oktest: (res) => res === "\"\"" },
     { fmt: "Basic_String", arg: "\n", oktest: (res) => res === "\"\\n\"" },
     { fmt: "Basic_String", arg: "the quick brown fox", oktest: (res) => res === "\"the quick brown fox\"" },
+    { fmt: "Basic_DateISO", arg: new Date(), oktest: (res) => !Number.isNaN(Date.parse(res.substring(1, res.length - 1))) && (new Date() - Date.parse(res.substring(1, res.length - 1))) >= 0 && res.endsWith("Z\"") },
+    { fmt: "Basic_DateUTC", arg: new Date(), oktest: (res) => !Number.isNaN(Date.parse(res)) && (new Date() - Date.parse(res)) >= 0 && res.endsWith("GMT\"") },
+    { fmt: "Basic_DateLocal", arg: new Date(), oktest: (res) => !Number.isNaN(Date.parse(res)) && (new Date() - Date.parse(res)) >= 0 },
+
+    { fmt: "Basic_General", arg: undefined, oktest: (res) => res === "undefined" },
+    { fmt: "Basic_General", arg: null, oktest: (res) => res === "null" },
+    { fmt: "Basic_General", arg: true, oktest: (res) => res === "true" },
+    { fmt: "Basic_General", arg: 1, oktest: (res) => res === "1" },
+    { fmt: "Basic_General", arg: "Yo", oktest: (res) => res === "\"Yo\"" },
+    { fmt: "Basic_General", arg: new Date(), oktest: (res) => !Number.isNaN(Date.parse(res.substring(1, res.length - 1))) && (new Date() - Date.parse(res.substring(1, res.length - 1))) >= 0 && res.endsWith("Z\"") },
+    { fmt: "Basic_General", arg: () => 3, oktest: (res) => res === "[Function]" },
+    { fmt: "Basic_General", arg: Symbol("ok"), oktest: (res) => res === "<Value>" },
 ];
 
 const basicfailuretests = [

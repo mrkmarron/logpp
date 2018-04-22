@@ -53,14 +53,23 @@ JSONFormatter.prototype.emitString = function (str) {
 };
 
 JSONFormatter.prototype.emitJsString = function (str) {
-    const bytelen = Buffer.byteLength(str, "utf8");
+    const rstr = JSON.stringify(str);
+    const bytelen = Buffer.byteLength(rstr, "utf8");
     if ((this.pos + bytelen + 2) >= this.block.length) {
         this.resize(this.pos + bytelen + 2);
     }
 
-    this.pos += this.block.write("\"", this.pos, 1, "utf8");
-    this.pos += this.block.write(str, this.pos, bytelen, "utf8");
-    this.pos += this.block.write("\"", this.pos, 1, "utf8");
+    this.pos += this.block.write(rstr, this.pos, bytelen, "utf8");
+};
+
+JSONFormatter.prototype.emitDateString = function (str) {
+    const rstr = JSON.stringify(str);
+    const bytelen = Buffer.byteLength(rstr, "utf8");
+    if ((this.pos + bytelen + 2) >= this.block.length) {
+        this.resize(this.pos + bytelen + 2);
+    }
+
+    this.pos += this.block.write(rstr, this.pos, bytelen, "utf8");
 };
 
 JSONFormatter.prototype.emitNumber = function (value) {
@@ -78,9 +87,7 @@ JSONFormatter.prototype.emitCallStack = function (cstack) {
         this.resize(this.pos + bytelen + 2);
     }
 
-    this.pos += this.block.write("\"", this.pos, 1, "utf8");
     this.pos += this.block.write(cstack, this.pos, bytelen, "utf8");
-    this.pos += this.block.write("\"", this.pos, 1, "utf8");
 };
 
 JSONFormatter.prototype.emitSpecialVar = function (tag) {

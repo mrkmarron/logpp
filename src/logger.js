@@ -1,7 +1,6 @@
 "use strict";
 
 const assert = require("assert");
-const path = require("path");
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //Start off with a bunch of costant definitions.
@@ -259,9 +258,9 @@ const FormatStringEntrySingletons = {
     BOOL: generateSingletonFormatStringEntry("BOOL", /*FormatStringEntryKind_Basic*/0x3, "b", /*SingletonFormatStringEntry_BOOL*/0x22, true), //%{p:b}
     NUMBER: generateSingletonFormatStringEntry("NUMBER", /*FormatStringEntryKind_Basic*/0x3, "n", /*SingletonFormatStringEntry_NUMBER*/0x23, true), //%{p:n}
     STRING: generateSingletonFormatStringEntry("STRING", /*FormatStringEntryKind_Basic*/0x3, "s", /*SingletonFormatStringEntry_STRING*/0x24, true), //%{p:s}
-    DATEISO: generateSingletonFormatStringEntry("DATEISO", /*FormatStringEntryKind_Basic*/0x3, "di", /*SingletonFormatStringEntry_DATEISO*/0x26, true), //%{p:d-iso}
-    DATEUTC: generateSingletonFormatStringEntry("DATEUTC", /*FormatStringEntryKind_Basic*/0x3, "du", /*SingletonFormatStringEntry_DATEUTC*/0x27, true), //%{p:d-utc}
-    DATELOCAL: generateSingletonFormatStringEntry("DATELOCAL", /*FormatStringEntryKind_Basic*/0x3, "dl", /*SingletonFormatStringEntry_DATELOCAL*/0x28, true), //%{p:d-local}
+    DATEISO: generateSingletonFormatStringEntry("DATEISO", /*FormatStringEntryKind_Basic*/0x3, "di", /*SingletonFormatStringEntry_DATEISO*/0x25, true), //%{p:d-iso}
+    DATEUTC: generateSingletonFormatStringEntry("DATEUTC", /*FormatStringEntryKind_Basic*/0x3, "du", /*SingletonFormatStringEntry_DATEUTC*/0x26, true), //%{p:d-utc}
+    DATELOCAL: generateSingletonFormatStringEntry("DATELOCAL", /*FormatStringEntryKind_Basic*/0x3, "dl", /*SingletonFormatStringEntry_DATELOCAL*/0x27, true), //%{p:d-local}
     GENERAL: generateSingletonFormatStringEntry("GENERAL", /*FormatStringEntryKind_Basic*/0x3, "g", /*SingletonFormatStringEntry_GENERAL*/0x28, false), //%{p:g}
     OBJECT: generateSingletonFormatStringEntry("OBJECT", /*FormatStringEntryKind_Compound*/0x4, "o", /*SingletonFormatStringEntry_OBJECT*/0x29, false), //%{p:o<d,l>}
     ARRAY: generateSingletonFormatStringEntry("ARRAY", /*FormatStringEntryKind_Compound*/0x4, "a", /*SingletonFormatStringEntry_ARRAY*/0x2A, false) //%{p:a<d,l>}
@@ -336,7 +335,7 @@ function expandToJsonFormatter(jobj) {
             return jobj;
         }
         else {
-            return "\"" + jobj + "\"";
+            return JSON.stringify(jobj);
         }
     }
     else if (typeid === /*TypeNameEnum_TObject*/0x38) {
@@ -355,7 +354,7 @@ function expandToJsonFormatter(jobj) {
             " ]";
     }
     else {
-        return "\"" + jobj.toString() + "\"";
+        return JSON.stringify(jobj.toString());
     }
 }
 
@@ -419,7 +418,7 @@ function extractArgumentFormatSpecifier(fmtString, vpos) {
         specPos++;
 
         const cchar = fmtString.charAt(specPos);
-        const basicFormatOption = s_basicFormatEntries.find(function (value) { return value.label === cchar; });
+        const basicFormatOption = s_basicFormatEntries.find(function (value) { return value.label.length === 1 ? value.label === cchar : fmtString.startsWith(value.label, specPos); });
         const compoundFormatOption = s_compoundFormatEntries.find(function (value) { return value.label === cchar; });
 
         if (!basicFormatOption && !compoundFormatOption) {
@@ -1215,7 +1214,7 @@ FormatterLog.prototype.addEntry = function (tag, data) {
             }
             else {
                 block.tags[block.epos] = /*LogEntryTags_JsVarValue_Date*/0x3A;
-                block.data[block.epos] = dtype.valueOf();
+                block.data[block.epos] = data.valueOf();
             }
         }
     }
@@ -1367,7 +1366,7 @@ FormatterLog.prototype.emitFormatEntry = function (formatter, doprefix) {
                 formatter.emitNumber(data);
             }
             else {
-                formatter.emitJsString(this.getStringForIdx(data));
+                formatter.emitLiteralString(this.getStringForIdx(data));
             }
             this.advanceWritePos();
         }
@@ -1394,15 +1393,15 @@ FormatterLog.prototype.emitFormatEntry = function (formatter, doprefix) {
                         this.advanceWritePos();
                         break;
                     case /*SingletonFormatStringEntry_DATEISO*/0x25:
-                        formatter.emitLiteralString((new Date(data)).toISOString());
+                        formatter.emitDateString((new Date(data)).toISOString());
                         this.advanceWritePos();
                         break;
                     case /*SingletonFormatStringEntry_DATEUTC*/0x26:
-                        formatter.emitLiteralString((new Date(data)).toUTCString());
+                        formatter.emitDateString((new Date(data)).toUTCString());
                         this.advanceWritePos();
                         break;
                     case /*SingletonFormatStringEntry_DATELOCAL*/0x27:
-                        formatter.emitLiteralString((new Date(data)).toString());
+                        formatter.emitDateString((new Date(data)).toString());
                         this.advanceWritePos();
                         break;
                     case /*LogEntryTags_LParen*/0x5:
@@ -1456,7 +1455,7 @@ FormatterLog.prototype.emitVarTagEntry = function (formatter) {
             formatter.emitJsString(this.getStringForIdx(this.getCurrentWriteData()));
             break;
         case /*LogEntryTags_JsVarValue_Date*/0x3A:
-            formatter.emitJsString((new Date(this.getCurrentWriteData())).toISOString());
+            formatter.emitDateString((new Date(this.getCurrentWriteData())).toISOString());
             break;
         default:
             formatter.emitSpecialVar(tag);
