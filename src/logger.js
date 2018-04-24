@@ -381,7 +381,7 @@ function extractExpandoSpecifier(fmtString, vpos) {
 
 //Helper regexs for parsing numbers in format specifier
 const s_formatArgPosNumberRegex = /\d+/y;
-const s_formatDepthLengthRegex = /([o|a])<(\d+|\*)?,(\d+|\*)?>/y;
+const s_formatDepthLengthRegex = /([o|a])<[ ]*(\d+|\*)?[ ]*,[ ]*(\d+|\*)?[ ]*>}/y;
 
 /**
  * Helper function to extract and construct an argument format specifier or throws is the format specifier is malformed.
@@ -449,11 +449,11 @@ function extractArgumentFormatSpecifier(fmtString, vpos) {
                 let tdepth = /*ExpandDefaults_Depth*/2;
                 let tlength = (dlMatch[1] === "o") ? /*ExpandDefaults_ObjectLength*/1024 : /*ExpandDefaults_ArrayLength*/128;
 
-                if (dlMatch[2] !== "") {
+                if (dlMatch[2]) {
                     tdepth = (dlMatch[2] !== "*") ? Number.parseInt(dlMatch[2]) : DL_STAR;
                 }
 
-                if (dlMatch[3] !== "") {
+                if (dlMatch[3]) {
                     tlength = (dlMatch[3] !== "*") ? Number.parseInt(dlMatch[3]) : DL_STAR;
                 }
 
@@ -777,11 +777,12 @@ InMemoryLog.prototype.addExpandedObject = function (obj, depth, length) {
                 this.addJsVarValueEntry(value);
             }
             else {
-                (AddGeneralValue_RemainingTypesCallTable[typeid])(this, value, depth);
+                (AddGeneralValue_RemainingTypesCallTable[typeid])(this, value, depth - 1);
             }
 
             allowedLengthRemain--;
             if (allowedLengthRemain <= 0) {
+                this.addEntry(/*LogEntryTags_PropertyRecord*/0x9, "$rest");
                 this.addTagOnlyEntry(/*LogEntryTags_LengthBoundHit*/0xC);
                 break;
             }
@@ -822,10 +823,10 @@ InMemoryLog.prototype.addExpandedArray = function (obj, depth, length) {
                 this.addJsVarValueEntry(value);
             }
             else {
-                (AddGeneralValue_RemainingTypesCallTable[typeid])(this, value, depth);
+                (AddGeneralValue_RemainingTypesCallTable[typeid])(this, value, depth - 1);
             }
 
-            if (i >= length) {
+            if (i >= length - 1) {
                 this.addTagOnlyEntry(/*LogEntryTags_LengthBoundHit*/0xC);
                 break;
             }
@@ -941,7 +942,7 @@ InMemoryLog.prototype.logMessage = function (env, level, category, doTimestamp, 
                         break;
                     case /*SingletonFormatStringEntry_OBJECT*/0x29:
                         if (vtype === /*TypeNameEnum_TObject*/0x38) {
-                            this.addExpandedObject(value, formatEntry.depth, formatEntry.length);
+                            this.addExpandedObject(value, formatEntry.expandDepth, formatEntry.expandLength);
                         }
                         else {
                             this.addTagOnlyEntry(/*LogEntryTags_JsBadFormatVar*/0xA);
@@ -949,7 +950,7 @@ InMemoryLog.prototype.logMessage = function (env, level, category, doTimestamp, 
                         break;
                     case /*SingletonFormatStringEntry_ARRAY*/0x2A:
                         if (vtype === /*TypeNameEnum_TJsArray*/0x39 || vtype === /*TypeNameEnum_TTypedArray*/0x3A) {
-                            this.addExpandedArray(value, formatEntry.depth, formatEntry.length);
+                            this.addExpandedArray(value, formatEntry.expandDepth, formatEntry.expandLength);
                         }
                         else {
                             this.addTagOnlyEntry(/*LogEntryTags_JsBadFormatVar*/0xA);
@@ -960,7 +961,7 @@ InMemoryLog.prototype.logMessage = function (env, level, category, doTimestamp, 
                             this.addJsVarValueEntry(value);
                         }
                         else {
-                            (AddGeneralValue_RemainingTypesCallTable[vtype])(this, vtype, value, formatEntry.depth);
+                            (AddGeneralValue_RemainingTypesCallTable[vtype])(this, value, formatEntry.depth);
                         }
                         break;
                 }
@@ -1240,7 +1241,7 @@ FormatterLog.prototype.addEntry = function (tag, data) {
                 break;
             case /*LogEntryTags_PropertyRecord*/0x9:
                 block.tags[block.epos] = tag;
-                block.data[block.stringPos];
+                block.data[block.epos] = block.stringPos;
                 block.strings[block.stringPos++] = data;
                 break;
             case /*LogEntryTags_MsgWallTime*/0x22:
@@ -1378,45 +1379,40 @@ FormatterLog.prototype.emitFormatEntry = function (formatter, doprefix) {
                 this.emitVarTagEntry(formatter);
                 this.advanceWritePos();
             }
+            else if (tag === /*LogEntryTags_LParen*/0x5) {
+
+                this.emitObjectEntry(formatter);
+                //position is advanced in call
+            }
+            else if (tag === /*LogEntryTags_LBrack*/0x7) {
+                this.emitArrayEntry(formatter);
+                //position is advanced in call
+            }
             else {
                 switch (formatSpec.enum) {
                     case /*SingletonFormatStringEntry_BOOL*/0x22:
                         formatter.emitLiteralString(data === 1 ? "true" : "false");
-                        this.advanceWritePos();
                         break;
                     case /*SingletonFormatStringEntry_NUMBER*/0x23:
                         formatter.emitNumber(data);
-                        this.advanceWritePos();
                         break;
                     case /*SingletonFormatStringEntry_STRING*/0x24:
                         formatter.emitJsString(this.getStringForIdx(data));
-                        this.advanceWritePos();
                         break;
                     case /*SingletonFormatStringEntry_DATEISO*/0x25:
                         formatter.emitDateString((new Date(data)).toISOString());
-                        this.advanceWritePos();
                         break;
                     case /*SingletonFormatStringEntry_DATEUTC*/0x26:
                         formatter.emitDateString((new Date(data)).toUTCString());
-                        this.advanceWritePos();
                         break;
                     case /*SingletonFormatStringEntry_DATELOCAL*/0x27:
                         formatter.emitDateString((new Date(data)).toString());
-                        this.advanceWritePos();
-                        break;
-                    case /*LogEntryTags_LParen*/0x5:
-                        this.emitObjectEntry(formatter);
-                        //position is advanced in call
-                        break;
-                    case /*LogEntryTags_LBrack*/0x7:
-                        this.emitArrayEntry(formatter);
-                        //position is advanced in call
                         break;
                     default:
                         this.emitVarTagEntry(formatter);
-                        this.advanceWritePos();
                         break;
                 }
+                this.advanceWritePos();
             }
         }
 
@@ -1481,7 +1477,7 @@ FormatterLog.prototype.emitObjectEntry = function (formatter) {
         else {
             formatter.emitLiteralString(", ");
         }
-        this.emitJsString(this.getStringForIdx(this.getCurrentWriteData()));
+        formatter.emitJsString(this.getStringForIdx(this.getCurrentWriteData()));
         formatter.emitLiteralString(": ");
 
         this.advanceWritePos();
@@ -1984,6 +1980,7 @@ function LoggerFactory(appName, options) {
                     const fmti = isImplicitFormat(fmt) ? generateImplicitFormat(fmt, args) : m_formatInfo.get(fmt);
                     if (fmti === undefined) {
                         console.error("Format name is not defined for this logger -- " + fmt);
+                        return;
                     }
 
                     m_inMemoryLog.logMessage(m_env, fixedLevel, "default", m_doTimeLimit, fmti, args);
@@ -2005,6 +2002,7 @@ function LoggerFactory(appName, options) {
                         const fmti = isImplicitFormat(fmt) ? generateImplicitFormat(fmt, args) : m_formatInfo.get(fmt);
                         if (fmti === undefined) {
                             console.error("Format name is not defined for this logger -- " + fmt);
+                            return;
                         }
 
                         m_inMemoryLog.logMessage(m_env, fixedLevel, category, m_doTimeLimit, fmti, args);
@@ -2027,6 +2025,7 @@ function LoggerFactory(appName, options) {
                         const fmti = isImplicitFormat(fmt) ? generateImplicitFormat(fmt, args) : m_formatInfo.get(fmt);
                         if (fmti === undefined) {
                             console.error("Format name is not defined for this logger -- " + fmt);
+                            return;
                         }
 
                         m_inMemoryLog.logMessage(m_env, fixedLevel, "default", m_doTimeLimit, fmti, args);
@@ -2050,6 +2049,7 @@ function LoggerFactory(appName, options) {
                             const fmti = isImplicitFormat(fmt) ? generateImplicitFormat(fmt, args) : m_formatInfo.get(fmt);
                             if (fmti === undefined) {
                                 console.error("Format name is not defined for this logger -- " + fmt);
+                                return;
                             }
 
                             m_inMemoryLog.logMessage(m_env, fixedLevel, category, m_doTimeLimit, fmti, args);

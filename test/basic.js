@@ -20,7 +20,7 @@ function basicTestRunner(nextcb) {
     function runSingleTestCB() {
         const test = basictests[basictestsRun++];
         try {
-            process.stdout.write(`log.info("${test.fmt}", ${test.arg})...`);
+            process.stdout.write(`log.info("${test.fmt}", ${test.noprint ? "-skip print-" : JSON.stringify(test.arg)})...`);
             const res = runSingleTest(test);
             process.stdout.write(res + " ->");
             if (test.oktest(res)) {
@@ -58,6 +58,69 @@ function basicTestRunner(nextcb) {
     setImmediate(runSingleTestCB);
 }
 
+
+function failureTestRunner(nextcb) {
+    let output = "";
+
+    function runSingleTest(test) {
+        logpp.info(test.fmt, test.arg);
+
+        logpp.emitFullLogSync();
+        const res = output;
+        output = "";
+        return res;
+    }
+
+    let failuretestsRun = 0;
+    let failuretestsFailed = 0;
+
+    function runSingleTestCB() {
+        const test = failuretests[failuretestsRun++];
+        try {
+            process.stdout.write(`log.info("${test.fmt}", ${test.noprint ? "-skip print-" : JSON.stringify(test.arg)})...`);
+            const res = runSingleTest(test);
+            process.stdout.write(res + " ->");
+            if (test.oktest(res)) {
+                process.stdout.write(chalk.green(" passed\n"));
+            }
+            else {
+                failuretestsFailed = failuretestsFailed + 1;
+
+                process.stdout.write(chalk.red(` failed with "${res}"\n`));
+            }
+        }
+        catch (ex) {
+            failuretestsFailed = failuretestsFailed + 1;
+
+            process.stdout.write(chalk.red(` failed with exception: ${ex}\n`));
+        }
+
+        if (failuretestsRun !== failuretests.length) {
+            setImmediate(runSingleTestCB);
+        }
+        else {
+            process.stdout.write("----\n");
+            if (failuretestsFailed !== 0) {
+                process.stdout.write(chalk.red.bold(`${failuretestsFailed} failures out of ${failuretestsRun} tests!!!\n`));
+            }
+            else {
+                process.stdout.write(chalk.green.bold(`All ${failuretestsRun} tests passed!\n`));
+            }
+
+            process.stderr.write = realstderrwrite;
+            setImmediate(nextcb);
+        }
+    }
+
+    const realstderrwrite = process.stderr.write;
+    process.stderr.write = function (msg) {
+        output += msg;
+    };
+
+    process.stdout.write("Running failure tests...\n");
+    setImmediate(runSingleTestCB);
+}
+
 //formats
 logpp.addFormat("Basic_Hello", "Hello World!!!");
 
@@ -78,9 +141,16 @@ logpp.addFormat("Basic_String", "%{0:s}");
 logpp.addFormat("Basic_DateISO", "%{0:di}");
 logpp.addFormat("Basic_DateUTC", "%{0:du}");
 logpp.addFormat("Basic_DateLocal", "%{0:dl}");
-logpp.addFormat("Basic_General", "%{0:s}");
+logpp.addFormat("Basic_General", "%{0:g}");
 logpp.addFormat("Basic_Object", "%{0:o}");
 logpp.addFormat("Basic_Array", "%{0:a}");
+
+logpp.addFormat("Basic_ObjectWDepth", "%{0:o<1,>}");
+logpp.addFormat("Basic_ArrayWDepth", "%{0:a< 1 , * >}");
+logpp.addFormat("Basic_ObjectWLength", "%{0:o<,1>}");
+logpp.addFormat("Basic_ArrayWLength", "%{0:a<*,2>}");
+logpp.addFormat("Basic_ObjectWDepthLength", "%{0:o<1,1>}");
+logpp.addFormat("Basic_ArrayWDepthLength", "%{0:a<1,2>}");
 
 const basictests = [
     { fmt: "Basic_Hello", arg: undefined, oktest: (res) => res === "Hello World!!!" },
@@ -118,19 +188,56 @@ const basictests = [
     { fmt: "Basic_General", arg: 1, oktest: (res) => res === "1" },
     { fmt: "Basic_General", arg: "Yo", oktest: (res) => res === "\"Yo\"" },
     { fmt: "Basic_General", arg: new Date(), oktest: (res) => !Number.isNaN(Date.parse(res.substring(1, res.length - 1))) && (new Date() - Date.parse(res.substring(1, res.length - 1))) >= 0 && res.endsWith("Z\"") },
-    { fmt: "Basic_General", arg: () => 3, oktest: (res) => res === "[Function]" },
-    { fmt: "Basic_General", arg: Symbol("ok"), oktest: (res) => res === "<Value>" },
+    { fmt: "Basic_General", arg: () => 3, oktest: (res) => res === "\"[ #Function# arg ]\"" },
+    { fmt: "Basic_General", arg: Symbol("ok"), oktest: (res) => res === "\"<OpaqueValue>\"" },
+
+    { fmt: "Basic_Object", arg: {}, oktest: (res) => res === "{}" },
+    { fmt: "Basic_Object", arg: { p1: 1 }, oktest: (res) => res === "{\"p1\": 1}" },
+    { fmt: "Basic_Object", arg: { p2: 2, p1: Symbol("ok") }, oktest: (res) => res === "{\"p2\": 2, \"p1\": \"<OpaqueValue>\"}" },
+    { fmt: "Basic_General", arg: { p1: 1 }, oktest: (res) => res === "{\"p1\": 1}" },
+
+    { fmt: "Basic_Array", arg: [], oktest: (res) => res === "[]" },
+    { fmt: "Basic_Array", arg: [1], oktest: (res) => res === "[1]" },
+    { fmt: "Basic_Array", arg: [1, true], oktest: (res) => res === "[1, true]" },
+    { fmt: "Basic_General", arg: [1], oktest: (res) => res === "[1]" },
+
+    { fmt: "Basic_Object", arg: { x: { p1: 1 }, y: 1 }, oktest: (res) => res === "{\"x\": {\"p1\": 1}, \"y\": 1}" },
+    { fmt: "Basic_Object", arg: { x: [1], y: 1 }, oktest: (res) => res === "{\"x\": [1], \"y\": 1}" },
+    { fmt: "Basic_Object", noprint: true, arg: (() => { const r = { p1: 2 }; r["r"] = r; return r; })(), oktest: (res) => res === "{\"p1\": 2, \"r\": \"<Cycle>\"}" },
+
+    { fmt: "Basic_Array", arg: [[1], 2], oktest: (res) => res === "[[1], 2]" },
+    { fmt: "Basic_Array", arg: [{ p1: 1 }, 2], oktest: (res) => res === "[{\"p1\": 1}, 2]" },
+    { fmt: "Basic_Array", noprint: true, arg: (() => { const r = [2]; r.push(r); return r; })(), oktest: (res) => res === "[2, \"<Cycle>\"]" },
+
+    { fmt: "Basic_ObjectWDepth", arg: { x: { p1: 1 }, y: 1 }, oktest: (res) => res === "{\"x\": \"{...}\", \"y\": 1}" },
+    { fmt: "Basic_ObjectWDepth", arg: { x: [1], y: 1 }, oktest: (res) => res === "{\"x\": \"[...]\", \"y\": 1}" },
+    { fmt: "Basic_ArrayWDepth", arg: [[2], 1], oktest: (res) => res === "[\"[...]\", 1]" },
+    { fmt: "Basic_ArrayWDepth", arg: [{ p1: 2 }, 1], oktest: (res) => res === "[\"{...}\", 1]" },
+
+    { fmt: "Basic_ObjectWLength", arg: { x: { p1: 1 }, y: 1 }, oktest: (res) => res === "{\"x\": {\"p1\": 1}, \"$rest\": \"...\"}" },
+    { fmt: "Basic_ArrayWLength", arg: [[2], 1, 5], oktest: (res) => res === "[[2], 1, \"...\"]" }
 ];
 
-const basicfailuretests = [
-    { fmt: "Basic_NOT_DEFINED", arg: undefined, oktest: (msg) => msg === "Format name is not defined for this logger -- Basic_NOT_DEFINED" }
+const failuretests = [
+    { fmt: "Basic_NOT_DEFINED", arg: undefined, oktest: (msg) => msg === "Format name is not defined for this logger -- Basic_NOT_DEFINED\n" }
 ];
 
+const levelandflavorstests = [
+    { fmt: "Basic_Hello", level: "info", category: "network", withcond: true, oktest: (msg) => msg === "asdf" }
+];
+
+const compoundtests = [
+    { fmt: "Compound_Hello", args: ["Hello", "World"], oktest: (msg) => msg === "asdf" }
+];
 
 process.stdout.write("Starting test runs...\n");
-basicTestRunner(() => {
+failureTestRunner(() => {
     process.stdout.write("\nAll tests done!");
 });
+
+//basicTestRunner(() => {
+//    process.stdout.write("\nAll tests done!");
+//});
 
 /*
 const start1 = new Date();
