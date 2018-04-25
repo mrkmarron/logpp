@@ -82,12 +82,13 @@ JSONFormatter.prototype.emitNumber = function (value) {
 };
 
 JSONFormatter.prototype.emitCallStack = function (cstack) {
-    const bytelen = Buffer.byteLength(cstack, "utf8");
+    const rcstack = JSON.stringify(cstack);
+    const bytelen = Buffer.byteLength(rcstack, "utf8");
     if ((this.pos + bytelen + 2) >= this.block.length) {
         this.resize(this.pos + bytelen + 2);
     }
 
-    this.pos += this.block.write(cstack, this.pos, bytelen, "utf8");
+    this.pos += this.block.write(rcstack, this.pos, bytelen, "utf8");
 };
 
 JSONFormatter.prototype.emitSpecialVar = function (tag) {

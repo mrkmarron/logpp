@@ -284,13 +284,13 @@ const s_expandoStringRe = new RegExp("^(" +
         .join("|") +
     ")$");
 
-const s_basicFormatStringRe = new RegExp("^\\${(\\d+):(" +
+const s_basicFormatStringRe = new RegExp("^\\%{(\\d+):(" +
     s_basicFormatEntries
         .map(function (value) { return value.label; })
         .join("|") +
     ")}$");
 
-const s_compoundFormatStringRe = new RegExp("^\\${(\\d+):(" +
+const s_compoundFormatStringRe = new RegExp("^\\%{(\\d+):(" +
     s_compoundFormatEntries
         .map(function (value) { return value.label; })
         .join("|") +
@@ -342,7 +342,7 @@ function expandToJsonFormatter(jobj) {
         return "{ " +
             Object.keys(jobj)
                 .sort()
-                .map(function (key) { return "\"" + key + "\":" + expandToJsonFormatter(jobj[key]); })
+                .map(function (key) { return "\"" + key + "\": " + expandToJsonFormatter(jobj[key]); })
                 .join(", ") +
             " }";
     }
@@ -728,7 +728,7 @@ AddGeneralValue_RemainingTypesCallTable[/*TypeNameEnum_TDate*/0x36] = function (
     inMemoryLog.addJsVarValueEntry(new Date(value));
 };
 AddGeneralValue_RemainingTypesCallTable[/*TypeNameEnum_TFunction*/0x37] = function (inMemoryLog, value, depth) {
-    inMemoryLog.addJsVarValueEntry("[ #Function# " + value.name + " ]");
+    inMemoryLog.addJsVarValueEntry("[ #Function# ]");
 };
 
 AddGeneralValue_RemainingTypesCallTable[/*TypeNameEnum_TObject*/0x38] = function (inMemoryLog, value, depth) {
@@ -1361,13 +1361,13 @@ FormatterLog.prototype.emitFormatEntry = function (formatter, doprefix) {
                 formatter.emitCallStack(this.getStringForIdx(data));
             }
             else if (specEnum === /*SingletonFormatStringEntry_WALLCLOCK*/0x16) {
-                formatter.emitLiteralString((new Date(data)).toISOString());
+                formatter.emitDateString((new Date(data)).toISOString());
             }
             else if (specEnum === /*SingletonFormatStringEntry_TIMESTAMP*/0x17 || specEnum === /*SingletonFormatStringEntry_CALLBACK*/0x18 || specEnum === /*SingletonFormatStringEntry_REQUEST*/0x19) {
                 formatter.emitNumber(data);
             }
             else {
-                formatter.emitLiteralString(this.getStringForIdx(data));
+                formatter.emitJsString(this.getStringForIdx(data));
             }
             this.advanceWritePos();
         }
@@ -1921,10 +1921,6 @@ function LoggerFactory(appName, options) {
          * Add a new format to the format map
          */
         this.addFormat = function (fmtName, fmtInfo) {
-            if (typeof (fmtName) !== "string") {
-                return;
-            }
-
             try {
                 const fmtObj = extractMsgFormat(fmtName, s_fmtMap.size, fmtInfo);
                 m_formatInfo.set(fmtName, fmtObj);
