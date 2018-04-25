@@ -21,8 +21,9 @@ const LoggingLevels = {
     ERROR: 0x3,
     WARN: 0x7,
     INFO: 0xF,
-    DEBUG: 0x1F,
-    TRACE: 0x3F,
+    DETAIL: 0x1F,
+    DEBUG: 0x3F,
+    TRACE: 0x7F,
     ALL: 0xFF
 };
 
@@ -32,8 +33,9 @@ LoggingLevelToNameMap[0x1] = "FATAL";
 LoggingLevelToNameMap[0x3] = "ERROR";
 LoggingLevelToNameMap[0x7] = "WARN";
 LoggingLevelToNameMap[0xF] = "INFO";
-LoggingLevelToNameMap[0x1F] = "DEBUG";
-LoggingLevelToNameMap[0x3F] = "TRACE";
+LoggingLevelToNameMap[0x1F] = "DETAIL";
+LoggingLevelToNameMap[0x3F] = "DEBUG";
+LoggingLevelToNameMap[0x7F] = "TRACE";
 LoggingLevelToNameMap[0xFF] = "ALL";
 
 function sanitizeLogLevel(level) {
@@ -45,6 +47,9 @@ function sanitizeLogLevel(level) {
     }
     else if (level >= LoggingLevels.DEBUG) {
         return LoggingLevels.DEBUG;
+    }
+    else if (level >= LoggingLevels.DETAIL) {
+        return LoggingLevels.DETAIL;
     }
     else if (level >= LoggingLevels.INFO) {
         return LoggingLevels.INFO;
@@ -473,10 +478,9 @@ function extractArgumentFormatSpecifier(fmtString, vpos) {
  * @param {Array} fmtEntryArray the array of MsgFormatEntry objects
  * @param {string} initialFormatSegment the string that we want to emit at the start of the format
  * @param {Array} tailingFormatSegmentArray the strings that we want to emit in after each format specifier
- * @param {bool} areAllSingleSlotFormatters true if all the formatters use only a single slot
  * @returns {Object} our MsgFormat object
  */
-function createMsgFormat(fmtName, fmtId, fmtString, maxArgPos, fmtEntryArray, initialFormatSegment, tailingFormatSegmentArray, areAllSingleSlotFormatters) {
+function createMsgFormat(fmtName, fmtId, fmtString, maxArgPos, fmtEntryArray, initialFormatSegment, tailingFormatSegmentArray) {
     return {
         formatName: fmtName,
         formatId: fmtId,
@@ -484,8 +488,7 @@ function createMsgFormat(fmtName, fmtId, fmtString, maxArgPos, fmtEntryArray, in
         maxArgPosition: maxArgPos,
         formatterArray: fmtEntryArray,
         initialFormatStringSegment: initialFormatSegment,
-        tailingFormatStringSegmentArray: tailingFormatSegmentArray,
-        allSingleSlotFormatters: areAllSingleSlotFormatters
+        tailingFormatStringSegmentArray: tailingFormatSegmentArray
     };
 }
 
@@ -540,10 +543,6 @@ function extractMsgFormat(fmtName, fmtId, fmtInfo) {
         }
     }
 
-    const allBasicFormatters = fArray.every(function (value) {
-        return value.isSingleSlot;
-    });
-
     const initialFormatSegment = (fArray.length !== 0) ? fmtString.substr(0, fArray[0].formatStart) : fmtString;
     const tailingFormatSegmentArray = [];
     for (let i = 0; i < fArray.length; ++i) {
@@ -553,7 +552,7 @@ function extractMsgFormat(fmtName, fmtId, fmtInfo) {
         tailingFormatSegmentArray.push(fmtString.substr(start, end - start));
     }
 
-    return createMsgFormat(fmtName, fmtId, fmtString, maxArgPos, fArray, initialFormatSegment, tailingFormatSegmentArray, allBasicFormatters);
+    return createMsgFormat(fmtName, fmtId, fmtString, maxArgPos, fArray, initialFormatSegment, tailingFormatSegmentArray);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2066,6 +2065,7 @@ function LoggerFactory(appName, options) {
             logger.error = isLevelEnabledForLogging(LoggingLevels.ERROR, m_memoryLogLevel) ? getMsgLogWLevelGenerator(LoggingLevels.ERROR) : doMsgLog_NOP;
             logger.warn = isLevelEnabledForLogging(LoggingLevels.WARN, m_memoryLogLevel) ? getMsgLogWLevelGenerator(LoggingLevels.WARN) : doMsgLog_NOP;
             logger.info = isLevelEnabledForLogging(LoggingLevels.INFO, m_memoryLogLevel) ? getMsgLogWLevelGenerator(LoggingLevels.INFO) : doMsgLog_NOP;
+            logger.detail = isLevelEnabledForLogging(LoggingLevels.DETAIL, m_memoryLogLevel) ? getMsgLogWLevelGenerator(LoggingLevels.DETAIL) : doMsgLog_NOP;
             logger.debug = isLevelEnabledForLogging(LoggingLevels.DEBUG, m_memoryLogLevel) ? getMsgLogWLevelGenerator(LoggingLevels.DEBUG) : doMsgLog_NOP;
             logger.trace = isLevelEnabledForLogging(LoggingLevels.TRACE, m_memoryLogLevel) ? getMsgLogWLevelGenerator(LoggingLevels.TRACE) : doMsgLog_NOP;
 
@@ -2073,6 +2073,7 @@ function LoggerFactory(appName, options) {
             logger.errorCategory = isLevelEnabledForLogging(LoggingLevels.ERROR, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategory(LoggingLevels.ERROR) : doMsgLogCategory_NOP;
             logger.warnCategory = isLevelEnabledForLogging(LoggingLevels.WARN, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategory(LoggingLevels.WARN) : doMsgLogCategory_NOP;
             logger.infoCategory = isLevelEnabledForLogging(LoggingLevels.INFO, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategory(LoggingLevels.INFO) : doMsgLogCategory_NOP;
+            logger.detailCategory = isLevelEnabledForLogging(LoggingLevels.DETAIL, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategory(LoggingLevels.DETAIL) : doMsgLogCategory_NOP;
             logger.debugCategory = isLevelEnabledForLogging(LoggingLevels.DEBUG, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategory(LoggingLevels.DEBUG) : doMsgLogCategory_NOP;
             logger.traceCategory = isLevelEnabledForLogging(LoggingLevels.TRACE, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategory(LoggingLevels.TRACE) : doMsgLogCategory_NOP;
 
@@ -2080,6 +2081,7 @@ function LoggerFactory(appName, options) {
             logger.errorIf = isLevelEnabledForLogging(LoggingLevels.ERROR, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCond(LoggingLevels.ERROR) : doMsgLogCond_NOP;
             logger.warnIf = isLevelEnabledForLogging(LoggingLevels.WARN, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCond(LoggingLevels.WARN) : doMsgLogCond_NOP;
             logger.infoIf = isLevelEnabledForLogging(LoggingLevels.INFO, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCond(LoggingLevels.INFO) : doMsgLogCond_NOP;
+            logger.detailIf = isLevelEnabledForLogging(LoggingLevels.DETAIL, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCond(LoggingLevels.DETAIL) : doMsgLogCond_NOP;
             logger.debugIf = isLevelEnabledForLogging(LoggingLevels.DEBUG, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCond(LoggingLevels.DEBUG) : doMsgLogCond_NOP;
             logger.traceIf = isLevelEnabledForLogging(LoggingLevels.TRACE, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCond(LoggingLevels.TRACE) : doMsgLogCond_NOP;
 
@@ -2087,6 +2089,7 @@ function LoggerFactory(appName, options) {
             logger.errorCategoryIf = isLevelEnabledForLogging(LoggingLevels.ERROR, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategoryCond(LoggingLevels.ERROR) : doMsgLogCategoryCond_NOP;
             logger.warnCategoryIf = isLevelEnabledForLogging(LoggingLevels.WARN, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategoryCond(LoggingLevels.WARN) : doMsgLogCategoryCond_NOP;
             logger.infoCategoryIf = isLevelEnabledForLogging(LoggingLevels.INFO, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategoryCond(LoggingLevels.INFO) : doMsgLogCategoryCond_NOP;
+            logger.detailCategoryIf = isLevelEnabledForLogging(LoggingLevels.DETAIL, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategoryCond(LoggingLevels.DETAIL) : doMsgLogCategoryCond_NOP;
             logger.debugCategoryIf = isLevelEnabledForLogging(LoggingLevels.DEBUG, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategoryCond(LoggingLevels.DEBUG) : doMsgLogCategoryCond_NOP;
             logger.traceCategoryIf = isLevelEnabledForLogging(LoggingLevels.TRACE, m_memoryLogLevel) ? getMsgLogWLevelGeneratorCategoryCond(LoggingLevels.TRACE) : doMsgLogCategoryCond_NOP;
         }
