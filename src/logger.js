@@ -1,5 +1,7 @@
 "use strict";
 
+const nlogger = require("bindings")("nlogger.node");
+
 const assert = require("assert");
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -71,77 +73,83 @@ function sanitizeLogLevel(level) {
 /*
  * Default values we expand objects and arrays
  */
-//ExpandDefaults_Depth 2
-//ExpandDefaults_ObjectLength 1024
-//ExpandDefaults_ArrayLength 128
+const ExpandDefaults = {
+    Depth: 2,
+    ObjectLength: 1024,
+    ArrayLength: 128
+};
 
 /**
  * Enum values indicating the kind of each format entry
  */
-//FormatStringEntryKind_Literal 0x1
-//FormatStringEntryKind_Expando 0x2
-//FormatStringEntryKind_Basic 0x3
-//FormatStringEntryKind_Compound 0x4
+const FormatStringEntryKind = {
+    Literal: 0x1,
+    Expando: 0x2,
+    Basic: 0x3,
+    Compound: 0x4
+};
 
 /**
- * Enum values for the format string singletons
+ * Enum values for the format strings
  */
-//SingletonFormatStringEntry_HASH 0x11
-//SingletonFormatStringEntry_HOST 0x12
-//SingletonFormatStringEntry_APP 0x13
-//SingletonFormatStringEntry_MODULE 0x14
-//SingletonFormatStringEntry_SOURCE 0x15
-//SingletonFormatStringEntry_WALLCLOCK 0x16
-//SingletonFormatStringEntry_TIMESTAMP 0x17
-//SingletonFormatStringEntry_CALLBACK 0x18
-//SingletonFormatStringEntry_REQUEST 0x19
+const FormatStringEnum = {
+    HASH: 0x1,
+    HOST: 0x2,
+    APP: 0x3,
+    MODULE: 0x4,
+    SOURCE: 0x5,
+    WALLCLOCK: 0x6,
+    TIMESTAMP: 0x7,
+    CALLBACK: 0x8,
+    REQUEST: 0x9,
 
-//SingletonFormatStringEntry_PERCENT 0x21
-//SingletonFormatStringEntry_BOOL 0x22
-//SingletonFormatStringEntry_NUMBER 0x23
-//SingletonFormatStringEntry_STRING 0x24
-//SingletonFormatStringEntry_DATEISO 0x25
-//SingletonFormatStringEntry_DATEUTC 0x26
-//SingletonFormatStringEntry_DATELOCAL 0x27
-//SingletonFormatStringEntry_GENERAL 0x28
-//SingletonFormatStringEntry_OBJECT 0x29
-//SingletonFormatStringEntry_ARRAY 0x2A
+    PERCENT: 0x11,
+    BOOL: 0x12,
+    NUMBER: 0x13,
+    STRING: 0x14,
+    DATEISO: 0x15,
+    DATEUTC: 0x16,
+    DATELOCAL: 0x17,
+    GENERAL: 0x18,
+    OBJECT: 0x19,
+    ARRAY: 0x1A
+};
 
 /**
  * Enum values for the types we consider javascript values having for logging purposes
  */
-//TypeNameEnum_TUndefined 0x31
-//TypeNameEnum_TNull 0x32
-//TypeNameEnum_TBoolean 0x33
-//TypeNameEnum_TNumber 0x34
-//TypeNameEnum_TString 0x35
-//TypeNameEnum_LastImmutableType 0x35
-//TypeNameEnum_TDate 0x36
-//TypeNameEnum_TFunction 0x37
-//TypeNameEnum_TObject 0x38
-//TypeNameEnum_TJsArray 0x39
-//TypeNameEnum_TTypedArray 0x3A
-//TypeNameEnum_TUnknown 0x3B
-//TypeNameEnum_TypeLimit 0x3C
+const TypeNameEnum = {
+    TUndefined: 0x1,
+    TNull: 0x2,
+    TBoolean: 0x3,
+    TNumber: 0x4,
+    TString: 0x5,
+    LastImmutableType: 0x5,
+    TDate: 0x6,
+    TObject: 0x7,
+    TJsArray: 0x8,
+    TTypedArray: 0x9,
+    TUnknown: 0xA,
+    TypeLimit: 0xB
+};
 
 const TypeNameToFlagEnum = {
-    "[object Undefined]": /*TypeNameEnum_TUndefined*/0x31,
-    "[object Null]": /*TypeNameEnum_TNull*/0x32,
-    "[object Boolean]": /*TypeNameEnum_TBoolean*/0x33,
-    "[object Number]": /*TypeNameEnum_TNumber*/0x34,
-    "[object String]": /*TypeNameEnum_TString*/0x35,
-    "[object Date]": /*TypeNameEnum_TDate*/0x36,
-    "[object Function]": /*TypeNameEnum_TFunction*/0x37,
-    "[object Object]": /*TypeNameEnum_TObject*/0x38,
-    "[object Array]": /*TypeNameEnum_TJsArray*/0x39,
-    "[object Float32Array]": /*TypeNameEnum_TTypedArray*/0x3A,
-    "[object Float64Array]": /*TypeNameEnum_TTypedArray*/0x3A,
-    "[object Int8Array]": /*TypeNameEnum_TTypedArray*/0x3A,
-    "[object Int16Array]": /*TypeNameEnum_TTypedArray*/0x3A,
-    "[object Int32Array]": /*TypeNameEnum_TTypedArray*/0x3A,
-    "[object Uint8Array]": /*TypeNameEnum_TTypedArray*/0x3A,
-    "[object Uint16Array]": /*TypeNameEnum_TTypedArray*/0x3A,
-    "[object Uint32Array]": /*TypeNameEnum_TTypedArray*/0x3A
+    "[object Undefined]": TypeNameEnum.TUndefined,
+    "[object Null]": TypeNameEnum.TNull,
+    "[object Boolean]": TypeNameEnum.TBoolean,
+    "[object Number]": TypeNameEnum.TNumber,
+    "[object String]": TypeNameEnum.TString,
+    "[object Date]": TypeNameEnum.TDate,
+    "[object Object]": TypeNameEnum.TObject,
+    "[object Array]": TypeNameEnum.TJsArray,
+    "[object Float32Array]": TypeNameEnum.TTypedArray,
+    "[object Float64Array]": TypeNameEnum.TTypedArray,
+    "[object Int8Array]": TypeNameEnum.TTypedArray,
+    "[object Int16Array]": TypeNameEnum.TTypedArray,
+    "[object Int32Array]": TypeNameEnum.TTypedArray,
+    "[object Uint8Array]": TypeNameEnum.TTypedArray,
+    "[object Uint16Array]": TypeNameEnum.TTypedArray,
+    "[object Uint32Array]": TypeNameEnum.TTypedArray
 };
 
 /**
@@ -150,7 +158,7 @@ const TypeNameToFlagEnum = {
  * @returns TypeNameToFlagEnum value
  */
 function getTypeNameEnum(value) {
-    return TypeNameToFlagEnum[toString.call(value)] || /*TypeNameEnum_TUnknown*/0x3B;
+    return TypeNameToFlagEnum[toString.call(value)] || TypeNameEnum.TUnknown;
 }
 
 /**
@@ -227,96 +235,66 @@ class FormatSyntaxError extends Error {
 }
 
 /**
- * Create a format string entry
- * @function
- * @param {string} name the name to use in the macroInfo object when extracting
- * @param {number} kind the FormatStringEntryKind_X tag
- * @param {string} label the string label that appears in a format string
- * @param {number} tag a unique incremented tag for fast integer compare
- * @param {bool} isSingleSlot true if this format is always stored in a single slot
- */
-function generateSingletonFormatStringEntry(name, kind, label, tag, isSingleSlot) {
-    return {
-        name: name,
-        kind: kind,
-        label: label,
-        enum: tag,
-        isSingleSlot: isSingleSlot
-    };
-}
-
-/**
  * Object singletons for format entries
  */
-const FormatStringEntrySingletons = {
-    HASH: generateSingletonFormatStringEntry("HASH", /*FormatStringEntryKind_Literal*/0x1, "#", /*SingletonFormatStringEntry_HASH*/0x11, true),
-    HOST: generateSingletonFormatStringEntry("HOST", /*FormatStringEntryKind_Expando*/0x2, "#host", /*SingletonFormatStringEntry_HOST*/0x12, true),
-    APP: generateSingletonFormatStringEntry("APP", /*FormatStringEntryKind_Expando*/0x2, "#app", /*SingletonFormatStringEntry_APP*/0x13, true),
-    MODULE: generateSingletonFormatStringEntry("MODULE", /*FormatStringEntryKind_Expando*/0x2, "#module", /*SingletonFormatStringEntry_MODULE*/0x14, true),
-    SOURCE: generateSingletonFormatStringEntry("SOURCE", /*FormatStringEntryKind_Expando*/0x2, "#source", /*SingletonFormatStringEntry_SOURCE*/0x15, true),
-    WALLCLOCK: generateSingletonFormatStringEntry("WALLCLOCK", /*FormatStringEntryKind_Expando*/0x2, "#wallclock", /*SingletonFormatStringEntry_WALLCLOCK*/0x16, true),
-    TIMESTAMP: generateSingletonFormatStringEntry("TIMESTAMP", /*FormatStringEntryKind_Expando*/0x2, "#timestamp", /*SingletonFormatStringEntry_TIMESTAMP*/0x17, true),
-    CALLBACK: generateSingletonFormatStringEntry("CALLBACK", /*FormatStringEntryKind_Expando*/0x2, "#callback", /*SingletonFormatStringEntry_CALLBACK*/0x18, true),
-    REQUEST: generateSingletonFormatStringEntry("REQUEST", /*FormatStringEntryKind_Expando*/0x2, "#request", /*SingletonFormatStringEntry_REQUEST*/0x19, true),
+const FormatStringEntryParseMap = new Map();
+FormatStringEntryParseMap.set("##", { kind: FormatStringEntryKind.Literal, enum: FormatStringEnum.HASH });
+FormatStringEntryParseMap.set("%%", { kind: FormatStringEntryKind.Literal, enum: FormatStringEnum.PERCENT });
 
-    PERCENT: generateSingletonFormatStringEntry("PERCENT", /*FormatStringEntryKind_Literal*/0x1, "%", /*SingletonFormatStringEntry_PERCENT*/0x21, true),
-    BOOL: generateSingletonFormatStringEntry("BOOL", /*FormatStringEntryKind_Basic*/0x3, "b", /*SingletonFormatStringEntry_BOOL*/0x22, true), //%{p:b}
-    NUMBER: generateSingletonFormatStringEntry("NUMBER", /*FormatStringEntryKind_Basic*/0x3, "n", /*SingletonFormatStringEntry_NUMBER*/0x23, true), //%{p:n}
-    STRING: generateSingletonFormatStringEntry("STRING", /*FormatStringEntryKind_Basic*/0x3, "s", /*SingletonFormatStringEntry_STRING*/0x24, true), //%{p:s}
-    DATEISO: generateSingletonFormatStringEntry("DATEISO", /*FormatStringEntryKind_Basic*/0x3, "di", /*SingletonFormatStringEntry_DATEISO*/0x25, true), //%{p:d-iso}
-    DATEUTC: generateSingletonFormatStringEntry("DATEUTC", /*FormatStringEntryKind_Basic*/0x3, "du", /*SingletonFormatStringEntry_DATEUTC*/0x26, true), //%{p:d-utc}
-    DATELOCAL: generateSingletonFormatStringEntry("DATELOCAL", /*FormatStringEntryKind_Basic*/0x3, "dl", /*SingletonFormatStringEntry_DATELOCAL*/0x27, true), //%{p:d-local}
-    GENERAL: generateSingletonFormatStringEntry("GENERAL", /*FormatStringEntryKind_Basic*/0x3, "g", /*SingletonFormatStringEntry_GENERAL*/0x28, false), //%{p:g}
-    OBJECT: generateSingletonFormatStringEntry("OBJECT", /*FormatStringEntryKind_Compound*/0x4, "o", /*SingletonFormatStringEntry_OBJECT*/0x29, false), //%{p:o<d,l>}
-    ARRAY: generateSingletonFormatStringEntry("ARRAY", /*FormatStringEntryKind_Compound*/0x4, "a", /*SingletonFormatStringEntry_ARRAY*/0x2A, false) //%{p:a<d,l>}
-};
+FormatStringEntryParseMap.set("#host", { kind: FormatStringEntryKind.Literal, enum: FormatStringEnum.HASH });
+FormatStringEntryParseMap.set("#app", { kind: FormatStringEntryKind.Expando, enum: FormatStringEnum.APP });
+FormatStringEntryParseMap.set("#module", { kind: FormatStringEntryKind.Expando, enum: FormatStringEnum.MODULE });
+FormatStringEntryParseMap.set("#source", { kind: FormatStringEntryKind.Expando, enum: FormatStringEnum.SOURCE });
+FormatStringEntryParseMap.set("#wallclock", { kind: FormatStringEntryKind.Expando, enum: FormatStringEnum.WALLCLOCK });
+FormatStringEntryParseMap.set("#timestamp", { kind: FormatStringEntryKind.Expando, enum: FormatStringEnum.TIMESTAMP });
+FormatStringEntryParseMap.set("#callback", { kind: FormatStringEntryKind.Expando, enum: FormatStringEnum.CALLBACK });
+FormatStringEntryParseMap.set("#request", { kind: FormatStringEntryKind.Expando, enum: FormatStringEnum.REQUEST });
 
-const s_expandoEntries = Object.keys(FormatStringEntrySingletons)
-    .filter(function (value) { return FormatStringEntrySingletons[value].kind === /*FormatStringEntryKind_Expando*/0x2; })
-    .map(function (value) { return FormatStringEntrySingletons[value]; });
+FormatStringEntryParseMap.set("b", { kind: FormatStringEntryKind.Basic, enum: FormatStringEnum.BOOL });
+FormatStringEntryParseMap.set("n", { kind: FormatStringEntryKind.Basic, enum: FormatStringEnum.NUMBER });
+FormatStringEntryParseMap.set("s", { kind: FormatStringEntryKind.Basic, enum: FormatStringEnum.STRING });
+FormatStringEntryParseMap.set("di", { kind: FormatStringEntryKind.Basic, enum: FormatStringEnum.DATEISO });
+FormatStringEntryParseMap.set("du", { kind: FormatStringEntryKind.Basic, enum: FormatStringEnum.DATEUTC });
+FormatStringEntryParseMap.set("dl", { kind: FormatStringEntryKind.Basic, enum: FormatStringEnum.DATELOCAL });
+FormatStringEntryParseMap.set("g", { kind: FormatStringEntryKind.Basic, enum: FormatStringEnum.GENERAL });
+FormatStringEntryParseMap.set("o", { kind: FormatStringEntryKind.Compound, enum: FormatStringEnum.OBJECT });
+FormatStringEntryParseMap.set("a", { kind: FormatStringEntryKind.Compound, enum: FormatStringEnum.ARRAY });
 
-const s_basicFormatEntries = Object.keys(FormatStringEntrySingletons)
-    .filter(function (value) { return FormatStringEntrySingletons[value].kind === /*FormatStringEntryKind_Basic*/0x3; })
-    .map(function (value) { return FormatStringEntrySingletons[value]; });
+const s_expandoFormatStrings = [];
+const s_basicFormatStrings = [];
+const s_compoundFormatStrings = [];
+FormatStringEntryParseMap.forEach((v, k) => {
+    if (v.kind === FormatStringEntryKind.Literal) {
+    }
+    else if (v.kind === FormatStringEntryKind.Expando) {
+        s_expandoFormatStrings.push(k);
+    }
+    else if (v.kind === FormatStringEntryKind.Basic) {
+        s_basicFormatStrings.push(k);
+    }
+    else {
+        s_compoundFormatStrings.push(k);
+    }
+});
 
-const s_compoundFormatEntries = Object.keys(FormatStringEntrySingletons)
-    .filter(function (value) { return FormatStringEntrySingletons[value].kind === /*FormatStringEntryKind_Compound*/0x4; })
-    .map(function (value) { return FormatStringEntrySingletons[value]; });
-
-const s_expandoStringRe = new RegExp("^(" +
-    s_expandoEntries
-        .map(function (value) { return value.label; })
-        .join("|") +
-    ")$");
-
-const s_basicFormatStringRe = new RegExp("^\\%{(\\d+):(" +
-    s_basicFormatEntries
-        .map(function (value) { return value.label; })
-        .join("|") +
-    ")}$");
-
-const s_compoundFormatStringRe = new RegExp("^\\%{(\\d+):(" +
-    s_compoundFormatEntries
-        .map(function (value) { return value.label; })
-        .join("|") +
-    ")(<(\\d+|\\*)?,(\\d+|\\*)?>)}$");
+const s_expandoStringRe = new RegExp("^(" + s_expandoFormatStrings.join("|") + ")$");
+const s_basicFormatStringRe = new RegExp("^\\%{(\\d+):(" + s_basicFormatStrings.join("|") + ")}$");
+const s_compoundFormatStringRe = new RegExp("^\\%{(\\d+):(" + s_compoundFormatStrings.join("|") + ")(<(\\d+|\\*)?,(\\d+|\\*)?>)}$");
 
 /**
  * Construct a msgFormat entry for a compound formatter.
  * @function
- * @param {Object} formatTag the FormatStringEntrySingleton for this entry
- * @param {number} formatStringStart the index that the format text starts at in the format string
- * @param {number} formatStringEnd the index (1 after) the end of the format text in the format string
+ * @param {number} kind the FormatStringEntryKind value
+ * @param {number} tag the FormatStringEnum value
  * @param {number} argListPosition the (optional) position to find the format arg in the arg list
  * @param {number} formatExpandDepth the (optional) max depth to expand the argument object
  * @param {number} formatExpandLength the (optional) max number of properties/array length to expand the argument object
  * @returns {Object} a message format entry
  */
-function createMsgFormatEntry(formatTag, formatStringStart, formatStringEnd, argListPosition, formatExpandDepth, formatExpandLength) {
+function createMsgFormatEntry(kind, tag, argListPosition, formatExpandDepth, formatExpandLength) {
     return {
-        format: formatTag,
-        formatStart: formatStringStart,
-        formatEnd: formatStringEnd,
+        kind: kind,
+        enum: tag,
         argPosition: argListPosition,
         expandDepth: formatExpandDepth,
         expandLength: formatExpandLength
@@ -332,10 +310,10 @@ function createMsgFormatEntry(formatTag, formatStringStart, formatStringEnd, arg
 function expandToJsonFormatter(jobj) {
     const typeid = getTypeNameEnum(jobj);
 
-    if ((typeid === /*TypeNameEnum_TUndefined*/0x31) || (typeid === /*TypeNameEnum_TNull*/0x32) || (typeid === /*TypeNameEnum_TBoolean*/0x33) || (typeid === /*TypeNameEnum_TNumber*/0x34)) {
+    if ((typeid === TypeNameEnum.TUndefined) || (typeid === TypeNameEnum.TNull) || (typeid === TypeNameEnum.TBoolean) || (typeid === TypeNameEnum.TNumber)) {
         return JSON.stringify(jobj);
     }
-    else if (typeid === /*TypeNameEnum_TString*/0x35) {
+    else if (typeid === TypeNameEnum.TString) {
         if (s_expandoStringRe.test(jobj) || s_basicFormatStringRe.test(jobj) || s_compoundFormatStringRe.test(jobj)) {
             return jobj;
         }
@@ -343,7 +321,7 @@ function expandToJsonFormatter(jobj) {
             return JSON.stringify(jobj);
         }
     }
-    else if (typeid === /*TypeNameEnum_TObject*/0x38) {
+    else if (typeid === TypeNameEnum.TObject) {
         return "{ " +
             Object.keys(jobj)
                 .sort()
@@ -351,7 +329,7 @@ function expandToJsonFormatter(jobj) {
                 .join(", ") +
             " }";
     }
-    else if (typeid === /*TypeNameEnum_TJsArray*/0x39) {
+    else if (typeid === TypeNameEnum.TJsArray) {
         return "[ " +
             jobj
                 .map(function (value) { return expandToJsonFormatter(value); })
@@ -363,24 +341,30 @@ function expandToJsonFormatter(jobj) {
     }
 }
 
+function formatEntryInfoExtractorHelper(kind, tag, spos, epos, argpos, depth, length) {
+    const fmtentry = createMsgFormatEntry(kind, tag, argpos !== undefined ? argpos : -1, depth !== undefined ? depth : -1, length !== undefined ? length : -1);
+    return { fmt: fmtentry, formatStart: spos, formatEnd: epos };
+}
+
 /**
  * Helper function to extract and construct an expando format specifier or throws is the expando is malformed.
  * @function
  * @param {string} fmtString the format string we are working on
  * @param {number} vpos the current position in the string
- * @returns {Object} the expando MsgFormatEntry
+ * @returns Object the expando MsgFormatEntry and the range of the string that was idenitifed as the formatter
  */
 function extractExpandoSpecifier(fmtString, vpos) {
     if (fmtString.startsWith("##", vpos)) {
-        return createMsgFormatEntry(FormatStringEntrySingletons.HASH, vpos, vpos + "##".length, -1, -1, -1);
+        return formatEntryInfoExtractorHelper(FormatStringEntryKind.Literal, FormatStringEnum.HASH, vpos, vpos + "##".length);
     }
     else {
-        const expando = s_expandoEntries.find(function (expando) { return fmtString.startsWith(expando.label, vpos); });
+        const expando = s_expandoFormatStrings.find(function (expandostr) { return fmtString.startsWith(expandostr, vpos); });
         if (!expando) {
             throw new FormatSyntaxError("Bad match in expando format string", fmtString, vpos);
         }
 
-        return createMsgFormatEntry(expando, vpos, vpos + expando.label.length, -1, -1, -1);
+        const eentry = FormatStringEntryParseMap.get(expando);
+        return formatEntryInfoExtractorHelper(eentry.kind, eentry.enum, vpos, vpos + expando.label.length);
     }
 }
 
@@ -393,11 +377,11 @@ const s_formatDepthLengthRegex = /([o|a])<[ ]*(\d+|\*)?[ ]*,[ ]*(\d+|\*)?[ ]*>}/
  * @function
  * @param {string} fmtString the format string we are working on
  * @param {number} vpos the current position in the string
- * @returns {Object} the expando MsgFormatEntry
+ * @returns Object the expando MsgFormatEntry and the range of the string that was idenitifed as the formatter
  */
 function extractArgumentFormatSpecifier(fmtString, vpos) {
     if (fmtString.startsWith("%%", vpos)) {
-        return createMsgFormatEntry(FormatStringEntrySingletons.PERCENT, vpos, vpos + "%%".length, -1, -1, -1);
+        return formatEntryInfoExtractorHelper(FormatStringEntryKind.Literal, FormatStringEnum.PERCENT, vpos, vpos + "%%".length);
     }
     else {
         if (!fmtString.startsWith("%{", vpos)) {
@@ -423,25 +407,26 @@ function extractArgumentFormatSpecifier(fmtString, vpos) {
         specPos++;
 
         const cchar = fmtString.charAt(specPos);
-        const basicFormatOption = s_basicFormatEntries.find(function (value) { return value.label.length === 1 ? value.label === cchar : fmtString.startsWith(value.label, specPos); });
-        const compoundFormatOption = s_compoundFormatEntries.find(function (value) { return value.label === cchar; });
+        const basicFormatOptionStr = s_basicFormatStrings.find(function (value) { return value.length === 1 ? value === cchar : fmtString.startsWith(value, specPos); });
+        const compoundFormatOptionStr = s_compoundFormatStrings.find(function (value) { return value === cchar; });
 
-        if (!basicFormatOption && !compoundFormatOption) {
+        if (!basicFormatOptionStr && !compoundFormatOptionStr) {
             throw new FormatSyntaxError("Bad formatting specifier", fmtString, specPos);
         }
 
-        if (basicFormatOption) {
-            const fendpos = specPos + basicFormatOption.label.length + 1; //"fmt}".length
-            return createMsgFormatEntry(basicFormatOption, vpos, fendpos, argPosition, -1, -1);
+        if (basicFormatOptionStr) {
+            const basicFormatOptionInfo = FormatStringEntryParseMap.get(basicFormatOptionStr);
+            const fendpos = specPos + basicFormatOptionStr.length + 1; //"fmt}".length
+            return formatEntryInfoExtractorHelper(basicFormatOptionInfo.kind, basicFormatOptionInfo.enum, vpos, fendpos, argPosition, -1, -1);
         }
         else {
             const DL_STAR = 1073741824;
 
             if (fmtString.startsWith("o}", specPos)) {
-                return createMsgFormatEntry(FormatStringEntrySingletons.OBJECT, vpos, specPos + "o}".length, argPosition, /*ExpandDefaults_Depth*/2, /*ExpandDefaults_ObjectLength*/1024);
+                return formatEntryInfoExtractorHelper(FormatStringEntryKind.Compound, FormatStringEnum.OBJECT, vpos, specPos + "o}".length, argPosition, ExpandDefaults.Depth, ExpandDefaults.ObjectLength);
             }
             else if (fmtString.startsWith("a}", specPos)) {
-                return createMsgFormatEntry(FormatStringEntrySingletons.ARRAY, vpos, specPos + "a}".length, argPosition, /*ExpandDefaults_Depth*/2, /*ExpandDefaults_ArrayLength*/128);
+                return formatEntryInfoExtractorHelper(FormatStringEntryKind.Compound, FormatStringEnum.ARRAY, vpos, specPos + "a}".length, argPosition, ExpandDefaults.Depth, ExpandDefaults.ArrayLength);
             }
             else {
                 s_formatDepthLengthRegex.lastIndex = specPos;
@@ -450,9 +435,9 @@ function extractArgumentFormatSpecifier(fmtString, vpos) {
                     throw new FormatSyntaxError("Bad position specifier in format", fmtString, s_formatDepthLengthRegex.lastIndex);
                 }
 
-                const ttag = (dlMatch[1] === "o") ? FormatStringEntrySingletons.OBJECT : FormatStringEntrySingletons.ARRAY;
-                let tdepth = /*ExpandDefaults_Depth*/2;
-                let tlength = (dlMatch[1] === "o") ? /*ExpandDefaults_ObjectLength*/1024 : /*ExpandDefaults_ArrayLength*/128;
+                const ttag = (dlMatch[1] === "o") ? FormatStringEnum.OBJECT : FormatStringEnum.ARRAY;
+                let tdepth = ExpandDefaults.Depth;
+                let tlength = (dlMatch[1] === "o") ? ExpandDefaults.ObjectLength : ExpandDefaults.ArrayLength;
 
                 if (dlMatch[2]) {
                     tdepth = (dlMatch[2] !== "*") ? Number.parseInt(dlMatch[2]) : DL_STAR;
@@ -462,7 +447,7 @@ function extractArgumentFormatSpecifier(fmtString, vpos) {
                     tlength = (dlMatch[3] !== "*") ? Number.parseInt(dlMatch[3]) : DL_STAR;
                 }
 
-                return createMsgFormatEntry(ttag, vpos, specPos + dlMatch[0].length, argPosition, tdepth, tlength);
+                return formatEntryInfoExtractorHelper(FormatStringEntryKind.Compound, ttag, vpos, specPos + dlMatch[0].length, argPosition, tdepth, tlength);
             }
         }
     }
@@ -473,22 +458,14 @@ function extractArgumentFormatSpecifier(fmtString, vpos) {
  * @function
  * @param {string} fmtName the name of the format
  * @param {number} fmtId a unique identifier for the format
- * @param {string} fmtString the raw format string
- * @param {number} maxArgPos the largest arg used in the format
- * @param {Array} fmtEntryArray the array of MsgFormatEntry objects
- * @param {string} initialFormatSegment the string that we want to emit at the start of the format
- * @param {Array} tailingFormatSegmentArray the strings that we want to emit in after each format specifier
+ * @param {Array} fmtEntryArray the array of FormatEntry objects
  * @returns {Object} our MsgFormat object
  */
-function createMsgFormat(fmtName, fmtId, fmtString, maxArgPos, fmtEntryArray, initialFormatSegment, tailingFormatSegmentArray) {
+function createMsgFormat(fmtName, fmtId, fmtEntryArray) {
     return {
         formatName: fmtName,
         formatId: fmtId,
-        formatString: fmtString,
-        maxArgPosition: maxArgPos,
-        formatterArray: fmtEntryArray,
-        initialFormatStringSegment: initialFormatSegment,
-        tailingFormatStringSegmentArray: tailingFormatSegmentArray
+        formatterArray: fmtEntryArray
     };
 }
 
@@ -513,7 +490,7 @@ function extractMsgFormat(fmtName, fmtId, fmtInfo) {
     let fmtString = fmtInfo;
     if (typeof (fmtInfo) !== "string") {
         const typeid = getTypeNameEnum(fmtInfo);
-        if (typeid !== /*TypeNameEnum_TObject*/0x38 && typeid !== /*TypeNameEnum_TJsArray*/0x39) {
+        if (typeid !== TypeNameEnum.TObject && typeid !== TypeNameEnum.TJsArray) {
             throw new FormatSyntaxError("Format description options are string | object layout | array layout", undefined, 0);
         }
 
@@ -525,7 +502,6 @@ function extractMsgFormat(fmtName, fmtId, fmtInfo) {
     }
 
     const fArray = [];
-    let maxArgPos = 0;
     while (cpos < fmtString.length) {
         const cchar = fmtString.charAt(cpos);
         if (cchar !== "#" && cchar !== "%") {
@@ -535,24 +511,35 @@ function extractMsgFormat(fmtName, fmtId, fmtInfo) {
             const fmt = (cchar === "#") ? extractExpandoSpecifier(fmtString, cpos) : extractArgumentFormatSpecifier(fmtString, cpos);
             fArray.push(fmt);
 
-            if (fmt.fposition) {
-                maxArgPos = Math.max(maxArgPos, fmt.fposition);
-            }
-
             cpos = fmt.formatEnd;
         }
     }
 
+    const formatArray = [];
+    const kindArray = new Uint8Array(fArray.length);
+    const enumArray = new Uint8Array(fArray.length);
+
     const initialFormatSegment = (fArray.length !== 0) ? fmtString.substr(0, fArray[0].formatStart) : fmtString;
     const tailingFormatSegmentArray = [];
     for (let i = 0; i < fArray.length; ++i) {
-        const start = fArray[i].formatEnd;
+        const fentry = fArray[i];
+
+        formatArray.push(fentry.fmt);
+        kindArray[i] = fentry.fmt.kind;
+        enumArray[i] = fentry.fmt.enum;
+
+        const start = fentry.formatEnd;
         const end = (i + 1 < fArray.length) ? fArray[i + 1].formatStart : fmtString.length;
 
         tailingFormatSegmentArray.push(fmtString.substr(start, end - start));
     }
 
-    return createMsgFormat(fmtName, fmtId, fmtString, maxArgPos, fArray, initialFormatSegment, tailingFormatSegmentArray);
+    const nok = nlogger.registerFormat(fmtId, kindArray, enumArray, initialFormatSegment, tailingFormatSegmentArray, fmtString);
+    if (!nok) {
+        throw new FormatSyntaxError("Failed native formatter create", undefined, 0);
+    }
+
+    return createMsgFormat(fmtName, fmtId, formatArray);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
