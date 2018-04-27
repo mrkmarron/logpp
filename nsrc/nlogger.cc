@@ -5,10 +5,7 @@
 #include <map>
 
 ///////////////////////////////////////
-//Constants and globals
-
-static bool s_utf8JSEngine = true;
-static std::map<int64_t, std::shared_ptr<MsgFormat>> s_formatMap;
+//Constants
 
 enum class FormatStringEntryKind : uint8_t
 {
@@ -54,7 +51,7 @@ class FormatEntry
 public:
     const FormatStringEntryKind fkind;
     const FormatStringEnum fenum;
-    const JSString ffollow; //the string to put into the log after this content
+    JSString ffollow; //the string to put into the log after this content
 
     FormatEntry() :
         fkind(FormatStringEntryKind::Clear), fenum(FormatStringEnum::Clear), ffollow()
@@ -63,13 +60,13 @@ public:
     }
 
     FormatEntry(FormatStringEntryKind fkind, FormatStringEnum fenum, JSString&& ffollow) :
-        fkind(fkind), fenum(fenum), ffollow(ffollow)
+        fkind(fkind), fenum(fenum), ffollow(std::forward<JSString>(ffollow))
     {
         ;
     }
 
     FormatEntry(FormatEntry&& other) :
-        fkind(other.fkind), fenum(other.fenum), ffollow(other.ffollow)
+        fkind(other.fkind), fenum(other.fenum), ffollow(std::forward<JSString>(other.ffollow))
     {
         ;
     }
@@ -80,8 +77,8 @@ class MsgFormat
 private:
     const int64_t m_formatId; //a unique identifier for the format
     std::vector<FormatEntry> m_fentries; //the array of FormatEntry objects
-    const JSString m_initialFormatStringSegment;
-    const JSString m_originalFormatString; //the origial raw format string
+    JSString m_initialFormatStringSegment;
+    JSString m_originalFormatString; //the origial raw format string
 
 public:
     MsgFormat() :
@@ -90,12 +87,21 @@ public:
         ;
     }
 
-    MsgFormat(int64_t formatId, JSString&& initialFormatStringSegment, JSString&& originalFormatString) :
-        m_formatId(formatId), m_fentries(), m_initialFormatStringSegment(initialFormatStringSegment), m_originalFormatString(originalFormatString)
+    MsgFormat(int64_t formatId, size_t entryCount, JSString&& initialFormatStringSegment, JSString&& originalFormatString) :
+        m_formatId(formatId), m_fentries(), 
+        m_initialFormatStringSegment(std::forward<JSString>(initialFormatStringSegment)),
+        m_originalFormatString(std::forward<JSString>(originalFormatString))
     {
-        asdf; // move constructor;
+        this->m_fentries.reserve(entryCount);
+    }
+
+    void AddFormat(FormatEntry&& entry)
+    {
+        this->m_fentries.emplace_back(std::forward<FormatEntry>(entry));
     }
 };
+
+static std::map<int64_t, std::shared_ptr<MsgFormat>> s_formatMap;
 
 Napi::Value RegisterFormat(const Napi::CallbackInfo& info)
 {
@@ -103,16 +109,20 @@ Napi::Value RegisterFormat(const Napi::CallbackInfo& info)
 
     if (info.Length() != 6)
     {
-        return Napi::Boolean::New(env, false);
+        Napi::TypeError::New(env, "Wrong arguments").ThrowAsJavaScriptException();
+        return env.Undefined();
     }
 
     if (!info[0].IsNumber() || !info[1].IsTypedArray() || !info[2].IsTypedArray() || !info[3].IsString() || !info[4].IsArray() || !info[5].IsString())
     {
-        return Napi::Boolean::New(env, false);
+        Napi::TypeError::New(env, "Wrong arguments").ThrowAsJavaScriptException();
+        return env.Undefined();
     }
 
     //fmtId, kindArray, enumArray, initialFormatSegment, tailingFormatSegmentArray, fmtString
     int64_t fmtId = info[0].As<Napi::Number>().Int64Value();
+    Napi::String initialFormatSegment = info[3].As<Napi::String>();
+    Napi::String fmtString = info[5].As<Napi::String>();
 
     Napi::Uint8Array kindArray = info[1].As<Napi::Uint8Array>();
     Napi::Uint8Array enumArray = info[2].As<Napi::Uint8Array>();
@@ -121,30 +131,37 @@ Napi::Value RegisterFormat(const Napi::CallbackInfo& info)
     size_t expectedLength = tailingFormatSegmentArray.Length();
     if (enumArray.ElementLength() != expectedLength || kindArray.ElementLength() != expectedLength)
     {
-        return Napi::Boolean::New(env, false);
+        Napi::TypeError::New(env, "Wrong arguments").ThrowAsJavaScriptException();
+        return env.Undefined();
     }
+
+    std::shared_ptr<MsgFormat> msgf = std::make_shared<MsgFormat>(fmtId, expectedLength, initialFormatSegment.Utf8Value(), fmtString.Utf8Value());
 
     const uint8_t* kindArrayData = kindArray.Data();
     const uint8_t* enumArrayData = enumArray.Data();
 
-    asdf;
+    for (size_t i = 0; i < expectedLength; ++i)
+    {
+        Napi::Value argv = tailingFormatSegmentArray[i];
+        if (!argv.IsString())
+        {
+            Napi::TypeError::New(env, "Wrong arguments").ThrowAsJavaScriptException();
+            return env.Undefined();
+        }
 
-    Napi::String initialFormatSegment = info[3].As<Napi::String>();
-    Napi::String fmtString = info[5].As<Napi::String>();
-    double arg0 = info[0].As<Napi::Number>().DoubleValue();
+        FormatStringEntryKind fkind = static_cast<FormatStringEntryKind>(kindArrayData[i]);
+        FormatStringEnum fenum = static_cast<FormatStringEnum>(enumArrayData[i]);
+        Napi::String tailingSegment = argv.As<Napi::String>();
 
-    double arg1 = info[1].As<Napi::Number>().DoubleValue();
+        msgf->AddFormat(FormatEntry(fkind, fenum, tailingSegment.Utf8Value()));
+    }
 
-    Napi::Number num = Napi::Number::New(env, arg0 + arg1);
-
-    printf("Register Format\n");
+    s_formatMap[fmtId] = msgf;
 
     return env.Undefined();
 }
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
-    s_utf8JSEngine = true;
-
     exports.Set(Napi::String::New(env, "registerFormat"), Napi::Function::New(env, RegisterFormat));
 
     printf("Init!!!\n");

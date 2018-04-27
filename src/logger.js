@@ -1,6 +1,6 @@
 "use strict";
 
-const nlogger = require("bindings")("nlogger.node");
+const nlogger = require("C:\\Chakra\\logpp\\build\\Debug\\nlogger.node");
 
 const assert = require("assert");
 
@@ -10,9 +10,10 @@ const assert = require("assert");
 //  we actually put in the code where needed (so no need to load in bytecode and very obvious for JIT).
 
 /**
- * Global map of ids -> format specifications
+ * Global map of ids/names -> format specifications
  */
 const s_fmtMap = new Map();
+const s_formatInfo = new Map();
 
 /**
  * Tag values for logging levels.
@@ -164,32 +165,34 @@ function getTypeNameEnum(value) {
 /**
  * Tag values indicating the kind of each entry in the fast log buffer
  */
-//LogEntryTags_Clear 0x0
-//LogEntryTags_MsgFormat 0x1
-//LogEntryTags_MsgLevel 0x2
-//LogEntryTags_MsgCategory 0x3
-//LogEntryTags_MsgEndSentinal 0x4
-//LogEntryTags_LParen 0x5
-//LogEntryTags_RParen 0x6
-//LogEntryTags_LBrack 0x7
-//LogEntryTags_RBrack 0x8
-//LogEntryTags_PropertyRecord 0x9
-//LogEntryTags_JsBadFormatVar 0xA
-//LogEntryTags_JsVarValue 0xB
-//LogEntryTags_LengthBoundHit 0xC
-//LogEntryTags_CycleValue 0xD
-//LogEntryTags_OpaqueValue 0xF
-//LogEntryTags_DepthBoundObject 0x20
-//LogEntryTags_DepthBoundArray 0x21
-//LogEntryTags_MsgWallTime 0x22
+const LogEntryTags = {
+    Clear: 0x0,
+    MsgFormat: 0x1,
+    MsgLevel: 0x2,
+    MsgCategory: 0x3,
+    MsgWallTime: 0x4,
+    MsgEndSentinal: 0x5,
+    LParen: 0x6,
+    RParen: 0x7,
+    LBrack: 0x8,
+    RBrack: 0x9,
 
-//Tags for formatter special encodings of JsVarValues
-//LogEntryTags_JsVarValue_Undefined 0x30
-//LogEntryTags_JsVarValue_Null 0x31
-//LogEntryTags_JsVarValue_Bool 0x32
-//LogEntryTags_JsVarValue_Number 0x34
-//LogEntryTags_JsVarValue_StringIdx 0x38
-//LogEntryTags_JsVarValue_Date 0x3A
+    JsVarValue_Undefined: 0x11,
+    JsVarValue_Null: 0x12,
+    JsVarValue_Bool: 0x13,
+    JsVarValue_Number: 0x14,
+    JsVarValue_StringIdx: 0x15,
+    JsVarValue_Date: 0x16,
+
+    PropertyRecord: 0x21,
+    JsBadFormatVar: 0x22,
+    JsVarValue: 0x23,
+    LengthBoundHit: 0x24,
+    CycleValue: 0x25,
+    OpaqueValue: 0x26,
+    DepthBoundObject: 0x27,
+    DepthBoundArray: 0x28,
+};
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //Define structure for representing log message formats.
@@ -241,7 +244,7 @@ const FormatStringEntryParseMap = new Map();
 FormatStringEntryParseMap.set("##", { kind: FormatStringEntryKind.Literal, enum: FormatStringEnum.HASH });
 FormatStringEntryParseMap.set("%%", { kind: FormatStringEntryKind.Literal, enum: FormatStringEnum.PERCENT });
 
-FormatStringEntryParseMap.set("#host", { kind: FormatStringEntryKind.Literal, enum: FormatStringEnum.HASH });
+FormatStringEntryParseMap.set("#host", { kind: FormatStringEntryKind.Expando, enum: FormatStringEnum.HASH });
 FormatStringEntryParseMap.set("#app", { kind: FormatStringEntryKind.Expando, enum: FormatStringEnum.APP });
 FormatStringEntryParseMap.set("#module", { kind: FormatStringEntryKind.Expando, enum: FormatStringEnum.MODULE });
 FormatStringEntryParseMap.set("#source", { kind: FormatStringEntryKind.Expando, enum: FormatStringEnum.SOURCE });
@@ -364,7 +367,7 @@ function extractExpandoSpecifier(fmtString, vpos) {
         }
 
         const eentry = FormatStringEntryParseMap.get(expando);
-        return formatEntryInfoExtractorHelper(eentry.kind, eentry.enum, vpos, vpos + expando.label.length);
+        return formatEntryInfoExtractorHelper(eentry.kind, eentry.enum, vpos, vpos + expando.length);
     }
 }
 
@@ -534,12 +537,11 @@ function extractMsgFormat(fmtName, fmtId, fmtInfo) {
         tailingFormatSegmentArray.push(fmtString.substr(start, end - start));
     }
 
-    const nok = nlogger.registerFormat(fmtId, kindArray, enumArray, initialFormatSegment, tailingFormatSegmentArray, fmtString);
-    if (!nok) {
-        throw new FormatSyntaxError("Failed native formatter create", undefined, 0);
-    }
+    nlogger.registerFormat(fmtId, kindArray, enumArray, initialFormatSegment, tailingFormatSegmentArray, fmtString);
+    const fmtObj = createMsgFormat(fmtName, fmtId, formatArray);
 
-    return createMsgFormat(fmtName, fmtId, formatArray);
+    s_fmtMap.set(fmtObj.formatId, fmtObj);
+    s_formatInfo.set(fmtName, fmtObj);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -551,18 +553,26 @@ function extractMsgFormat(fmtName, fmtId, fmtInfo) {
 /**
  * The number of entries we have in a msg block.
  */
-//MemoryMsgBlockSize 256
+const MemoryMsgBlockSizes = [256, 512, 1024, 2048, 4096];
+const MemoryMsgBlockInitSize = 256;
 
 //internal function for allocating a block
 function createMemoryMsgBlock(previousBlock) {
+    let blocksize = MemoryMsgBlockInitSize;
+    if (previousBlock) {
+        blocksize = MemoryMsgBlockSizes[Math.max(MemoryMsgBlockSizes.indexOf(previousBlock.blocksize) + 1, MemoryMsgBlockSizes.length)];
+    }
+
     const nblock = {
         spos: 0,
         epos: 0,
-        tags: new Uint8Array(/*MemoryMsgBlockSize*/256),
-        data: new Array(/*MemoryMsgBlockSize*/256),
+        tags: new Uint8Array(blocksize),
+        data: new Float64Array(blocksize),
+        stringData: [],
+        stringMap: new Map(),
         next: null,
-        previous: previousBlock,
-        dataSize: -1
+        blocksize: blocksize,
+        previous: previousBlock
     };
 
     if (previousBlock) {
@@ -587,8 +597,10 @@ function InMemoryLog() {
  * @method
  */
 InMemoryLog.prototype.clear = function () {
-    this.head.tags.fill(/*LogEntryTags_Clear*/0x0, 0, this.head.epos);
+    this.head.tags.fill(LogEntryTags.Clear, 0, this.head.epos);
     this.head.data.fill(undefined, 0, this.head.epos);
+    this.head.stringData = [];
+    this.head.stringMap.clear();
     this.head.spos = 0;
     this.head.epos = 0;
     this.head.next = null;
@@ -608,36 +620,6 @@ InMemoryLog.prototype.count = function () {
     }
     return tcount;
 };
-
-/**
- * Update the size information in a InMemoryLog block
- */
-function updateBlocklistSizeInfo(imblock) {
-    let total = 0;
-    for (let cblock = imblock; cblock !== null; cblock = cblock.next) {
-        if (cblock.epos === /*MemoryMsgBlockSize*/256 && cblock.dataSize === -1) {
-            let size = /*MemoryMsgBlockSize*/256 * 6; //backbone size
-            for (let pos = 0; pos < /*MemoryMsgBlockSize*/256; ++pos) {
-                const data = cblock.data[pos];
-                if (data === undefined || data === null) {
-                    //no extra size
-                }
-                else {
-                    const jstype = typeof (data);
-                    if (jstype === "string") {
-                        size += data.length;
-                    }
-                }
-            }
-            cblock.dataSize = size;
-        }
-
-        if (cblock.dataSize !== -1) {
-            total += cblock.dataSize;
-        }
-    }
-    return total;
-}
 
 /**
  * Remove the head block data from this list
@@ -1674,9 +1656,6 @@ function LoggerFactory(appName, options) {
     * @param {Object} options the options for this logger
     */
     function Logger(moduleName, options) {
-        //All the formats we know about string -> MsgFormat Object
-        const m_formatInfo = new Map();
-
         //Level that this logger will record at going into memory
         let m_memoryLogLevel = options.memoryLogLevel;
         const m_enabledCategories = {};
@@ -1907,10 +1886,12 @@ function LoggerFactory(appName, options) {
          * Add a new format to the format map
          */
         this.addFormat = function (fmtName, fmtInfo) {
+            if (s_formatInfo.has(fmtName)) {
+                return;
+            }
+
             try {
-                const fmtObj = extractMsgFormat(fmtName, s_fmtMap.size, fmtInfo);
-                m_formatInfo.set(fmtName, fmtObj);
-                s_fmtMap.set(fmtObj.formatId, fmtObj);
+                extractMsgFormat(fmtName, s_fmtMap.size, fmtInfo);
             }
             catch (ex) {
                 console.error("Hard failure in addFormat -- " + ex.toString());
@@ -1933,21 +1914,19 @@ function LoggerFactory(appName, options) {
                 .slice(2);
             const lfilename = cstack[0];
 
-            if (m_formatInfo.has(lfilename)) {
-                return m_formatInfo.get(lfilename);
+            if (s_formatInfo.has(lfilename)) {
+                return s_formatInfo.get(lfilename);
             }
 
-            let fmtObj = undefined;
             if (typeof (fmtInfo) === "string") {
-                fmtObj = extractMsgFormat("implicit_format", s_fmtMap.size, fmtInfo.substr(1, fmtInfo.length - 2)); //trim %
+                extractMsgFormat(lfilename, s_formatInfo.size, fmtInfo.substr(1, fmtInfo.length - 2)); //trim %
             }
             else {
                 args.unshift(fmtInfo);
-                fmtObj = extractMsgFormat("implicit_format", s_fmtMap.size, "%{0:g}");
+                extractMsgFormat(lfilename, s_fmtMap.size, "%{0:g}");
             }
 
-            m_formatInfo.set(lfilename, fmtObj);
-            s_fmtMap.set(fmtObj.formatId, fmtObj);
+            return s_formatInfo.get(lfilename);
         }
 
         /**
@@ -1959,7 +1938,7 @@ function LoggerFactory(appName, options) {
             const fixedLevel = desiredLevel;
             return function (fmt, ...args) {
                 try {
-                    const fmti = isImplicitFormat(fmt) ? generateImplicitFormat(fmt, args) : m_formatInfo.get(fmt);
+                    const fmti = isImplicitFormat(fmt) ? generateImplicitFormat(fmt, args) : s_formatInfo.get(fmt);
                     if (fmti === undefined) {
                         console.error("Format name is not defined for this logger -- " + fmt);
                         return;
@@ -1981,7 +1960,7 @@ function LoggerFactory(appName, options) {
             return function (category, fmt, ...args) {
                 try {
                     if (m_enabledCategories[category]) {
-                        const fmti = isImplicitFormat(fmt) ? generateImplicitFormat(fmt, args) : m_formatInfo.get(fmt);
+                        const fmti = isImplicitFormat(fmt) ? generateImplicitFormat(fmt, args) : s_formatInfo.get(fmt);
                         if (fmti === undefined) {
                             console.error("Format name is not defined for this logger -- " + fmt);
                             return;
@@ -2004,7 +1983,7 @@ function LoggerFactory(appName, options) {
             return function (cond, fmt, ...args) {
                 if (cond) {
                     try {
-                        const fmti = isImplicitFormat(fmt) ? generateImplicitFormat(fmt, args) : m_formatInfo.get(fmt);
+                        const fmti = isImplicitFormat(fmt) ? generateImplicitFormat(fmt, args) : s_formatInfo.get(fmt);
                         if (fmti === undefined) {
                             console.error("Format name is not defined for this logger -- " + fmt);
                             return;
@@ -2028,7 +2007,7 @@ function LoggerFactory(appName, options) {
                 if (cond) {
                     try {
                         if (m_enabledCategories[category]) {
-                            const fmti = isImplicitFormat(fmt) ? generateImplicitFormat(fmt, args) : m_formatInfo.get(fmt);
+                            const fmti = isImplicitFormat(fmt) ? generateImplicitFormat(fmt, args) : s_formatInfo.get(fmt);
                             if (fmti === undefined) {
                                 console.error("Format name is not defined for this logger -- " + fmt);
                                 return;
