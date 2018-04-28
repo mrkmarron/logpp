@@ -101,7 +101,7 @@ public:
     }
 };
 
-static std::map<int64_t, std::shared_ptr<MsgFormat>> s_formatMap;
+static std::vector<std::shared_ptr<MsgFormat>> s_formats;
 
 Napi::Value RegisterFormat(const Napi::CallbackInfo& info)
 {
@@ -156,7 +156,7 @@ Napi::Value RegisterFormat(const Napi::CallbackInfo& info)
         msgf->AddFormat(FormatEntry(fkind, fenum, tailingSegment.Utf8Value()));
     }
 
-    s_formatMap[fmtId] = msgf;
+    s_formats.push_back(msgf);
 
     return env.Undefined();
 }

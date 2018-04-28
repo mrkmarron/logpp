@@ -1,6 +1,6 @@
 "use strict";
 
-const nlogger = require("C:\\Chakra\\logpp\\build\\Debug\\nlogger.node");
+const nlogger = require("C:\\Code\\logpp\\build\\Debug\\nlogger.node");
 
 const assert = require("assert");
 
@@ -10,10 +10,9 @@ const assert = require("assert");
 //  we actually put in the code where needed (so no need to load in bytecode and very obvious for JIT).
 
 /**
- * Global map of ids/names -> format specifications
+ * Global array of ids/names -> format specifications
  */
-const s_fmtMap = new Map();
-const s_formatInfo = new Map();
+const s_fmtMap = [];
 
 /**
  * Tag values for logging levels.
@@ -187,11 +186,12 @@ const LogEntryTags = {
     PropertyRecord: 0x21,
     JsBadFormatVar: 0x22,
     JsVarValue: 0x23,
-    LengthBoundHit: 0x24,
-    CycleValue: 0x25,
-    OpaqueValue: 0x26,
-    DepthBoundObject: 0x27,
+    CycleValue: 0x24,
+    OpaqueValue: 0x25,
+    DepthBoundObject: 0x26,
+    LengthBoundObject: 0x27,
     DepthBoundArray: 0x28,
+    LengthBoundArray: 0x29
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -539,9 +539,9 @@ function extractMsgFormat(fmtName, fmtId, fmtInfo) {
 
     nlogger.registerFormat(fmtId, kindArray, enumArray, initialFormatSegment, tailingFormatSegmentArray, fmtString);
     const fmtObj = createMsgFormat(fmtName, fmtId, formatArray);
+    s_fmtMap.push(fmtObj);
 
-    s_fmtMap.set(fmtObj.formatId, fmtObj);
-    s_formatInfo.set(fmtName, fmtObj);
+    return fmtObj.formatId;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -557,9 +557,9 @@ const MemoryMsgBlockSizes = [256, 512, 1024, 2048, 4096];
 const MemoryMsgBlockInitSize = 256;
 
 //internal function for allocating a block
-function createMemoryMsgBlock(previousBlock) {
+function createMemoryMsgBlock(previousBlock, sizespec) {
     let blocksize = MemoryMsgBlockInitSize;
-    if (previousBlock) {
+    if (sizespec) {
         blocksize = MemoryMsgBlockSizes[Math.max(MemoryMsgBlockSizes.indexOf(previousBlock.blocksize) + 1, MemoryMsgBlockSizes.length)];
     }
 
@@ -597,15 +597,33 @@ function InMemoryLog() {
  * @method
  */
 InMemoryLog.prototype.clear = function () {
-    this.head.tags.fill(LogEntryTags.Clear, 0, this.head.epos);
-    this.head.data.fill(undefined, 0, this.head.epos);
-    this.head.stringData = [];
-    this.head.stringMap.clear();
-    this.head.spos = 0;
-    this.head.epos = 0;
-    this.head.next = null;
+    if (this.head.epos < this.head.blocksize / 2) {
+        const downsizeopt = MemoryMsgBlockSizes.find((value) => this.head.epos >= value * 2);
+        this.head = createMemoryMsgBlock(null, downsizeopt);
+    }
+    else {
+        this.head.tags.fill(LogEntryTags.Clear, 0, this.head.epos);
+        this.head.data.fill(undefined, 0, this.head.epos);
+        this.head.stringData = [];
+        this.head.stringMap.clear();
+        this.head.spos = 0;
+        this.head.epos = 0;
+        this.head.next = null;
+    }
 
     this.tail = this.head;
+};
+
+/**
+ * Ensure that there is a slot read to be written into
+ */
+InMemoryLog.ensureSlot = function () {
+    let block = this.tail;
+    if (block.epos === block.blocksize) {
+        block = createMemoryMsgBlock(block, block.blocksize);
+        this.tail = block;
+    }
+    return block;
 };
 
 /**
@@ -639,34 +657,32 @@ InMemoryLog.prototype.removeHeadBlock = function () {
  * Add an entry to the InMemoryLog
  * @method
  * @param {number} tag the tag for the entry
- * @param {*} data the data value for the entry
+ * @param {number} data the data value for the entry
  */
-InMemoryLog.prototype.addEntry = function (tag, data) {
-    let block = this.tail;
-    if (block.epos === /*MemoryMsgBlockSize*/256) {
-        block = createMemoryMsgBlock(block);
-        this.tail = block;
-    }
-
+InMemoryLog.prototype.addNumberEntry = function (tag, data) {
+    const block = this.ensureSlot();
     block.tags[block.epos] = tag;
     block.data[block.epos] = data;
     block.epos++;
 };
 
 /**
- * Add an entry to the InMemoryLog that has the common JsVarValue tag
+ * Add an entry to the InMemoryLog
  * @method
- * @param {*} data the data value for the entry
+ * @param {number} tag the tag for the entry
+ * @param {string} data the data value for the entry
  */
-InMemoryLog.prototype.addJsVarValueEntry = function (data) {
-    let block = this.tail;
-    if (block.epos === /*MemoryMsgBlockSize*/256) {
-        block = createMemoryMsgBlock(block);
-        this.tail = block;
-    }
+InMemoryLog.prototype.addStringEntry = function (tag, data) {
+    const block = this.ensureSlot();
+    block.tags[block.epos] = tag;
 
-    block.tags[block.epos] = /*LogEntryTags_JsVarValue*/0xB;
-    block.data[block.epos] = data;
+    let pid = block.stringMap.get(data);
+    if (pid === undefined) {
+        pid = block.stringData.length;
+        block.stringData.push(data);
+        block.stringMap.set(data, pid);
+    }
+    block.data[block.epos] = pid;
     block.epos++;
 };
 
@@ -676,41 +692,59 @@ InMemoryLog.prototype.addJsVarValueEntry = function (data) {
  * @param {number} tag the tag value for the entry
  */
 InMemoryLog.prototype.addTagOnlyEntry = function (tag) {
-    let block = this.tail;
-    if (block.epos === /*MemoryMsgBlockSize*/256) {
-        block = createMemoryMsgBlock(block);
-        this.tail = block;
-    }
-
+    const block = this.ensureSlot();
     block.tags[block.epos] = tag;
     block.epos++;
 };
 
 /**
+ * Add an entry to the InMemoryLog that has the common JsVarValue tag
+ * @method
+ * @param {number} tenum the TypeNameEnum value for the data
+ * @param {*} data the data value for the entry
+ */
+InMemoryLog.prototype.addJsVarValueEntry = function (tenum, data) {
+    switch (tenum) {
+        case TypeNameEnum.TUndefined:
+            this.addTagOnlyEntry(LogEntryTags.JsVarValue_Undefined);
+            break;
+        case TypeNameEnum.TNull:
+            this.addTagOnlyEntry(LogEntryTags.JsVarValue_Null);
+            break;
+        case TypeNameEnum.TBoolean:
+            this.addNumberEntry(LogEntryTags.JsVarValue_Bool, data ? 1 : 0);
+            break;
+        case TypeNameEnum.TNumber:
+            this.addNumberEntry(LogEntryTags.JsVarValue_Number, data);
+            break;
+        case TypeNameEnum.TString:
+            this.addStringEntry(LogEntryTags.JsVarValue_StringIdx, data);
+            break;
+        default:
+            this.addTagOnlyEntry(LogEntryTags.JsBadFormatVar);
+    }
+};
+
+/**
  * Add functions to process general values via lookup on typeid number in prototype array
  */
-const AddGeneralValue_RemainingTypesCallTable = new Array(/*TypeNameEnum_TypeLimit*/0x3C);
+const AddGeneralValue_RemainingTypesCallTable = new Array(TypeNameEnum.TypeLimit);
 AddGeneralValue_RemainingTypesCallTable.fill(null);
 
-AddGeneralValue_RemainingTypesCallTable[/*TypeNameEnum_TDate*/0x36] = function (inMemoryLog, value, depth) {
-    inMemoryLog.addJsVarValueEntry(new Date(value));
+AddGeneralValue_RemainingTypesCallTable[TypeNameEnum.TDate] = function (inMemoryLog, value, depth) {
+    inMemoryLog.addNumberEntry(LogEntryTags.JsVarValue_Date, value.valueOf());
 };
-AddGeneralValue_RemainingTypesCallTable[/*TypeNameEnum_TFunction*/0x37] = function (inMemoryLog, value, depth) {
-    inMemoryLog.addJsVarValueEntry("[ #Function# ]");
+AddGeneralValue_RemainingTypesCallTable[TypeNameEnum.TObject] = function (inMemoryLog, value, depth) {
+    inMemoryLog.addExpandedObject(value, depth, ExpandDefaults.ObjectLength);
 };
-
-AddGeneralValue_RemainingTypesCallTable[/*TypeNameEnum_TObject*/0x38] = function (inMemoryLog, value, depth) {
-    inMemoryLog.addExpandedObject(value, depth, /*ExpandDefaults_ObjectLength*/1024);
+AddGeneralValue_RemainingTypesCallTable[TypeNameEnum.TJsArray] = function (inMemoryLog, value, depth) {
+    inMemoryLog.addExpandedArray(value, depth, ExpandDefaults.ArrayLength);
 };
-AddGeneralValue_RemainingTypesCallTable[/*TypeNameEnum_TJsArray*/0x39] = function (inMemoryLog, value, depth) {
-    inMemoryLog.addExpandedArray(value, depth, /*ExpandDefaults_ArrayLength*/128);
+AddGeneralValue_RemainingTypesCallTable[TypeNameEnum.TTypedArray] = function (inMemoryLog, value, depth) {
+    inMemoryLog.addExpandedArray(value, depth, ExpandDefaults.ArrayLength);
 };
-AddGeneralValue_RemainingTypesCallTable[/*TypeNameEnum_TTypedArray*/0x3A] = function (inMemoryLog, value, depth) {
-    inMemoryLog.addExpandedArray(value, depth, /*ExpandDefaults_ArrayLength*/128);
-};
-
-AddGeneralValue_RemainingTypesCallTable[/*TypeNameEnum_TUnknown*/0x3B] = function (inMemoryLog, value, depth) {
-    inMemoryLog.addTagOnlyEntry(/*LogEntryTags_OpaqueValue*/0xF);
+AddGeneralValue_RemainingTypesCallTable[TypeNameEnum.TUnknown] = function (inMemoryLog, value, depth) {
+    inMemoryLog.addTagOnlyEntry(LogEntryTags.OpaqueValue);
 };
 
 /**
@@ -723,26 +757,26 @@ AddGeneralValue_RemainingTypesCallTable[/*TypeNameEnum_TUnknown*/0x3B] = functio
 InMemoryLog.prototype.addExpandedObject = function (obj, depth, length) {
     //if the value is in the set and is currently processing
     if (this.jsonCycleMap.has(obj)) {
-        this.addTagOnlyEntry(/*LogEntryTags_CycleValue*/0xD);
+        this.addTagOnlyEntry(LogEntryTags.CycleValue);
         return;
     }
 
     if (depth === 0) {
-        this.addTagOnlyEntry(/*LogEntryTags_DepthBoundObject*/0x20);
+        this.addTagOnlyEntry(LogEntryTags.DepthBoundObject);
     }
     else {
         //Set processing as true for cycle detection
         this.jsonCycleMap.add(obj);
-        this.addTagOnlyEntry(/*LogEntryTags_LParen*/0x5);
+        this.addTagOnlyEntry(LogEntryTags.LParen);
 
         let allowedLengthRemain = length;
         for (const p in obj) {
-            this.addEntry(/*LogEntryTags_PropertyRecord*/0x9, p);
+            this.addStringEntry(LogEntryTags.PropertyRecord, p);
 
             const value = obj[p];
             const typeid = getTypeNameEnum(value);
-            if (typeid <= /*TypeNameEnum_LastImmutableType*/0x35) {
-                this.addJsVarValueEntry(value);
+            if (typeid <= TypeNameEnum.LastImmutableType) {
+                this.addJsVarValueEntry(typeid, value);
             }
             else {
                 (AddGeneralValue_RemainingTypesCallTable[typeid])(this, value, depth - 1);
@@ -750,15 +784,14 @@ InMemoryLog.prototype.addExpandedObject = function (obj, depth, length) {
 
             allowedLengthRemain--;
             if (allowedLengthRemain <= 0) {
-                this.addEntry(/*LogEntryTags_PropertyRecord*/0x9, "$rest");
-                this.addTagOnlyEntry(/*LogEntryTags_LengthBoundHit*/0xC);
+                this.addTagOnlyEntry(LogEntryTags.LengthBoundObject);
                 break;
             }
         }
 
         //Set processing as false for cycle detection
         this.jsonCycleMap.delete(obj);
-        this.addTagOnlyEntry(/*LogEntryTags_RParen*/0x6);
+        this.addTagOnlyEntry(LogEntryTags.RParen);
     }
 };
 
@@ -772,37 +805,37 @@ InMemoryLog.prototype.addExpandedObject = function (obj, depth, length) {
 InMemoryLog.prototype.addExpandedArray = function (obj, depth, length) {
     //if the value is in the set and is currently processing
     if (this.jsonCycleMap.has(obj)) {
-        this.addTagOnlyEntry(/*LogEntryTags_CycleValue*/0xD);
+        this.addTagOnlyEntry(LogEntryTags.CycleValue);
         return;
     }
 
     if (depth === 0) {
-        this.addTagOnlyEntry(/*LogEntryTags_DepthBoundArray*/0x21);
+        this.addTagOnlyEntry(LogEntryTags.DepthBoundArray);
     }
     else {
         //Set processing as true for cycle detection
         this.jsonCycleMap.add(obj);
-        this.addTagOnlyEntry(/*LogEntryTags_LBrack*/0x7);
+        this.addTagOnlyEntry(LogEntryTags.LBrack);
 
         for (let i = 0; i < obj.length; ++i) {
             const value = obj[i];
             const typeid = getTypeNameEnum(value);
-            if (typeid <= /*TypeNameEnum_LastImmutableType*/0x35) {
-                this.addJsVarValueEntry(value);
+            if (typeid <= TypeNameEnum.LastImmutableType) {
+                this.addJsVarValueEntry(typeid, value);
             }
             else {
                 (AddGeneralValue_RemainingTypesCallTable[typeid])(this, value, depth - 1);
             }
 
             if (i >= length - 1) {
-                this.addTagOnlyEntry(/*LogEntryTags_LengthBoundHit*/0xC);
+                this.addTagOnlyEntry(LogEntryTags.LengthBoundArray);
                 break;
             }
         }
 
         //Set processing as false for cycle detection
         this.jsonCycleMap.delete(obj);
-        this.addTagOnlyEntry(/*LogEntryTags_RBrack*/0x8);
+        this.addTagOnlyEntry(LogEntryTags.RBrack);
     }
 };
 
@@ -820,21 +853,21 @@ function getCallerLineInfo(env) {
     return errstk[0];
 }
 
-InMemoryLog.prototype.processImmutableHelper = function (valueok, value) {
-    if (valueok) {
-        this.addJsVarValueEntry(value);
+InMemoryLog.prototype.processImmutableHelper = function (oktenum, tenum, value) {
+    if (oktenum === tenum) {
+        this.addJsVarValueEntry(tenum, value);
     }
     else {
-        this.addTagOnlyEntry(/*LogEntryTags_JsBadFormatVar*/0xA);
+        this.addTagOnlyEntry(LogEntryTags.JsBadFormatVar);
     }
 };
 
 InMemoryLog.prototype.processDateHelper = function (vtype, value) {
-    if (vtype === /*TypeNameEnum_TDate*/0x36) {
-        this.addJsVarValueEntry(value);
+    if (vtype === TypeNameEnum.TDate) {
+        this.addNumberEntry(LogEntryTags.JsVarValue_Date, value.valueOf());
     }
     else {
-        this.addTagOnlyEntry(/*LogEntryTags_JsBadFormatVar*/0xA);
+        this.addTagOnlyEntry(LogEntryTags.JsBadFormatVar);
     }
 };
 
@@ -843,19 +876,21 @@ InMemoryLog.prototype.processDateHelper = function (vtype, value) {
  * @method
  * @param {Object} env a record with the info for certain environment/expando formatter entries
  * @param {number} level the level the message is being logged at
- * @param {string} category the category the message is being logged at
+ * @param {number} category the category the message is being logged at
  * @param {bool} doTimestamp if we want to include an internal timestamp in the log
  * @param {Object} fmt the format of the message
  * @param {Array} args the arguments for the format message
  */
 InMemoryLog.prototype.logMessage = function (env, level, category, doTimestamp, fmt, args) {
-    this.addEntry(/*LogEntryTags_MsgFormat*/0x1, fmt);
-    this.addEntry(/*LogEntryTags_MsgLevel*/0x2, level);
-    this.addEntry(/*LogEntryTags_MsgCategory*/0x3, category);
+    this.addNumberEntry(LogEntryTags.MsgFormat, fmt);
+    this.addNumberEntry(LogEntryTags.MsgLevel, level);
+    this.addNumberEntry(LogEntryTags.MsgCategory, category);
 
     if (doTimestamp) {
-        this.addEntry(/*LogEntryTags_MsgWallTime*/0x22, Date.now());
+        this.addNumberEntry(LogEntryTags.MsgWallTime, Date.now());
     }
+
+asdf; //------------------------------------------------------------------------------------------
 
     let incTimeStamp = false;
     for (let i = 0; i < fmt.formatterArray.length; ++i) {
@@ -1011,10 +1046,6 @@ function processSingleMessageForDiscard_Helper(iblock) {
     }
 
     return cblock;
-}
-
-function isSizeBoundOk(iblock, sizeLimit) {
-    return updateBlocklistSizeInfo(iblock) < sizeLimit;
 }
 
 function isTimeBoundOk(iblock, timeLimit, now) {
@@ -1886,12 +1917,8 @@ function LoggerFactory(appName, options) {
          * Add a new format to the format map
          */
         this.addFormat = function (fmtName, fmtInfo) {
-            if (s_formatInfo.has(fmtName)) {
-                return;
-            }
-
             try {
-                extractMsgFormat(fmtName, s_fmtMap.size, fmtInfo);
+                this["$" + fmtName] = extractMsgFormat(fmtName, s_fmtMap.length, fmtInfo);
             }
             catch (ex) {
                 console.error("Hard failure in addFormat -- " + ex.toString());
@@ -1914,16 +1941,20 @@ function LoggerFactory(appName, options) {
                 .slice(2);
             const lfilename = cstack[0];
 
+            //
+            //TODO: add this in later -- use negative fmtId value to indicate
+            //
+
             if (s_formatInfo.has(lfilename)) {
                 return s_formatInfo.get(lfilename);
             }
 
             if (typeof (fmtInfo) === "string") {
-                extractMsgFormat(lfilename, s_formatInfo.size, fmtInfo.substr(1, fmtInfo.length - 2)); //trim %
+                extractMsgFormat(lfilename, s_formatInfo.size * -1, fmtInfo.substr(1, fmtInfo.length - 2)); //trim %
             }
             else {
                 args.unshift(fmtInfo);
-                extractMsgFormat(lfilename, s_fmtMap.size, "%{0:g}");
+                extractMsgFormat(lfilename, s_formatInfo.size * -1, "%{0:g}");
             }
 
             return s_formatInfo.get(lfilename);
