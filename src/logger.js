@@ -10,9 +10,17 @@ const assert = require("assert");
 //  we actually put in the code where needed (so no need to load in bytecode and very obvious for JIT).
 
 /**
- * Global array of ids/names -> format specifications
+ * Global array of ids -> format specifications
  */
 const s_fmtMap = [];
+
+/**
+ * Global array of category ids -> enabled/disabled
+ */
+const s_categoryMap = [
+    false, //0 is not usable since we do -i indexing
+    true //$default is enabled by default
+];
 
 /**
  * Tag values for logging levels.
@@ -654,6 +662,35 @@ InMemoryLog.prototype.removeHeadBlock = function () {
 };
 
 /**
+ * Add the header info for a msg in the InMemoryLog
+ * @method
+ */
+InMemoryLog.prototype.addMsgHeader = function (fmtId, level, category, doTimestamp) {
+    let block = this.tail;
+    if (block.epos + 4 <= block.blocksize) {
+        block = createMemoryMsgBlock(block, block.blocksize);
+        this.tail = block;
+    }
+
+    block.tags[block.epos] = LogEntryTags.MsgFormat;
+    block.data[block.epos] = fmtId;
+
+    block.tags[block.epos] = LogEntryTags.MsgLevel;
+    block.data[block.epos] = level;
+
+    block.tags[block.epos] = LogEntryTags.MsgCategory;
+    block.data[block.epos] = category;
+
+    block.epos += 3;
+
+    if (doTimestamp) {
+        block.tags[block.epos] = LogEntryTags.MsgWallTime;
+        block.data[block.epos] = Date.now();
+        block.epos++;
+    }
+};
+
+/**
  * Add an entry to the InMemoryLog
  * @method
  * @param {number} tag the tag for the entry
@@ -882,86 +919,78 @@ InMemoryLog.prototype.processDateHelper = function (vtype, value) {
  * @param {Array} args the arguments for the format message
  */
 InMemoryLog.prototype.logMessage = function (env, level, category, doTimestamp, fmt, args) {
-    this.addNumberEntry(LogEntryTags.MsgFormat, fmt);
-    this.addNumberEntry(LogEntryTags.MsgLevel, level);
-    this.addNumberEntry(LogEntryTags.MsgCategory, category);
-
-    if (doTimestamp) {
-        this.addNumberEntry(LogEntryTags.MsgWallTime, Date.now());
-    }
-
-asdf; //------------------------------------------------------------------------------------------
+    this.addMsgHeader(fmt, level, category, doTimestamp);
 
     let incTimeStamp = false;
     for (let i = 0; i < fmt.formatterArray.length; ++i) {
         const formatEntry = fmt.formatterArray[i];
         const formatSpec = formatEntry.format;
 
-        if (formatSpec.kind === /*FormatStringEntryKind_Literal*/0x1) {
+        if (formatSpec.kind === FormatStringEntryKind.Literal) {
             //don't need to do anything!
         }
-        else if (formatSpec.kind === /*FormatStringEntryKind_Expando*/0x2) {
+        else if (formatSpec.kind === FormatStringEntryKind.Expando) {
             const specEnum = formatSpec.enum;
-            if (specEnum === /*SingletonFormatStringEntry_SOURCE*/0x15) {
-                this.addJsVarValueEntry(getCallerLineInfo(env));
+            if (specEnum === FormatStringEntryKind.SOURCE) {
+                this.addStringEntry(LogEntryTags.JsVarValue_StringIdx, getCallerLineInfo(env));
             }
-            else if (specEnum === /*SingletonFormatStringEntry_WALLCLOCK*/0x16) {
-                this.addJsVarValueEntry(Date.now());
+            else if (specEnum === FormatStringEntryKind.WALLCLOCK) {
+                this.addNumberEntry(LogEntryTags.JsVarValue_Number, Date.now());
             }
-            else if (specEnum === /*SingletonFormatStringEntry_TIMESTAMP*/0x17) {
-                this.addJsVarValueEntry(env.globalEnv.TIMESTAMP);
+            else if (specEnum === FormatStringEntryKind.TIMESTAMP) {
+                this.addNumberEntry(LogEntryTags.JsVarValue_Number, env.globalEnv.TIMESTAMP);
                 incTimeStamp = true;
             }
-            else if (specEnum === /*SingletonFormatStringEntry_MODULE*/0x14) {
-                this.addJsVarValueEntry(env[formatSpec.name]);
+            else if (specEnum === FormatStringEntryKind.MODULE) {
+                this.addStringEntry(LogEntryTags.JsVarValue_StringIdx, env[formatSpec.name]);
             }
             else {
-                this.addJsVarValueEntry(env.globalEnv[formatSpec.name]);
+                //Otherwise the format macro should just be a constant value
             }
         }
         else {
             if (formatEntry.argPosition >= args.length) {
                 //We hit a bad format value so rather than let it propigate -- report and move on.
-                this.addTagOnlyEntry(/*LogEntryTags_JsBadFormatVar*/0xA);
+                this.addTagOnlyEntry(LogEntryTags.JsBadFormatVar);
             }
             else {
                 const value = args[formatEntry.argPosition];
                 const vtype = getTypeNameEnum(value);
 
                 switch (formatSpec.enum) {
-                    case /*SingletonFormatStringEntry_BOOL*/0x22:
-                        this.processImmutableHelper(vtype === /*TypeNameEnum_TBoolean*/0x33, value);
+                    case FormatStringEntryKind.BOOL:
+                        this.processImmutableHelper(TypeNameEnum.TBoolean, vtype, value);
                         break;
-                    case /*SingletonFormatStringEntry_NUMBER*/0x23:
-                        this.processImmutableHelper(vtype === /*TypeNameEnum_TNumber*/0x34, value);
+                    case FormatStringEntryKind.NUMBER:
+                        this.processImmutableHelper(TypeNameEnum.TNumber, vtype, value);
                         break;
-                    case /*SingletonFormatStringEntry_STRING*/0x24:
-                        this.processImmutableHelper(vtype === /*TypeNameEnum_TString*/0x35, value);
+                    case FormatStringEntryKind.STRING:
+                        this.processImmutableHelper(TypeNameEnum.TString, vtype, value);
                         break;
-                    case /*SingletonFormatStringEntry_DATEISO*/0x25:
-                    case /*SingletonFormatStringEntry_DATEUTC*/0x26:
-                    case /*SingletonFormatStringEntry_DATELOCAL*/0x27:
+                    case FormatStringEntryKind.DATEISO:
+                    case FormatStringEntryKind.DATEUTC:
+                    case FormatStringEntryKind.DATELOCAL:
                         this.processDateHelper(vtype, value);
                         break;
-                    case /*SingletonFormatStringEntry_OBJECT*/0x29:
-                        if (vtype === /*TypeNameEnum_TObject*/0x38) {
+                    case FormatStringEntryKind.OBJECT:
+                        if (vtype === TypeNameEnum.TObject) {
                             this.addExpandedObject(value, formatEntry.expandDepth, formatEntry.expandLength);
                         }
                         else {
-                            this.addTagOnlyEntry(/*LogEntryTags_JsBadFormatVar*/0xA);
+                            this.addTagOnlyEntry(LogEntryTags.JsBadFormatVar);
                         }
                         break;
-                    case /*SingletonFormatStringEntry_ARRAY*/0x2A:
-                        if (vtype === /*TypeNameEnum_TJsArray*/0x39 || vtype === /*TypeNameEnum_TTypedArray*/0x3A) {
+                    case FormatStringEntryKind.ARRAY:
+                        if (vtype === TypeNameEnum.TJsArray || vtype === TypeNameEnum.TTypedArray) {
                             this.addExpandedArray(value, formatEntry.expandDepth, formatEntry.expandLength);
                         }
                         else {
-                            this.addTagOnlyEntry(/*LogEntryTags_JsBadFormatVar*/0xA);
+                            this.addTagOnlyEntry(LogEntryTags.JsBadFormatVar);
                         }
                         break;
                     default:
-                        if (vtype <= /*TypeNameEnum_LastImmutableType*/0x35) {
-                            this.addJsVarValueEntry(value);
+                        if (vtype <= TypeNameEnum.LastImmutableType) {
+                            this.addJsVarValueEntry(vtype, value);
                         }
                         else {
                             (AddGeneralValue_RemainingTypesCallTable[vtype])(this, value, formatEntry.depth);
@@ -976,35 +1005,10 @@ asdf; //------------------------------------------------------------------------
         env.globalEnv.TIMESTAMP++;
     }
 
-    this.addTagOnlyEntry(/*LogEntryTags_MsgEndSentinal*/0x4);
+    this.addTagOnlyEntry(LogEntryTags.MsgEndSentinal);
 };
 
-function hasMoreDataToWrite(cblock) {
-    return cblock.spos !== cblock.epos;
-}
-
-function isEnabledForWrite(cblock, enabledLevel, enabledCategories) {
-    let levelblock = cblock;
-    let levelpos = cblock.spos + 1;
-    if (levelpos === levelblock.epos) {
-        levelblock = levelblock.next;
-        levelpos = 0;
-    }
-
-    const loglevel = levelblock.data[levelpos];
-    if ((loglevel & enabledLevel) !== loglevel) {
-        return false;
-    }
-
-    let categoryblock = levelblock;
-    let categorypos = levelpos + 1;
-    if (categorypos === categoryblock.epos) {
-        categoryblock = categoryblock.next;
-        categorypos = 0;
-    }
-
-    return enabledCategories[categoryblock.data[categorypos]];
-}
+asdf; //-------------------------------------------------------------------------------
 
 function processSingleMessageForWrite_Helper(iblock, formatterLog) {
     let cblock = iblock;
@@ -2279,6 +2283,8 @@ module.exports = function (name, level, options) {
 
         logger = s_loggerFactory.createLogger(name, ropts);
         logger.Levels = LoggingLevels;
+        logger.Formats = {};
+        logger.Categories = { $default: -1 };
 
         if (require.main.filename === lfilename) {
             s_rootLogger = logger;
