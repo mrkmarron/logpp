@@ -1,7 +1,14 @@
 #include "napi.h"
 
+#include <time.h>
+#include <numeric>
+
+#include <sstream>
+#include <iomanip>
+
 #include <memory>
 #include <vector>
+#include <deque>
 #include <map>
 
 ///////////////////////////////////////
@@ -41,7 +48,7 @@ enum class FormatStringEnum : uint8_t
     ARRAY = 0x1A
 };
 
-enum class LogEntryTags : uint8_t
+enum class LogEntryTag : uint8_t
 {
     Clear = 0x0,
     MsgFormat = 0x1,
@@ -71,6 +78,27 @@ enum class LogEntryTags : uint8_t
     DepthBoundArray = 0x28,
     LengthBoundArray = 0x29
 };
+
+enum class LoggingLevel :uint32_t
+{
+    LLOFF = 0x0,
+    LLFATAL = 0x1,
+    LLERROR = 0x3,
+    LLWARN = 0x7,
+    LLINFO = 0xF,
+    LLDETAIL = 0x1F,
+    LLDEBUG = 0x3F,
+    LLTRACE = 0x7F,
+    LLALL = 0xFF
+};
+
+//Keep track of which logging level is enabled
+static LoggingLevel s_enabledLoggingLevel = LoggingLevel::LLINFO;
+
+//Keep track of which categories are enabled
+static std::vector<bool> s_enabledCategories;
+
+#define LOG_LEVEL_ENABLED(level) ((static_cast<uint32_t>(level) & static_cast<uint32_t>(s_enabledLoggingLevel)) == static_cast<uint32_t>(level))
 
 ///////////////////////////////////////
 //Helpers
@@ -192,37 +220,166 @@ Napi::Value RegisterFormat(const Napi::CallbackInfo& info)
     return env.Undefined();
 }
 
+//This class controls the formatting
+class Formatter
+{
+private:
+    std::ostringstream m_output;
+
+public:
+    std::string getOutputBuffer() const { return this->m_output.str(); }
+    void reset() { this->m_output.clear(); }
+
+    void emitLiteralChar(char c)
+    {
+        this->m_output << c;
+    }
+
+    void emitLiteralString(const char* str)
+    {
+        this->m_output << str;
+    }
+
+    void emitJsString(const std::string& str)
+    {
+        for (auto c = str.cbegin(); c != str.cend(); c++) {
+            switch (*c) {
+            case '"':
+                this->m_output << "\\\"";
+                break;
+            case '\\':
+                this->m_output << "\\\\";
+                break;
+            case '\b':
+                this->m_output << "\\b";
+                break;
+            case '\f':
+                this->m_output << "\\f";
+                break;
+            case '\n':
+                this->m_output << "\\n";
+                break;
+            case '\r':
+                this->m_output << "\\r";
+                break;
+            case '\t':
+                this->m_output << "\\t";
+                break;
+            default:
+                if ('\x00' <= *c && *c <= '\x1f')
+                {
+                    this->m_output << "\\u" << std::hex << std::setw(4) << std::setfill('0') << (int)*c;
+                }
+                else
+                {
+                    this->m_output << *c;
+                }
+            }
+        }
+    }
+
+    void emitJsNumber(double val)
+    {
+        if (std::isnan(val))
+        {
+            this->emitLiteralString("null");
+        }
+        else if (val == std::numeric_limits<double>::infinity())
+        {
+            this->emitLiteralString("null");
+        }
+        else if (val == -std::numeric_limits<double>::infinity())
+        {
+            this->emitLiteralString("null");
+        }
+        else if (floor(val) == val)
+        {
+            this->m_output << static_cast<int64_t>(val);
+        }
+        else
+        {
+            this->m_output << val;
+        }
+    }
+
+    void emitJsDate(uint64_t dval, FormatStringEnum fmt)
+    {
+        if (fmt == FormatStringEnum::DATEUTC)
+        {
+            asdf;
+        }
+        else if (fmt == FormatStringEnum::DATELOCAL)
+        {
+            asdf;
+        }
+        else
+        {
+            //ISO
+            asdf;
+        }
+    }
+
+    void emitCallStack(const std::string& cstack)
+    {
+        this->emitJsString(cstack);
+    }
+
+    void emitSpecialTag(LogEntryTag tag)
+    {
+        switch (tag)
+        {
+        case LogEntryTag::JsBadFormatVar:
+            this->emitLiteralString("\"<BadFormat>\"");
+            break;
+        case LogEntryTag::DepthBoundObject:
+            this->emitLiteralString("\"{...}\"");
+            break;
+        case LogEntryTag::LengthBoundObject:
+            this->emitLiteralString("\"$rest$\": \"...\"");
+            break;
+        case LogEntryTag::DepthBoundArray:
+            this->emitLiteralString("\"[...]\"");
+            break;
+        case LogEntryTag::LengthBoundArray:
+            this->emitLiteralString("\"...\"");
+            break;
+        case LogEntryTag::CycleValue:
+            this->emitLiteralString("\"<Cycle>\"");
+            break;
+        default:
+            this->emitLiteralString("\"<OpaqueValue>\"");
+            break;
+        }
+    }
+};
+
 #define INIT_LOG_BLOCK_SIZE 64
-#define LOAD_INT64_DATA(THIS, i) static_cast<uint64_t>((THIS)->m_data[i])
-#define LOAD_STRINGIDX_DATA(THIS, i) static_cast<uint64_t>((THIS)->m_data[i])
-#define LOAD_DOUBLE_DATA(THIS, i) ((THIS)->m_data[i])
 
 //We load the JS data into this for later processing
 class LogProcessingBlock
 {
 private:
     size_t m_cpos;
-    std::vector<LogEntryTags> m_tags;
-    std::vector<double> m_data;
+    std::deque<LogEntryTag> m_tags;
+    std::deque<double> m_data;
     std::map<uint64_t, std::string> m_stringData;
 
 public:
     LogProcessingBlock() :
         m_cpos(0), m_tags(), m_data(), m_stringData()
     {
-        this->m_tags.reserve(INIT_LOG_BLOCK_SIZE);
-        this->m_data.reserve(INIT_LOG_BLOCK_SIZE);
+        ;
     }
 
-    void AddDataEntry(uint8_t tag, double data)
+    void AddDataEntry(LogEntryTag tag, double data)
     {
-        this->m_tags.push_back(static_cast<LogEntryTags>(tag));
+        this->m_tags.push_back(tag);
         this->m_data.push_back(data);
     }
 
-    void AddStringDataEntry(uint8_t tag, double data, Napi::String string)
+    void AddStringDataEntry(LogEntryTag tag, double data, Napi::String string)
     {
-        this->m_tags.push_back(static_cast<LogEntryTags>(tag));
+        this->m_tags.push_back(tag);
         this->m_data.push_back(data);
 
         uint64_t key = static_cast<uint64_t>(data);
@@ -235,9 +392,38 @@ public:
     }
 };
 
+bool MsgTimeExpired(size_t cpos, const double* data)
+{
+    uint64_t now = time(nullptr); //depnds on system time being uint64 convertable
+    
+    return static_cast<uint64_t>(data[cpos + 3]) + s_msgTimeLimit < now;
+}
+
+bool MsgOverSizeLimit(size_t msgCount)
+{
+    return msgCount > s_msgCountLimit;
+}
+
+bool ShouldDiscard(size_t cpos, const double* data)
+{
+    const LoggingLevel level = static_cast<LoggingLevel>(data[cpos + 1]);
+    if (!LOG_LEVEL_ENABLED(level))
+    {
+        return true;
+    }
+
+    const size_t category = static_cast<size_t>(data[cpos + 2]);
+    if (category >= s_enabledCategories.size() || !s_enabledCategories[category])
+    {
+        return true;
+    }
+
+    return false;
+}
+
 bool ProcessDiscardEntry(size_t& cpos, size_t epos, const uint8_t* tags)
 {
-    while (cpos < epos && tags[cpos] != static_cast<uint8_t>(LogEntryTags::MsgEndSentinal))
+    while (cpos < epos && tags[cpos] != static_cast<uint8_t>(LogEntryTag::MsgEndSentinal))
     {
         cpos++;
     }
@@ -256,9 +442,18 @@ bool ProcessDiscardEntry(size_t& cpos, size_t epos, const uint8_t* tags)
 
 bool ProcessSaveEntry(LogProcessingBlock& into, size_t& cpos, size_t epos, const uint8_t* tags, const double* data, const Napi::Array stringData)
 {
-    while (cpos < epos && tags[cpos] != static_cast<uint8_t>(LogEntryTags::MsgEndSentinal))
+    while (cpos < epos && tags[cpos] != static_cast<uint8_t>(LogEntryTag::MsgEndSentinal))
     {
-        asdf;
+        const LogEntryTag ttag = static_cast<LogEntryTag>(tags[cpos]);
+        if (ttag != LogEntryTag::JsVarValue_StringIdx && ttag != LogEntryTag::PropertyRecord)
+        {
+            into.AddDataEntry(ttag, data[cpos]);
+        }
+        else
+        {
+            Napi::Value sval = stringData[static_cast<uint64_t>(data[cpos])];
+            into.AddStringDataEntry(ttag, data[cpos], sval.As<Napi::String>());
+        }
 
         cpos++;
     }
@@ -270,16 +465,96 @@ bool ProcessSaveEntry(LogProcessingBlock& into, size_t& cpos, size_t epos, const
     else
     {
         cpos++;
-        into.AddDataEntry(static_cast<uint8_t>(LogEntryTags::MsgEndSentinal), 0.0);
+        into.AddDataEntry(LogEntryTag::MsgEndSentinal, 0.0);
 
         return true;
     }
 }
 
+static size_t s_msgTimeLimit = 1000;
+static size_t s_msgCountLimit = 4096;
+static std::vector<LogProcessingBlock> s_processing;
+
+bool ProcessMsgs(const Napi::CallbackInfo& info)
+{
+    Napi::Env env = info.Env();
+    if (info.Length() != 4 || !info[0].IsObject() || !info[1].IsBoolean() || !info[2].IsNumber() || !info[3].IsBoolean())
+    {
+        Napi::TypeError::New(env, "Wrong arguments").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    int32_t msgCount = info[2].As<Napi::Number>().Int32Value();
+    bool forceall = info[3].As<Napi::Boolean>().Value();
+
+    Napi::Object inmemblock = info[0].As<Napi::Object>();
+    const size_t epos = inmemblock.Get("epos").As<Napi::Number>().Int64Value(); 
+    size_t cpos = inmemblock.Get("spos").As<Napi::Number>().Int64Value();
+
+    Napi::Uint8Array tagArray = inmemblock.Get("tags").As<Napi::Uint8Array>();
+    Napi::Float64Array dataArray = inmemblock.Get("fata").As<Napi::Float64Array>();
+    if (tagArray.ElementLength() < epos || dataArray.ElementLength() < epos || epos < cpos)
+    {
+        Napi::TypeError::New(env, "Bad lengths for block segment").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+    
+    const uint8_t* tags = tagArray.Data();
+    const double* data = dataArray.Data();
+
+    const Napi::Array stringData = inmemblock.Get("stringData").As<Napi::Array>();
+
+    if (!info[1].As<Napi::Boolean>().Value())
+    {
+        s_processing.push_back(LogProcessingBlock());
+    }
+
+    LogProcessingBlock& into = s_processing.back(); 
+
+    while (cpos < epos)
+    {
+        //check time and # of slots in use
+        if (!forceall && !MsgTimeExpired(cpos, data) && !MsgOverSizeLimit(msgCount))
+        {
+            inmemblock.Set("spos", Napi::Number::New(env, cpos));
+            return Napi::Boolean::New(env, false);
+        }
+
+        size_t oldcpos = cpos;
+        bool msgcomplete = true;
+        if (ShouldDiscard(cpos, data))
+        {
+            msgcomplete = ProcessDiscardEntry(cpos, epos, tags);
+        }
+        else
+        {
+            msgcomplete = ProcessSaveEntry(into, cpos, epos, tags, data, stringData);
+        }
+        msgCount -= static_cast<int32_t>(epos - cpos);
+
+        if (!msgcomplete)
+        {
+            inmemblock.Set("spos", Napi::Number::New(env, cpos));
+            return Napi::Boolean::New(env, true);
+        }
+    }
+
+    inmemblock.Set("spos", Napi::Number::New(env, cpos));
+    return Napi::Boolean::New(env, false);
+}
+
+
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
+    s_enabledCategories.push_back(false); //0 is not usable since we do -i indexing
+    s_enabledCategories.push_back(true); //$default is enabled by default
+
+    //
+    //TODO: set level, enable/disable categories
+    //
+
     exports.Set(Napi::String::New(env, "registerFormat"), Napi::Function::New(env, RegisterFormat));
 
-    printf("Init!!!\n");
+    exports.Set(Napi::String::New(env, "processMsgsForEmit"), Napi::Function::New(env, ProcessMsgs));
 
     return exports;
 }

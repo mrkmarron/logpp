@@ -17,7 +17,7 @@ const s_fmtMap = [];
 /**
  * Global array of category ids -> enabled/disabled
  */
-const s_categoryMap = [
+const s_enabledCategories = [
     false, //0 is not usable since we do -i indexing
     true //$default is enabled by default
 ];
@@ -36,17 +36,6 @@ const LoggingLevels = {
     TRACE: 0x7F,
     ALL: 0xFF
 };
-
-const LoggingLevelToNameMap = [];
-LoggingLevelToNameMap[0x0] = "OFF";
-LoggingLevelToNameMap[0x1] = "FATAL";
-LoggingLevelToNameMap[0x3] = "ERROR";
-LoggingLevelToNameMap[0x7] = "WARN";
-LoggingLevelToNameMap[0xF] = "INFO";
-LoggingLevelToNameMap[0x1F] = "DETAIL";
-LoggingLevelToNameMap[0x3F] = "DEBUG";
-LoggingLevelToNameMap[0x7F] = "TRACE";
-LoggingLevelToNameMap[0xFF] = "ALL";
 
 function sanitizeLogLevel(level) {
     if (level >= LoggingLevels.ALL) {
@@ -665,7 +654,7 @@ InMemoryLog.prototype.removeHeadBlock = function () {
  * Add the header info for a msg in the InMemoryLog
  * @method
  */
-InMemoryLog.prototype.addMsgHeader = function (fmtId, level, category, doTimestamp) {
+InMemoryLog.prototype.addMsgHeader = function (fmtId, level, category) {
     let block = this.tail;
     if (block.epos + 4 <= block.blocksize) {
         block = createMemoryMsgBlock(block, block.blocksize);
@@ -683,11 +672,9 @@ InMemoryLog.prototype.addMsgHeader = function (fmtId, level, category, doTimesta
 
     block.epos += 3;
 
-    if (doTimestamp) {
-        block.tags[block.epos] = LogEntryTags.MsgWallTime;
-        block.data[block.epos] = Date.now();
-        block.epos++;
-    }
+    block.tags[block.epos] = LogEntryTags.MsgWallTime;
+    block.data[block.epos] = Date.now();
+    block.epos++;
 };
 
 /**
@@ -914,12 +901,11 @@ InMemoryLog.prototype.processDateHelper = function (vtype, value) {
  * @param {Object} env a record with the info for certain environment/expando formatter entries
  * @param {number} level the level the message is being logged at
  * @param {number} category the category the message is being logged at
- * @param {bool} doTimestamp if we want to include an internal timestamp in the log
  * @param {Object} fmt the format of the message
  * @param {Array} args the arguments for the format message
  */
-InMemoryLog.prototype.logMessage = function (env, level, category, doTimestamp, fmt, args) {
-    this.addMsgHeader(fmt, level, category, doTimestamp);
+InMemoryLog.prototype.logMessage = function (env, level, category, fmt, argStart, args) {
+    this.addMsgHeader(fmt, level, category);
 
     let incTimeStamp = false;
     for (let i = 0; i < fmt.formatterArray.length; ++i) {
@@ -949,12 +935,12 @@ InMemoryLog.prototype.logMessage = function (env, level, category, doTimestamp, 
             }
         }
         else {
-            if (formatEntry.argPosition >= args.length) {
+            if (formatEntry.argPosition >= argStart + args.length) {
                 //We hit a bad format value so rather than let it propigate -- report and move on.
                 this.addTagOnlyEntry(LogEntryTags.JsBadFormatVar);
             }
             else {
-                const value = args[formatEntry.argPosition];
+                const value = args[argStart + formatEntry.argPosition];
                 const vtype = getTypeNameEnum(value);
 
                 switch (formatSpec.enum) {
@@ -1008,305 +994,62 @@ InMemoryLog.prototype.logMessage = function (env, level, category, doTimestamp, 
     this.addTagOnlyEntry(LogEntryTags.MsgEndSentinal);
 };
 
-asdf; //-------------------------------------------------------------------------------
-
-function processSingleMessageForWrite_Helper(iblock, formatterLog) {
-    let cblock = iblock;
-    while (cblock.tags[cblock.spos] !== /*LogEntryTags_MsgEndSentinal*/0x4) {
-        if (cblock.spos !== cblock.epos) {
-            formatterLog.addEntry(cblock.tags[cblock.spos], cblock.data[cblock.spos]);
-            cblock.spos++;
-        }
-        else {
-            assert(cblock.next !== null, "We failed to complete formatting this message?");
-            cblock = cblock.next;
-        }
-    }
-    formatterLog.addEntry(cblock.tags[cblock.spos], cblock.data[cblock.spos]);
-    cblock.spos++;
-
-    if (cblock.spos === cblock.epos && cblock.next !== null) {
-        cblock = cblock.next;
-    }
-
-    return cblock;
-}
-
-function processSingleMessageForDiscard_Helper(iblock) {
-    let cblock = iblock;
-    while (cblock.tags[cblock.spos] !== /*LogEntryTags_MsgEndSentinal*/0x4) {
-        if (cblock.spos !== cblock.epos) {
-            cblock.spos++;
-        }
-        else {
-            assert(cblock.next !== null, "We failed to complete formatting this message?");
-            cblock = cblock.next;
-        }
-    }
-    cblock.spos++;
-
-    if (cblock.spos === cblock.epos && cblock.next !== null) {
-        cblock = cblock.next;
-    }
-
-    return cblock;
-}
-
-function isTimeBoundOk(iblock, timeLimit, now) {
-    const tpos = iblock.spos + 3;
-    if (tpos < iblock.epos) {
-        return (iblock.tags[tpos] !== /*LogEntryTags_MsgWallTime*/0x22) || (now - iblock.data[tpos]) < timeLimit;
-    }
-    else {
-        const nblock = iblock.next;
-        const npos = tpos % iblock.epos;
-
-        return (nblock.tags[npos] !== /*LogEntryTags_MsgWallTime*/0x22) || (now - nblock.data[npos]) < timeLimit;
-    }
-}
-
 /**
  * Filter out all the msgs that we want to drop when writing to disk and copy them to the pending write list.
  * Returns when we are both (1) under size limit and (2) the size limit -- setting them to Number.MAX_SAFE_INTEGER will effectively disable the check.
  * @method
- * @param {Object} formatterLog the formatterLog list to add into
- * @param {Object} retainLevel the logging level to retain at
- * @param {Object} retainCategories the logging category we want to retain
- * @param {number} timeLimit is the amount of time we are ok with
- * @param {number} sizeLimit is the amount of in-memory logging we are ok with
  */
-InMemoryLog.prototype.processMessagesForWrite = function (formatterLog, retainLevel, retainCategories, timeLimit, sizeLimit) {
-    let cblock = this.head;
+InMemoryLog.prototype.processMessagesForWrite = function () {
+    let msgCount = 0;
+    for (let cblock = this.head; cblock.next !== null; cblock = cblock.next) {
+        msgCount += cblock.epos - cblock.spos;
+    }
 
-    const now = Date.now();
+    if (msgCount === 0) {
+        return;
+    }
+
     let keepProcessing = true;
-    while (hasMoreDataToWrite(cblock) && keepProcessing) {
-        const nblock = isEnabledForWrite(cblock, retainLevel, retainCategories) ?
-            processSingleMessageForWrite_Helper(cblock, formatterLog) :
-            processSingleMessageForDiscard_Helper(cblock);
+    let newblock = true;
+    do {
+        const partialwrite = nlogger.processMsgsForEmit(this.head, newblock, msgCount, false);
 
-        if (hasMoreDataToWrite(cblock)) {
-            const keepProcessingTime = isTimeBoundOk(nblock, timeLimit, now);
-
-            let keepProcessingSize = true;
-            if (nblock !== cblock) {
-                //We can go under on memory usage so do this check per block written
-                keepProcessingSize = isSizeBoundOk(nblock, sizeLimit);
-                cblock = nblock;
-            }
-
-            keepProcessing = keepProcessingTime || keepProcessingSize;
+        if (this.head.spos === this.head.epos) {
+            this.removeHeadBlock();
         }
-    }
-
-    while (this.head !== cblock) {
-        this.removeHeadBlock();
-    }
+        newblock = false;
+        keepProcessing = !partialwrite;
+    } while (keepProcessing);
 };
 
 /**
  * Filter out all the msgs that we want to drop when writing to disk and copy them to the pending write list -- process all records.
  * @method
- * @param {Object} formatterLog the formatterLog list to add into
- * @param {bool} forceall true if we want to ignore any level/category information and process everything
- * @param {number} retainLevel the logging level to retain at
- * @param {Object} retainCategories the logging category we want to retain
  */
-InMemoryLog.prototype.processMessagesForWrite_HardFlush = function (formatterLog, forceall, retainLevel, retainCategories) {
-    let cblock = this.head;
-    while (hasMoreDataToWrite(cblock)) {
-        if (forceall || isEnabledForWrite(cblock, retainLevel, retainCategories)) {
-            cblock = processSingleMessageForWrite_Helper(cblock, formatterLog);
-        }
-        else {
-            cblock = processSingleMessageForDiscard_Helper(cblock, formatterLog);
-        }
+InMemoryLog.prototype.processMessagesForWrite_HardFlush = function () {
+    let msgCount = 0;
+    for (let cblock = this.head; cblock.next !== null; cblock = cblock.next) {
+        msgCount += cblock.epos - cblock.spos;
     }
 
-    this.clear();
-};
-
-/////////////////////////////////////////////////////////////////////////////////////////////////
-//Define structure for representing the log entries that are pending transport to stable storage.
-//  We want to make this representation compact, efficient to convert to formatted log data, *and*
-//  setup in a way that is amenable to processing in a native module (off main thread).
-
-/**
- * The number of entries we have in a formatter block.
- */
-//FormatterMsgBlockSize 256
-
-//internal function for allocating a block
-function createFormatterMsgBlock(previousBlock) {
-    const nblock = {
-        spos: 0,
-        epos: 0,
-        tags: new Uint8Array(/*FormatterMsgBlockSize*/256),
-        data: new Float64Array(/*FormatterMsgBlockSize*/256),
-        strings: new Array(/*FormatterMsgBlockSize*/256),
-        stringPos: 0,
-        next: null,
-        previous: previousBlock
-    };
-
-    if (previousBlock) {
-        previousBlock.next = nblock;
+    if (msgCount === 0) {
+        return;
     }
 
-    return nblock;
-}
+    let keepProcessing = true;
+    let newblock = true;
+    do {
+        nlogger.processMsgsForEmit(this.head, newblock, msgCount, true);
 
-/**
- * FormatterLog constructor
- * @constructor
- */
-function FormatterLog() {
-    this.head = createFormatterMsgBlock(null);
-    this.tail = this.head;
-}
-
-/**
- * Clear the contents of the InMemoryLog
- * @method
- */
-FormatterLog.prototype.clear = function () {
-    this.head.tags.fill(/*LogEntryTags_Clear*/0x0, 0, this.head.epos);
-    this.head.data.fill(0, 0, this.head.epos);
-    this.head.strings.fill(undefined, 0, this.head.stringPos);
-    this.head.spos = 0;
-    this.head.epos = 0;
-    this.head.stringPos = 0;
-    this.head.next = null;
-
-    this.tail = this.head;
-};
-
-/**
- * Add an entry to the InMemoryLog
- * @method
- * @param {number} tag the tag for the entry
- * @param {*} data the data value for the entry
- */
-FormatterLog.prototype.addEntry = function (tag, data) {
-    let block = this.tail;
-    if (block.epos === /*MemoryMsgBlockSize*/256) {
-        block = createFormatterMsgBlock(block);
-        this.tail = block;
-    }
-
-    if (tag === /*LogEntryTags_JsVarValue*/0xB) {
-        if (data === undefined) {
-            block.tags[block.epos] = /*LogEntryTags_JsVarValue_Undefined*/0x30;
+        if (this.head.spos === this.head.epos) {
+            this.removeHeadBlock();
         }
-        else if (data === null) {
-            block.tags[block.epos] = /*LogEntryTags_JsVarValue_Null*/0x31;
-        }
-        else {
-            const dtype = typeof (data);
-            if (dtype === "boolean") {
-                block.tags[block.epos] = /*LogEntryTags_JsVarValue_Bool*/0x32;
-                block.data[block.epos] = data ? 1 : 0;
-            }
-            else if (dtype === "number") {
-                block.tags[block.epos] = /*LogEntryTags_JsVarValue_Number*/0x34;
-                block.data[block.epos] = data;
-            }
-            else if (dtype === "string") {
-                block.tags[block.epos] = /*LogEntryTags_JsVarValue_String*/0x38;
-                block.data[block.epos] = block.stringPos;
-                block.strings[block.stringPos++] = data;
-            }
-            else {
-                block.tags[block.epos] = /*LogEntryTags_JsVarValue_Date*/0x3A;
-                block.data[block.epos] = data.valueOf();
-            }
-        }
-    }
-    else {
-        switch (tag) {
-            case /*LogEntryTags_MsgFormat*/0x1:
-                block.tags[block.epos] = tag;
-                block.data[block.epos] = data.formatId;
-                break;
-            case /*LogEntryTags_MsgLevel*/0x2:
-                block.tags[block.epos] = tag;
-                block.data[block.epos] = data;
-                break;
-            case /*LogEntryTags_MsgCategory*/0x3:
-                block.tags[block.epos] = tag;
-                if (data === "default") {
-                    block.data[block.epos] = -1;
-                }
-                else {
-                    block.data[block.epos] = block.stringPos;
-                    block.strings[block.stringPos++] = data;
-                }
-                break;
-            case /*LogEntryTags_PropertyRecord*/0x9:
-                block.tags[block.epos] = tag;
-                block.data[block.epos] = block.stringPos;
-                block.strings[block.stringPos++] = data;
-                break;
-            case /*LogEntryTags_MsgWallTime*/0x22:
-                block.tags[block.epos] = tag;
-                block.data[block.epos] = data;
-                break;
-            default:
-                block.tags[block.epos] = tag;
-                break;
-        }
-    }
-    block.epos++;
+        newblock = false;
+        keepProcessing = !(this.head.next === null && this.head.spos === this.head.epos);
+    } while (keepProcessing);
 };
 
-FormatterLog.prototype.hasEntriesToWrite = function () {
-    return this.head.spos !== this.head.epos;
-};
-
-FormatterLog.prototype.getCurrentWriteTag = function () {
-    return this.head.tags[this.head.spos];
-};
-
-FormatterLog.prototype.getCurrentWriteData = function () {
-    return this.head.data[this.head.spos];
-};
-
-FormatterLog.prototype.getStringForIdx = function (idx) {
-    return this.head.strings[idx];
-};
-
-FormatterLog.prototype.advanceWritePos = function () {
-    this.head.spos++;
-
-    if (this.head.spos === this.head.epos) {
-        if (this.head.next == null) {
-            this.clear();
-        }
-        else {
-            this.head = this.head.next;
-            this.head.previous = null;
-        }
-    }
-};
-
-/**
- * Emit K formatted messages.
- * @method
- * @param {Object} formatter the formatter that knows how to serialize data values
- * @param {bool} doprefix true if we want to write a standard "LEVEL#CATEGORY TIME? -- " prefix
- * @param {number} k number of messages to write
- * @returns true if there is more to write or false otherwise
- */
-FormatterLog.prototype.emitKEntries = function (formatter, doprefix, k) {
-    for (let i = 0; i < k; ++i) {
-        if (!this.hasEntriesToWrite()) {
-            return false;
-        }
-
-        this.emitFormatEntry(formatter, doprefix);
-    }
-    return true;
-};
+asdf; //-----------------------------------------------------------------------
 
 /**
  * Emit a single formatted message.
@@ -1602,10 +1345,6 @@ function LoggerFactory(appName, options) {
         CALLBACK: -1,
         REQUEST: -1
     };
-
-    //True if we want to include a standard prefix on each log message
-    const m_doPrefix = typeof (options.defaultPrefix) === "boolean" ? options.defaultPrefix : true;
-    const m_doTimeLimit = true;
 
     //Blocklists containing the information logged into memory and pending to write out
     const m_inMemoryLog = new InMemoryLog();
