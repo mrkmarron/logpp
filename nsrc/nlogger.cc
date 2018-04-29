@@ -98,6 +98,9 @@ static std::map<LoggingLevel, std::string> s_loggingLevelToNames;
 //Keep track of which categories are enabled
 static std::vector<bool> s_enabledCategories;
 
+static std::string s_hostName;
+static std::string s_appName;
+
 #define LOG_LEVEL_ENABLED(level) ((static_cast<uint32_t>(level) & static_cast<uint32_t>(s_enabledLoggingLevel)) == static_cast<uint32_t>(level))
 
 ///////////////////////////////////////
@@ -408,6 +411,111 @@ private:
         this->m_cposData++;
     }
 
+    void emitVarTagEntry(Formatter& formatter, LogEntryTag tag)
+    {
+        switch (tag) {
+        case LogEntryTag::JsVarValue_Undefined:
+            formatter.emitLiteralString("undefined");
+            break;
+        case LogEntryTag::JsVarValue_Null:
+            formatter.emitLiteralString("null");
+            break;
+        case LogEntryTag::JsVarValue_Bool:
+            formatter.emitLiteralString(this->getCurrentDataAsBool() ? "true" : "false");
+            break;
+        case LogEntryTag::JsVarValue_Number:
+            formatter.emitJsNumber(this->getCurrentDataAsFloat());
+            break;
+        case LogEntryTag::JsVarValue_StringIdx:
+            formatter.emitJsString(this->getCurrentDataAsString());
+            break;
+        case LogEntryTag::JsVarValue_Date:
+            formatter.emitJsDate(this->getCurrentDataAsTime(), FormatStringEnum::DATEISO, true);
+            break;
+        default:
+            formatter.emitSpecialTag(tag);
+            break;
+        }
+    }
+
+    void emitObjectEntry(Formatter& formatter)
+    {
+        formatter.emitLiteralChar('{');
+        this->advancePos();
+
+        bool skipComma = true;
+        while (this->getCurrentTag() != LogEntryTag::RParen)
+        {
+            if (skipComma)
+            {
+                skipComma = false;
+            }
+            else
+            {
+                formatter.emitLiteralString(", ");
+            }
+            formatter.emitJsString(this->getCurrentDataAsString());
+            formatter.emitLiteralString(": ");
+
+            this->advancePos();
+
+            LogEntryTag tag = this->getCurrentTag();
+            if (tag == LogEntryTag::LParen)
+            {
+                this->emitObjectEntry(formatter);
+            }
+            else if (tag == LogEntryTag::LBrack)
+            {
+                this->emitArrayEntry(formatter);
+            }
+            else
+            {
+                this->emitVarTagEntry(formatter, tag);
+                this->advancePos();
+            }
+        }
+
+        formatter.emitLiteralChar('}');
+        this->advancePos();
+    }
+
+    void emitArrayEntry(Formatter& formatter)
+    {
+        formatter.emitLiteralChar('[');
+        this->advancePos();
+
+        bool skipComma = true;
+        while (this->getCurrentTag() != LogEntryTag::RBrack)
+        {
+            if (skipComma)
+            {
+                skipComma = false;
+            }
+            else
+            {
+                formatter.emitLiteralString(", ");
+            }
+
+            LogEntryTag tag = this->getCurrentTag();
+            if (tag == LogEntryTag::LParen)
+            {
+                this->emitObjectEntry(formatter);
+            }
+            else if (tag == LogEntryTag::LBrack)
+            {
+                this->emitArrayEntry(formatter);
+            }
+            else
+            {
+                this->emitVarTagEntry(formatter, tag);
+                this->advancePos();
+            }
+        }
+
+        formatter.emitLiteralChar(']');
+        this->advancePos();
+    }
+
 public:
     LogProcessingBlock(size_t sizehint) :
         m_tags(), m_data(), m_stringData()
@@ -436,7 +544,7 @@ public:
         }
     }
 
-    void emitFormatEntry(Formatter& formatter) 
+    void emitFormatEntry(Formatter& formatter)
     {
         this->m_cposTag = this->m_tags.cbegin();
         this->m_cposData = this->m_data.cbegin();
@@ -473,10 +581,10 @@ public:
                 switch (fentry.fenum)
                 {
                 case FormatStringEnum::HOST:
-                    asdf;
+                    formatter.emitLiteralString(s_hostName);
                     break;
                 case FormatStringEnum::APP:
-                    asdf;
+                    formatter.emitLiteralString(s_appName);
                     break;
                 case FormatStringEnum::MODULE:
                     formatter.emitJsString(this->getCurrentDataAsString());
@@ -500,57 +608,54 @@ public:
             }
             else
             {
-                const tag = this.getCurrentWriteTag();
-                const data = this.getCurrentWriteData();
+                const LogEntryTag tag = this->getCurrentTag();
 
-                if (tag == = /*LogEntryTags_JsBadFormatVar*/0xA) {
-                    this.emitVarTagEntry(formatter);
-                    this.advanceWritePos();
+                if (tag == LogEntryTag::JsBadFormatVar)
+                {
+                    formatter.emitSpecialTag(tag);
+                    this->advancePos();
                 }
-                else if (tag == = /*LogEntryTags_LParen*/0x5) {
-
-                    this.emitObjectEntry(formatter);
+                else if (tag == LogEntryTag::LParen)
+                {
+                    this->emitObjectEntry(formatter);
                     //position is advanced in call
                 }
-                else if (tag == = /*LogEntryTags_LBrack*/0x7) {
-                    this.emitArrayEntry(formatter);
+                else if (tag == LogEntryTag::LBrack)
+                {
+                    this->emitArrayEntry(formatter);
                     //position is advanced in call
                 }
-                else {
-                    switch (formatSpec.enum) {
-                    case /*SingletonFormatStringEntry_BOOL*/0x22:
-                        formatter.emitLiteralString(data == = 1 ? "true" : "false");
+                else
+                {
+                    switch (fentry.fenum) {
+                    case FormatStringEnum::BOOL:
+                        formatter.emitLiteralString(this->getCurrentDataAsBool() ? "true" : "false");
                         break;
-                    case /*SingletonFormatStringEntry_NUMBER*/0x23:
-                        formatter.emitNumber(data);
+                    case FormatStringEnum::NUMBER:
+                        formatter.emitJsNumber(this->getCurrentDataAsFloat());
                         break;
-                    case /*SingletonFormatStringEntry_STRING*/0x24:
-                        formatter.emitJsString(this.getStringForIdx(data));
+                    case FormatStringEnum::STRING:
+                        formatter.emitJsString(this->getCurrentDataAsString());
                         break;
-                    case /*SingletonFormatStringEntry_DATEISO*/0x25:
-                        formatter.emitDateString((new Date(data)).toISOString());
-                        break;
-                    case /*SingletonFormatStringEntry_DATEUTC*/0x26:
-                        formatter.emitDateString((new Date(data)).toUTCString());
-                        break;
-                    case /*SingletonFormatStringEntry_DATELOCAL*/0x27:
-                        formatter.emitDateString((new Date(data)).toString());
+                    case FormatStringEnum::DATEISO:
+                    case FormatStringEnum::DATEUTC:
+                    case FormatStringEnum::DATELOCAL:
+                        formatter.emitJsDate(this->getCurrentDataAsTime(), fentry.fenum, true);
                         break;
                     default:
-                        this.emitVarTagEntry(formatter);
+                        this->emitVarTagEntry(formatter, tag);
                         break;
                     }
-                    this.advanceWritePos();
+
+                    this->advancePos();
                 }
             }
 
-            formatter.emitLiteralString(tailingFormatSegmentArray[formatIndex]);
+            formatter.emitLiteralString(fentry.ffollow);
         }
+        formatter.emitLiteralChar('\n');
 
-        formatter.emitLiteralString("\n");
-
-        assert(this.getCurrentWriteTag() == = /*LogEntryTags_MsgEndSentinal*/0x4, "We messed up something.");
-        this.advanceWritePos();
+        this->advancePos();
     }
 };
 
@@ -719,6 +824,9 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
         //
         //TODO: set level, enable/disable categories
         //
+
+        s_hostName = "localhost";
+        s_appName = "[not-set]";
 
         //setup logging levels names
         s_loggingLevelToNames[LoggingLevel::LLOFF] = std::string("OFF");
