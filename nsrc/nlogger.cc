@@ -8,7 +8,6 @@
 
 #include <memory>
 #include <vector>
-#include <deque>
 #include <map>
 
 ///////////////////////////////////////
@@ -94,6 +93,7 @@ enum class LoggingLevel :uint32_t
 
 //Keep track of which logging level is enabled
 static LoggingLevel s_enabledLoggingLevel = LoggingLevel::LLINFO;
+static std::map<LoggingLevel, std::string> s_loggingLevelToNames;
 
 //Keep track of which categories are enabled
 static std::vector<bool> s_enabledCategories;
@@ -158,6 +158,9 @@ public:
     {
         this->m_fentries.emplace_back(std::forward<FormatEntry>(entry));
     }
+
+    const std::vector<FormatEntry>& getEntries() const { return this->m_fentries; }
+    const JSString& getInitialFormatStringSegment() const { return this->getInitialFormatStringSegment; }
 };
 
 static std::vector<std::shared_ptr<MsgFormat>> s_formats;
@@ -240,6 +243,11 @@ public:
         this->m_output << str;
     }
 
+    void emitLiteralString(const std::string& str)
+    {
+        this->m_output << str;
+    }
+
     void emitJsString(const std::string& str)
     {
         for (auto c = str.cbegin(); c != str.cend(); c++) {
@@ -302,20 +310,33 @@ public:
         }
     }
 
-    void emitJsDate(uint64_t dval, FormatStringEnum fmt)
+    void emitJsDate(std::time_t dval, FormatStringEnum fmt, bool quotes)
     {
+        if (quotes)
+        {
+            this->m_output << '"';
+        }
+
         if (fmt == FormatStringEnum::DATEUTC)
         {
-            asdf;
+            auto utctime = std::gmtime(&dval);
+            this->m_output << std::put_time(utctime, "%a, %d %b %Y %H:%M:%S %Z");
         }
         else if (fmt == FormatStringEnum::DATELOCAL)
         {
-            asdf;
+            auto localtime = std::localtime(&dval);
+            this->m_output << std::put_time(localtime, "%a %e %b %Y %H:%M:%S %Z");
         }
         else
         {
             //ISO
-            asdf;
+            auto utctime = std::gmtime(&dval);
+            this->m_output << std::put_time(utctime, "%Y-%m-%dT%H:%M:%S") << "." << std::setw(4) << std::setfill('0') << (dval % 1000) << "Z";
+        }
+
+        if (quotes)
+        {
+            this->m_output << '"';
         }
     }
 
@@ -359,16 +380,40 @@ public:
 class LogProcessingBlock
 {
 private:
-    size_t m_cpos;
-    std::deque<LogEntryTag> m_tags;
-    std::deque<double> m_data;
-    std::map<uint64_t, std::string> m_stringData;
+    std::vector<LogEntryTag> m_tags;
+    std::vector<double> m_data;
+    std::map<int32_t, std::string> m_stringData;
+
+    std::vector<LogEntryTag>::const_iterator m_cposTag;
+    std::vector<double>::const_iterator m_cposData;
+
+    LogEntryTag getCurrentTag() const { return *this->m_cposTag; }
+
+    bool getCurrentDataAsBool() const { return static_cast<bool>(*this->m_cposData); }
+    int64_t getCurrentDataAsInt() const { return static_cast<int64_t>(*this->m_cposData); }
+    double getCurrentDataAsFloat() const { return *this->m_cposData; }
+
+    LoggingLevel getCurrentDataAsLoggingLevel() const { return static_cast<LoggingLevel>(*this->m_cposData); }
+    time_t getCurrentDataAsTime() const { return static_cast<time_t>(*this->m_cposData); }
+
+    const std::string& getCurrentDataAsString() const 
+    {
+        uint32_t sidx = static_cast<int32_t>(*this->m_cposData);
+        return this->m_stringData.at(sidx); 
+    }
+
+    void advancePos()
+    {
+        this->m_cposTag++; 
+        this->m_cposData++;
+    }
 
 public:
-    LogProcessingBlock() :
-        m_cpos(0), m_tags(), m_data(), m_stringData()
+    LogProcessingBlock(size_t sizehint) :
+        m_tags(), m_data(), m_stringData()
     {
-        ;
+        this->m_tags.reserve(sizehint);
+        this->m_data.reserve(sizehint);
     }
 
     void AddDataEntry(LogEntryTag tag, double data)
@@ -382,7 +427,7 @@ public:
         this->m_tags.push_back(tag);
         this->m_data.push_back(data);
 
-        uint64_t key = static_cast<uint64_t>(data);
+        int32_t key = static_cast<int32_t>(data);
         auto iter = this->m_stringData.lower_bound(key);
 
         if (iter == this->m_stringData.end() || iter->first != key)
@@ -390,12 +435,129 @@ public:
             this->m_stringData.emplace_hint(iter, std::forward<JSString>(string.Utf8Value()));
         }
     }
+
+    void emitFormatEntry(Formatter& formatter) 
+    {
+        this->m_cposTag = this->m_tags.cbegin();
+        this->m_cposData = this->m_data.cbegin();
+
+        const std::shared_ptr<MsgFormat> fmt = s_formats[this->getCurrentDataAsInt()];
+        this->advancePos();
+
+        formatter.emitLiteralString(s_loggingLevelToNames.at(this->getCurrentDataAsLoggingLevel()));
+        this->advancePos();
+        formatter.emitLiteralChar('#');
+
+        const categoryidx = this.getCurrentWriteData();
+        formatter.emitLiteralString(categoryidx == = -1 ? "default" : this.getStringForIdx(categoryidx));
+        this->advancePos();
+
+        formatter.emitLiteralString(" @ ");
+        formatter.emitJsDate(this->getCurrentDataAsTime(), FormatStringEnum::DATEISO);
+        this->advancePos();
+
+        formatter.emitLiteralString(" -- ");
+
+        formatter.emitLiteralString(fmt->getInitialFormatStringSegment());
+
+        const std::vector<FormatEntry>& formatArray = fmt->getEntries();
+        for (size_t formatIndex = 0; formatIndex < formatArray.size(); formatIndex++)
+        {
+            const FormatEntry& fentry = formatArray[formatIndex];
+            
+            if (fentry.fkind == FormatStringEntryKind::Literal)
+            {
+                formatter.emitLiteralChar(fentry.fenum == FormatStringEnum::HASH ? '#' : '%');
+            }
+            else if (fentry.fkind == FormatStringEntryKind::Expando) {
+                switch (fentry.fenum)
+                {
+                case FormatStringEnum::HOST:
+                    asdf;
+                    break;
+                case FormatStringEnum::APP:
+                    asdf;
+                    break;
+                case FormatStringEnum::MODULE:
+                    formatter.emitJsString(this->getCurrentDataAsString());
+                    break;
+                case FormatStringEnum::SOURCE:
+                    formatter.emitCallStack(this->getCurrentDataAsString());
+                    break;
+                case FormatStringEnum::WALLCLOCK:
+                    formatter.emitJsDate(this->getCurrentDataAsTime(), FormatStringEnum::DATEISO, true);
+                    break;
+                case FormatStringEnum::TIMESTAMP:
+                case FormatStringEnum::CALLBACK:
+                case FormatStringEnum::REQUEST:
+                    formatter.emitJsNumber(this->getCurrentDataAsInt());
+                    break;
+                default:
+                    formatter.emitSpecialTag(LogEntryTag::JsBadFormatVar);
+                    break;
+                }
+                this->advancePos();
+            }
+            else
+            {
+                const tag = this.getCurrentWriteTag();
+                const data = this.getCurrentWriteData();
+
+                if (tag == = /*LogEntryTags_JsBadFormatVar*/0xA) {
+                    this.emitVarTagEntry(formatter);
+                    this.advanceWritePos();
+                }
+                else if (tag == = /*LogEntryTags_LParen*/0x5) {
+
+                    this.emitObjectEntry(formatter);
+                    //position is advanced in call
+                }
+                else if (tag == = /*LogEntryTags_LBrack*/0x7) {
+                    this.emitArrayEntry(formatter);
+                    //position is advanced in call
+                }
+                else {
+                    switch (formatSpec.enum) {
+                    case /*SingletonFormatStringEntry_BOOL*/0x22:
+                        formatter.emitLiteralString(data == = 1 ? "true" : "false");
+                        break;
+                    case /*SingletonFormatStringEntry_NUMBER*/0x23:
+                        formatter.emitNumber(data);
+                        break;
+                    case /*SingletonFormatStringEntry_STRING*/0x24:
+                        formatter.emitJsString(this.getStringForIdx(data));
+                        break;
+                    case /*SingletonFormatStringEntry_DATEISO*/0x25:
+                        formatter.emitDateString((new Date(data)).toISOString());
+                        break;
+                    case /*SingletonFormatStringEntry_DATEUTC*/0x26:
+                        formatter.emitDateString((new Date(data)).toUTCString());
+                        break;
+                    case /*SingletonFormatStringEntry_DATELOCAL*/0x27:
+                        formatter.emitDateString((new Date(data)).toString());
+                        break;
+                    default:
+                        this.emitVarTagEntry(formatter);
+                        break;
+                    }
+                    this.advanceWritePos();
+                }
+            }
+
+            formatter.emitLiteralString(tailingFormatSegmentArray[formatIndex]);
+        }
+
+        formatter.emitLiteralString("\n");
+
+        assert(this.getCurrentWriteTag() == = /*LogEntryTags_MsgEndSentinal*/0x4, "We messed up something.");
+        this.advanceWritePos();
+    }
 };
 
 bool MsgTimeExpired(size_t cpos, const double* data)
 {
-    uint64_t now = time(nullptr); //depnds on system time being uint64 convertable
-    
+    std::time_t now = std::time(nullptr); //depnds on system time being uint64 convertable
+
     return static_cast<uint64_t>(data[cpos + 3]) + s_msgTimeLimit < now;
 }
 
@@ -506,7 +668,8 @@ bool ProcessMsgs(const Napi::CallbackInfo& info)
 
     if (!info[1].As<Napi::Boolean>().Value())
     {
-        s_processing.push_back(LogProcessingBlock());
+        size_t sizehint = ((epos - cpos) * 3) / 2;
+        s_processing.push_back(LogProcessingBlock(sizehint));
     }
 
     LogProcessingBlock& into = s_processing.back(); 
@@ -543,17 +706,33 @@ bool ProcessMsgs(const Napi::CallbackInfo& info)
     return Napi::Boolean::New(env, false);
 }
 
+static bool s_firstLoad = true;
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
-    s_enabledCategories.push_back(false); //0 is not usable since we do -i indexing
-    s_enabledCategories.push_back(true); //$default is enabled by default
+    if (s_firstLoad)
+    {
+        s_firstLoad = false;
 
-    //
-    //TODO: set level, enable/disable categories
-    //
+        s_enabledCategories.push_back(false); //0 is not usable since we do -i indexing
+        s_enabledCategories.push_back(true); //$default is enabled by default
+
+        //
+        //TODO: set level, enable/disable categories
+        //
+
+        //setup logging levels names
+        s_loggingLevelToNames[LoggingLevel::LLOFF] = std::string("OFF");
+        s_loggingLevelToNames[LoggingLevel::LLFATAL] = std::string("FATAL");
+        s_loggingLevelToNames[LoggingLevel::LLERROR] = std::string("ERROR");
+        s_loggingLevelToNames[LoggingLevel::LLWARN] = std::string("WARN");
+        s_loggingLevelToNames[LoggingLevel::LLINFO] = std::string("INFO");
+        s_loggingLevelToNames[LoggingLevel::LLDETAIL] = std::string("DETAIL");
+        s_loggingLevelToNames[LoggingLevel::LLDEBUG] = std::string("DEBUG");
+        s_loggingLevelToNames[LoggingLevel::LLTRACE] = std::string("TRACE");
+        s_loggingLevelToNames[LoggingLevel::LLOFF] = std::string("OFF");
+    }
 
     exports.Set(Napi::String::New(env, "registerFormat"), Napi::Function::New(env, RegisterFormat));
-
     exports.Set(Napi::String::New(env, "processMsgsForEmit"), Napi::Function::New(env, ProcessMsgs));
 
     return exports;

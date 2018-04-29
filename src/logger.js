@@ -2,8 +2,6 @@
 
 const nlogger = require("C:\\Code\\logpp\\build\\Debug\\nlogger.node");
 
-const assert = require("assert");
-
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //Start off with a bunch of costant definitions.
 //In a number of cases we don't actually define here. Instead we have a comment and literal value which
@@ -1050,126 +1048,6 @@ InMemoryLog.prototype.processMessagesForWrite_HardFlush = function () {
 };
 
 asdf; //-----------------------------------------------------------------------
-
-/**
- * Emit a single formatted message.
- * @method
- * @param {Object} formatter the formatter that knows how to serialize data values
- * @param {bool} doprefix true if we want to write a standard "LEVEL#CATEGORY TIME? -- " prefix
- */
-FormatterLog.prototype.emitFormatEntry = function (formatter, doprefix) {
-    const fmt = s_fmtMap.get(this.getCurrentWriteData());
-    this.advanceWritePos();
-
-    if (!doprefix) {
-        this.advanceWritePos();
-        this.advanceWritePos();
-
-        if (this.getCurrentWriteTag() === /*LogEntryTags_MsgWallTime*/0x22) {
-            this.advanceWritePos();
-        }
-    }
-    else {
-        formatter.emitLiteralString(LoggingLevelToNameMap[this.getCurrentWriteData()]);
-        this.advanceWritePos();
-        formatter.emitLiteralChar("#");
-
-        const categoryidx = this.getCurrentWriteData();
-        formatter.emitLiteralString(categoryidx === -1 ? "default" : this.getStringForIdx(categoryidx));
-        this.advanceWritePos();
-
-        if (this.getCurrentWriteTag() === /*LogEntryTags_MsgWallTime*/0x22) {
-            formatter.emitLiteralString(" @ ");
-            formatter.emitLiteralString((new Date(this.getCurrentWriteData())).toISOString());
-            this.advanceWritePos();
-        }
-
-        formatter.emitLiteralString(" -- ");
-    }
-
-    const formatArray = fmt.formatterArray;
-    const tailingFormatSegmentArray = fmt.tailingFormatStringSegmentArray;
-    let formatIndex = 0;
-
-    formatter.emitString(fmt.initialFormatStringSegment);
-
-    for (formatIndex = 0; formatIndex < formatArray.length; formatIndex++) {
-        const formatEntry = formatArray[formatIndex];
-        const formatSpec = formatEntry.format;
-
-        if (formatSpec.kind === /*FormatStringEntryKind_Literal*/0x1) {
-            formatter.emitLiteralChar(formatSpec.enum === /*SingletonFormatStringEntry_HASH*/0x11 ? "#" : "%");
-        }
-        else if (formatSpec.kind === /*FormatStringEntryKind_Expando*/0x2) {
-            const data = this.getCurrentWriteData();
-            const specEnum = formatSpec.enum;
-            if (specEnum === /*SingletonFormatStringEntry_SOURCE*/0x15) {
-                formatter.emitCallStack(this.getStringForIdx(data));
-            }
-            else if (specEnum === /*SingletonFormatStringEntry_WALLCLOCK*/0x16) {
-                formatter.emitDateString((new Date(data)).toISOString());
-            }
-            else if (specEnum === /*SingletonFormatStringEntry_TIMESTAMP*/0x17 || specEnum === /*SingletonFormatStringEntry_CALLBACK*/0x18 || specEnum === /*SingletonFormatStringEntry_REQUEST*/0x19) {
-                formatter.emitNumber(data);
-            }
-            else {
-                formatter.emitJsString(this.getStringForIdx(data));
-            }
-            this.advanceWritePos();
-        }
-        else {
-            const tag = this.getCurrentWriteTag();
-            const data = this.getCurrentWriteData();
-
-            if (tag === /*LogEntryTags_JsBadFormatVar*/0xA) {
-                this.emitVarTagEntry(formatter);
-                this.advanceWritePos();
-            }
-            else if (tag === /*LogEntryTags_LParen*/0x5) {
-
-                this.emitObjectEntry(formatter);
-                //position is advanced in call
-            }
-            else if (tag === /*LogEntryTags_LBrack*/0x7) {
-                this.emitArrayEntry(formatter);
-                //position is advanced in call
-            }
-            else {
-                switch (formatSpec.enum) {
-                    case /*SingletonFormatStringEntry_BOOL*/0x22:
-                        formatter.emitLiteralString(data === 1 ? "true" : "false");
-                        break;
-                    case /*SingletonFormatStringEntry_NUMBER*/0x23:
-                        formatter.emitNumber(data);
-                        break;
-                    case /*SingletonFormatStringEntry_STRING*/0x24:
-                        formatter.emitJsString(this.getStringForIdx(data));
-                        break;
-                    case /*SingletonFormatStringEntry_DATEISO*/0x25:
-                        formatter.emitDateString((new Date(data)).toISOString());
-                        break;
-                    case /*SingletonFormatStringEntry_DATEUTC*/0x26:
-                        formatter.emitDateString((new Date(data)).toUTCString());
-                        break;
-                    case /*SingletonFormatStringEntry_DATELOCAL*/0x27:
-                        formatter.emitDateString((new Date(data)).toString());
-                        break;
-                    default:
-                        this.emitVarTagEntry(formatter);
-                        break;
-                }
-                this.advanceWritePos();
-            }
-        }
-
-        formatter.emitLiteralString(tailingFormatSegmentArray[formatIndex]);
-    }
-
-    formatter.emitLiteralString("\n");
-
-    assert(this.getCurrentWriteTag() === /*LogEntryTags_MsgEndSentinal*/0x4, "We messed up something.");
-    this.advanceWritePos();
-};
 
 
 /**
