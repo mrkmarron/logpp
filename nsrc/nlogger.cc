@@ -8,6 +8,7 @@
 
 #include <memory>
 #include <vector>
+#include <stack>
 #include <map>
 
 ///////////////////////////////////////
@@ -95,8 +96,8 @@ enum class LoggingLevel :uint32_t
 static LoggingLevel s_enabledLoggingLevel = LoggingLevel::LLINFO;
 static std::map<LoggingLevel, std::string> s_loggingLevelToNames;
 
-//Keep track of which categories are enabled
-static std::vector<bool> s_enabledCategories;
+//Keep track of which categories are enabled and their names
+static std::vector<std::pair<bool, std::string>> s_enabledCategories;
 
 static std::string s_hostName;
 static std::string s_appName;
@@ -106,14 +107,12 @@ static std::string s_appName;
 ///////////////////////////////////////
 //Helpers
 
-typedef std::string JSString;
-
 class FormatEntry
 {
 public:
     const FormatStringEntryKind fkind;
     const FormatStringEnum fenum;
-    JSString ffollow; //the string to put into the log after this content
+    std::string ffollow; //the string to put into the log after this content
 
     FormatEntry() :
         fkind(FormatStringEntryKind::Clear), fenum(FormatStringEnum::Clear), ffollow()
@@ -121,14 +120,14 @@ public:
         ;
     }
 
-    FormatEntry(FormatStringEntryKind fkind, FormatStringEnum fenum, JSString&& ffollow) :
-        fkind(fkind), fenum(fenum), ffollow(std::forward<JSString>(ffollow))
+    FormatEntry(FormatStringEntryKind fkind, FormatStringEnum fenum, std::string&& ffollow) :
+        fkind(fkind), fenum(fenum), ffollow(std::forward<std::string>(ffollow))
     {
         ;
     }
 
     FormatEntry(FormatEntry&& other) :
-        fkind(other.fkind), fenum(other.fenum), ffollow(std::forward<JSString>(other.ffollow))
+        fkind(other.fkind), fenum(other.fenum), ffollow(std::forward<std::string>(other.ffollow))
     {
         ;
     }
@@ -139,8 +138,8 @@ class MsgFormat
 private:
     const int64_t m_formatId; //a unique identifier for the format
     std::vector<FormatEntry> m_fentries; //the array of FormatEntry objects
-    JSString m_initialFormatStringSegment;
-    JSString m_originalFormatString; //the origial raw format string
+    std::string m_initialFormatStringSegment;
+    std::string m_originalFormatString; //the origial raw format string
 
 public:
     MsgFormat() :
@@ -149,10 +148,10 @@ public:
         ;
     }
 
-    MsgFormat(int64_t formatId, size_t entryCount, JSString&& initialFormatStringSegment, JSString&& originalFormatString) :
+    MsgFormat(int64_t formatId, size_t entryCount, std::string&& initialFormatStringSegment, std::string&& originalFormatString) :
         m_formatId(formatId), m_fentries(),
-        m_initialFormatStringSegment(std::forward<JSString>(initialFormatStringSegment)),
-        m_originalFormatString(std::forward<JSString>(originalFormatString))
+        m_initialFormatStringSegment(std::forward<std::string>(initialFormatStringSegment)),
+        m_originalFormatString(std::forward<std::string>(originalFormatString))
     {
         this->m_fentries.reserve(entryCount);
     }
@@ -163,7 +162,7 @@ public:
     }
 
     const std::vector<FormatEntry>& getEntries() const { return this->m_fentries; }
-    const JSString& getInitialFormatStringSegment() const { return this->getInitialFormatStringSegment; }
+    const std::string& getInitialFormatStringSegment() const { return this->m_initialFormatStringSegment; }
 };
 
 static std::vector<std::shared_ptr<MsgFormat>> s_formats;
@@ -289,6 +288,11 @@ public:
         }
     }
 
+    void emitJsInt(int64_t val)
+    {
+        this->m_output << val;
+    }
+
     void emitJsNumber(double val)
     {
         if (std::isnan(val))
@@ -305,7 +309,7 @@ public:
         }
         else if (floor(val) == val)
         {
-            this->m_output << static_cast<int64_t>(val);
+            this->m_output << (int64_t)val;
         }
         else
         {
@@ -378,6 +382,8 @@ public:
 };
 
 #define INIT_LOG_BLOCK_SIZE 64
+static int64_t s_msgTimeLimit = 1000;
+static size_t s_msgCountLimit = 4096;
 
 //We load the JS data into this for later processing
 class LogProcessingBlock
@@ -396,12 +402,12 @@ private:
     int64_t getCurrentDataAsInt() const { return static_cast<int64_t>(*this->m_cposData); }
     double getCurrentDataAsFloat() const { return *this->m_cposData; }
 
-    LoggingLevel getCurrentDataAsLoggingLevel() const { return static_cast<LoggingLevel>(*this->m_cposData); }
+    LoggingLevel getCurrentDataAsLoggingLevel() const { return static_cast<LoggingLevel>(static_cast<uint32_t>(*this->m_cposData)); }
     time_t getCurrentDataAsTime() const { return static_cast<time_t>(*this->m_cposData); }
 
     const std::string& getCurrentDataAsString() const 
     {
-        uint32_t sidx = static_cast<int32_t>(*this->m_cposData);
+        int32_t sidx = static_cast<int32_t>(*this->m_cposData);
         return this->m_stringData.at(sidx); 
     }
 
@@ -413,7 +419,8 @@ private:
 
     void emitVarTagEntry(Formatter& formatter, LogEntryTag tag)
     {
-        switch (tag) {
+        switch (tag)
+        {
         case LogEntryTag::JsVarValue_Undefined:
             formatter.emitLiteralString("undefined");
             break;
@@ -438,58 +445,21 @@ private:
         }
     }
 
-    void emitObjectEntry(Formatter& formatter)
+    void emitStructuredEntry(Formatter& formatter)
     {
-        formatter.emitLiteralChar('{');
+        std::stack<std::pair<char, bool>> processingStack;
+        processingStack.push(std::make_pair<char, bool>(this->getCurrentTag() == LogEntryTag::LParen ? '{' : '[', true));
+
+        formatter.emitLiteralChar(processingStack.top().first);
         this->advancePos();
 
-        bool skipComma = true;
-        while (this->getCurrentTag() != LogEntryTag::RParen)
+        while (!processingStack.empty())
         {
-            if (skipComma)
-            {
-                skipComma = false;
-            }
-            else
-            {
-                formatter.emitLiteralString(", ");
-            }
-            formatter.emitJsString(this->getCurrentDataAsString());
-            formatter.emitLiteralString(": ");
+            std::pair<char, bool>& cs = processingStack.top();
 
-            this->advancePos();
-
-            LogEntryTag tag = this->getCurrentTag();
-            if (tag == LogEntryTag::LParen)
+            if (cs.second)
             {
-                this->emitObjectEntry(formatter);
-            }
-            else if (tag == LogEntryTag::LBrack)
-            {
-                this->emitArrayEntry(formatter);
-            }
-            else
-            {
-                this->emitVarTagEntry(formatter, tag);
-                this->advancePos();
-            }
-        }
-
-        formatter.emitLiteralChar('}');
-        this->advancePos();
-    }
-
-    void emitArrayEntry(Formatter& formatter)
-    {
-        formatter.emitLiteralChar('[');
-        this->advancePos();
-
-        bool skipComma = true;
-        while (this->getCurrentTag() != LogEntryTag::RBrack)
-        {
-            if (skipComma)
-            {
-                skipComma = false;
+                cs.second = false;
             }
             else
             {
@@ -497,13 +467,22 @@ private:
             }
 
             LogEntryTag tag = this->getCurrentTag();
-            if (tag == LogEntryTag::LParen)
+            if (tag == LogEntryTag::PropertyRecord)
             {
-                this->emitObjectEntry(formatter);
+                formatter.emitJsString(this->getCurrentDataAsString());
+                formatter.emitLiteralString(": ");
+                this->advancePos();
             }
-            else if (tag == LogEntryTag::LBrack)
+            else if (tag == LogEntryTag::LParen || tag == LogEntryTag::LBrack)
             {
-                this->emitArrayEntry(formatter);
+                this->emitStructuredEntry(formatter);
+                //pos advanced in call
+            }
+            else if (tag == LogEntryTag::RParen || tag == LogEntryTag::RBrack)
+            {
+                formatter.emitLiteralChar(tag == LogEntryTag::RParen ? '}' : ']');
+                this->advancePos();
+                processingStack.pop();
             }
             else
             {
@@ -511,9 +490,6 @@ private:
                 this->advancePos();
             }
         }
-
-        formatter.emitLiteralChar(']');
-        this->advancePos();
     }
 
 public:
@@ -540,7 +516,7 @@ public:
 
         if (iter == this->m_stringData.end() || iter->first != key)
         {
-            this->m_stringData.emplace_hint(iter, std::forward<JSString>(string.Utf8Value()));
+            this->m_stringData.emplace_hint(iter, key, std::forward<std::string>(string.Utf8Value()));
         }
     }
 
@@ -556,12 +532,11 @@ public:
         this->advancePos();
         formatter.emitLiteralChar('#');
 
-        const categoryidx = this.getCurrentWriteData();
-        formatter.emitLiteralString(categoryidx == = -1 ? "default" : this.getStringForIdx(categoryidx));
+        formatter.emitLiteralString(s_enabledCategories[this->getCurrentDataAsInt()].second);
         this->advancePos();
 
         formatter.emitLiteralString(" @ ");
-        formatter.emitJsDate(this->getCurrentDataAsTime(), FormatStringEnum::DATEISO);
+        formatter.emitJsDate(this->getCurrentDataAsTime(), FormatStringEnum::DATEISO, false);
         this->advancePos();
 
         formatter.emitLiteralString(" -- ");
@@ -598,7 +573,7 @@ public:
                 case FormatStringEnum::TIMESTAMP:
                 case FormatStringEnum::CALLBACK:
                 case FormatStringEnum::REQUEST:
-                    formatter.emitJsNumber(this->getCurrentDataAsInt());
+                    formatter.emitJsInt(this->getCurrentDataAsInt());
                     break;
                 default:
                     formatter.emitSpecialTag(LogEntryTag::JsBadFormatVar);
@@ -615,14 +590,9 @@ public:
                     formatter.emitSpecialTag(tag);
                     this->advancePos();
                 }
-                else if (tag == LogEntryTag::LParen)
+                else if (tag == LogEntryTag::LParen || tag == LogEntryTag::LBrack)
                 {
-                    this->emitObjectEntry(formatter);
-                    //position is advanced in call
-                }
-                else if (tag == LogEntryTag::LBrack)
-                {
-                    this->emitArrayEntry(formatter);
+                    this->emitStructuredEntry(formatter);
                     //position is advanced in call
                 }
                 else
@@ -663,7 +633,7 @@ bool MsgTimeExpired(size_t cpos, const double* data)
 {
     std::time_t now = std::time(nullptr); //depnds on system time being uint64 convertable
 
-    return static_cast<uint64_t>(data[cpos + 3]) + s_msgTimeLimit < now;
+    return static_cast<int64_t>(data[cpos + 3]) + s_msgTimeLimit < now;
 }
 
 bool MsgOverSizeLimit(size_t msgCount)
@@ -673,14 +643,14 @@ bool MsgOverSizeLimit(size_t msgCount)
 
 bool ShouldDiscard(size_t cpos, const double* data)
 {
-    const LoggingLevel level = static_cast<LoggingLevel>(data[cpos + 1]);
+    const LoggingLevel level = static_cast<LoggingLevel>(static_cast<uint32_t>(data[cpos + 1]));
     if (!LOG_LEVEL_ENABLED(level))
     {
         return true;
     }
 
     const size_t category = static_cast<size_t>(data[cpos + 2]);
-    if (category >= s_enabledCategories.size() || !s_enabledCategories[category])
+    if (category >= s_enabledCategories.size() || !s_enabledCategories[category].first)
     {
         return true;
     }
@@ -718,7 +688,7 @@ bool ProcessSaveEntry(LogProcessingBlock& into, size_t& cpos, size_t epos, const
         }
         else
         {
-            Napi::Value sval = stringData[static_cast<uint64_t>(data[cpos])];
+            Napi::Value sval = stringData[static_cast<size_t>(data[cpos])];
             into.AddStringDataEntry(ttag, data[cpos], sval.As<Napi::String>());
         }
 
@@ -738,11 +708,9 @@ bool ProcessSaveEntry(LogProcessingBlock& into, size_t& cpos, size_t epos, const
     }
 }
 
-static size_t s_msgTimeLimit = 1000;
-static size_t s_msgCountLimit = 4096;
 static std::vector<LogProcessingBlock> s_processing;
 
-bool ProcessMsgs(const Napi::CallbackInfo& info)
+Napi::Value ProcessMsgs(const Napi::CallbackInfo& info)
 {
     Napi::Env env = info.Env();
     if (info.Length() != 4 || !info[0].IsObject() || !info[1].IsBoolean() || !info[2].IsNumber() || !info[3].IsBoolean())
@@ -784,7 +752,7 @@ bool ProcessMsgs(const Napi::CallbackInfo& info)
         //check time and # of slots in use
         if (!forceall && !MsgTimeExpired(cpos, data) && !MsgOverSizeLimit(msgCount))
         {
-            inmemblock.Set("spos", Napi::Number::New(env, cpos));
+            inmemblock.Set("spos", Napi::Number::New(env, static_cast<double>(cpos)));
             return Napi::Boolean::New(env, false);
         }
 
@@ -802,13 +770,31 @@ bool ProcessMsgs(const Napi::CallbackInfo& info)
 
         if (!msgcomplete)
         {
-            inmemblock.Set("spos", Napi::Number::New(env, cpos));
+            inmemblock.Set("spos", Napi::Number::New(env, static_cast<double>(cpos)));
             return Napi::Boolean::New(env, true);
         }
     }
 
-    inmemblock.Set("spos", Napi::Number::New(env, cpos));
+    inmemblock.Set("spos", Napi::Number::New(env, static_cast<double>(cpos)));
     return Napi::Boolean::New(env, false);
+}
+
+Napi::Value FormatMsgsSync(const Napi::CallbackInfo& info)
+{
+    Napi::Env env = info.Env();
+    if (info.Length() != 0)
+    {
+        Napi::TypeError::New(env, "Wrong arguments").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    Formatter formatter;
+    for (auto iter = s_processing.begin(); iter != s_processing.end(); iter++)
+    {
+        iter->emitFormatEntry(formatter);
+    }
+
+    return Napi::String::New(env, formatter.getOutputBuffer());
 }
 
 static bool s_firstLoad = true;
@@ -818,8 +804,8 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     {
         s_firstLoad = false;
 
-        s_enabledCategories.push_back(false); //0 is not usable since we do -i indexing
-        s_enabledCategories.push_back(true); //$default is enabled by default
+        s_enabledCategories.push_back(std::make_pair(false, "_invalid_")); //0 is not usable since we do -i indexing
+        s_enabledCategories.push_back(std::make_pair(true, "$default")); //$default is enabled by default
 
         //
         //TODO: set level, enable/disable categories
@@ -841,7 +827,10 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     }
 
     exports.Set(Napi::String::New(env, "registerFormat"), Napi::Function::New(env, RegisterFormat));
+
     exports.Set(Napi::String::New(env, "processMsgsForEmit"), Napi::Function::New(env, ProcessMsgs));
+
+    exports.Set(Napi::String::New(env, "formatMsgsSync"), Napi::Function::New(env, FormatMsgsSync));
 
     return exports;
 }

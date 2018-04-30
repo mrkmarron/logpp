@@ -1047,18 +1047,10 @@ InMemoryLog.prototype.processMessagesForWrite_HardFlush = function () {
     } while (keepProcessing);
 };
 
-asdf; //-----------------------------------------------------------------------
-
-
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //Define the actual logger
 
-const formatters = require("./formatter");
 const transporters = require("./transport");
-const scheduler = require("./scheduler").createScheduler(250, 50);
-
-//number of elements to stringify into write buffer at a time
-const m_writeGroupSize = 20;
 
 function isLevelEnabledForLogging(targetLevel, actualLevel) {
     return (targetLevel & actualLevel) === actualLevel;
