@@ -1,6 +1,6 @@
 "use strict";
 
-const logpp = require("../src/logger")("basic", "INFO", { transporter: "String", defaultPrefix: false });
+const logpp = require("../src/logger")("basic");
 
 setTimeout(() => {
     logpp.addFormat("Basic_Hello", "Hello World!!!");
@@ -8,5 +8,5 @@ setTimeout(() => {
 
     logpp.info(logpp.$Basic_Hello);
 
-    console.log(JSON.stringify(logpp));
+    logpp.emitFullLogSync();
 }, 10000);

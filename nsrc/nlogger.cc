@@ -6,6 +6,8 @@
 #include <sstream>
 #include <iomanip>
 
+#include <algorithm>
+
 #include <memory>
 #include <vector>
 #include <stack>
@@ -102,7 +104,7 @@ static std::vector<std::pair<bool, std::string>> s_enabledCategories;
 static std::string s_hostName;
 static std::string s_appName;
 
-#define LOG_LEVEL_ENABLED(level) ((static_cast<uint32_t>(level) & static_cast<uint32_t>(s_enabledLoggingLevel)) == static_cast<uint32_t>(level))
+#define LOG_LEVEL_ENABLED(level) ((static_cast<uint32_t>(level) & static_cast<uint32_t>(s_enabledLoggingLevel)) == static_cast<uint32_t>(s_enabledLoggingLevel))
 
 ///////////////////////////////////////
 //Helpers
@@ -252,6 +254,8 @@ public:
 
     void emitJsString(const std::string& str)
     {
+        this->m_output << "\"";
+
         for (auto c = str.cbegin(); c != str.cend(); c++) {
             switch (*c) {
             case '"':
@@ -286,6 +290,8 @@ public:
                 }
             }
         }
+
+        this->m_output << "\"";
     }
 
     void emitJsInt(int64_t val)
@@ -324,21 +330,24 @@ public:
             this->m_output << '"';
         }
 
+        std::time_t tval = dval / 1000;
+        uint32_t msval = dval % 1000;
+
         if (fmt == FormatStringEnum::DATEUTC)
         {
-            auto utctime = std::gmtime(&dval);
+            auto utctime = std::gmtime(&tval);
             this->m_output << std::put_time(utctime, "%a, %d %b %Y %H:%M:%S %Z");
         }
         else if (fmt == FormatStringEnum::DATELOCAL)
         {
-            auto localtime = std::localtime(&dval);
+            auto localtime = std::localtime(&tval);
             this->m_output << std::put_time(localtime, "%a %e %b %Y %H:%M:%S %Z");
         }
         else
         {
             //ISO
-            auto utctime = std::gmtime(&dval);
-            this->m_output << std::put_time(utctime, "%Y-%m-%dT%H:%M:%S") << "." << std::setw(4) << std::setfill('0') << (dval % 1000) << "Z";
+            auto utctime = std::gmtime(&tval);
+            this->m_output << std::put_time(utctime, "%Y-%m-%dT%H:%M:%S") << "." << std::setw(4) << std::setfill('0') << msval << "Z";
         }
 
         if (quotes)
@@ -417,6 +426,11 @@ private:
         this->m_cposData++;
     }
 
+    bool hasMoreEntries() const
+    {
+        return this->m_cposTag != this->m_tags.end();
+    }
+
     void emitVarTagEntry(Formatter& formatter, LogEntryTag tag)
     {
         switch (tag)
@@ -456,6 +470,7 @@ private:
         while (!processingStack.empty())
         {
             std::pair<char, bool>& cs = processingStack.top();
+            LogEntryTag tag = this->getCurrentTag();
 
             if (cs.second)
             {
@@ -463,10 +478,12 @@ private:
             }
             else
             {
-                formatter.emitLiteralString(", ");
+                if (tag != LogEntryTag::RParen && tag != LogEntryTag::RBrack)
+                {
+                    formatter.emitLiteralString(", ");
+                }
             }
 
-            LogEntryTag tag = this->getCurrentTag();
             if (tag == LogEntryTag::PropertyRecord)
             {
                 formatter.emitJsString(this->getCurrentDataAsString());
@@ -522,9 +539,6 @@ public:
 
     void emitFormatEntry(Formatter& formatter)
     {
-        this->m_cposTag = this->m_tags.cbegin();
-        this->m_cposData = this->m_data.cbegin();
-
         const std::shared_ptr<MsgFormat> fmt = s_formats[this->getCurrentDataAsInt()];
         this->advancePos();
 
@@ -627,6 +641,17 @@ public:
 
         this->advancePos();
     }
+
+    void emitAllFormatEntries(Formatter& formatter)
+    {
+        this->m_cposTag = this->m_tags.cbegin();
+        this->m_cposData = this->m_data.cbegin();
+
+        while (this->hasMoreEntries())
+        {
+            this->emitFormatEntry(formatter);
+        }
+    }
 };
 
 bool MsgTimeExpired(size_t cpos, const double* data)
@@ -709,6 +734,7 @@ bool ProcessSaveEntry(LogProcessingBlock& into, size_t& cpos, size_t epos, const
 }
 
 static std::vector<LogProcessingBlock> s_processing;
+static char s_processPending = 'n';
 
 Napi::Value ProcessMsgs(const Napi::CallbackInfo& info)
 {
@@ -727,7 +753,7 @@ Napi::Value ProcessMsgs(const Napi::CallbackInfo& info)
     size_t cpos = inmemblock.Get("spos").As<Napi::Number>().Int64Value();
 
     Napi::Uint8Array tagArray = inmemblock.Get("tags").As<Napi::Uint8Array>();
-    Napi::Float64Array dataArray = inmemblock.Get("fata").As<Napi::Float64Array>();
+    Napi::Float64Array dataArray = inmemblock.Get("data").As<Napi::Float64Array>();
     if (tagArray.ElementLength() < epos || dataArray.ElementLength() < epos || epos < cpos)
     {
         Napi::TypeError::New(env, "Bad lengths for block segment").ThrowAsJavaScriptException();
@@ -739,12 +765,11 @@ Napi::Value ProcessMsgs(const Napi::CallbackInfo& info)
 
     const Napi::Array stringData = inmemblock.Get("stringData").As<Napi::Array>();
 
-    if (!info[1].As<Napi::Boolean>().Value())
+    if (info[1].As<Napi::Boolean>().Value())
     {
-        size_t sizehint = ((epos - cpos) * 3) / 2;
+        size_t sizehint = std::max(static_cast<int32_t>(((epos - cpos) * 3) / 2), INIT_LOG_BLOCK_SIZE);
         s_processing.push_back(LogProcessingBlock(sizehint));
     }
-
     LogProcessingBlock& into = s_processing.back(); 
 
     while (cpos < epos)
@@ -758,17 +783,23 @@ Napi::Value ProcessMsgs(const Napi::CallbackInfo& info)
 
         size_t oldcpos = cpos;
         bool msgcomplete = true;
-        if (ShouldDiscard(cpos, data))
+        if ((s_processPending == 'n' && ShouldDiscard(cpos, data)) || s_processPending == 'd')
         {
+            s_processPending = 'd';
             msgcomplete = ProcessDiscardEntry(cpos, epos, tags);
         }
         else
         {
+            s_processPending = 's';
             msgcomplete = ProcessSaveEntry(into, cpos, epos, tags, data, stringData);
         }
         msgCount -= static_cast<int32_t>(epos - cpos);
 
-        if (!msgcomplete)
+        if (msgcomplete)
+        {
+            s_processPending = 'n';
+        }
+        else
         {
             inmemblock.Set("spos", Napi::Number::New(env, static_cast<double>(cpos)));
             return Napi::Boolean::New(env, true);
@@ -791,7 +822,7 @@ Napi::Value FormatMsgsSync(const Napi::CallbackInfo& info)
     Formatter formatter;
     for (auto iter = s_processing.begin(); iter != s_processing.end(); iter++)
     {
-        iter->emitFormatEntry(formatter);
+        iter->emitAllFormatEntries(formatter);
     }
 
     return Napi::String::New(env, formatter.getOutputBuffer());

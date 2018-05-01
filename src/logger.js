@@ -1,6 +1,6 @@
 "use strict";
 
-const nlogger = require("C:\\Code\\logpp\\build\\Debug\\nlogger.node");
+const nlogger = require("C:\\Chakra\\logpp\\build\\Release\\nlogger.node");
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //Start off with a bunch of costant definitions.
@@ -18,11 +18,6 @@ const s_fmtMap = [];
 const s_enabledCategories = [
     false, //0 is not usable since we do -i indexing
     true //$default is enabled by default
-];
-
-const s_categoryNames = [
-    "_invalid_",
-    "$default"
 ];
 
 /**
@@ -553,7 +548,7 @@ function extractMsgFormat(fmtName, fmtId, fmtInfo) {
 /**
  * The number of entries we have in a msg block.
  */
-const MemoryMsgBlockSizes = [256, 512, 1024, 2048, 4096];
+const MemoryMsgBlockSizes = [256, 512, 1024, 2048, 4096, 8192, 16384];
 const MemoryMsgBlockInitSize = 256;
 
 let s_flushCount = MemoryMsgBlockInitSize / 2;
@@ -562,7 +557,8 @@ let s_flushCount = MemoryMsgBlockInitSize / 2;
 function createMemoryMsgBlock(previousBlock, sizespec) {
     let blocksize = MemoryMsgBlockInitSize;
     if (sizespec) {
-        blocksize = MemoryMsgBlockSizes[Math.max(MemoryMsgBlockSizes.indexOf(previousBlock.blocksize) + 1, MemoryMsgBlockSizes.length)];
+        const nextSizeTry = MemoryMsgBlockSizes.indexOf(sizespec) + 1;
+        blocksize = MemoryMsgBlockSizes[nextSizeTry === MemoryMsgBlockSizes.length ? MemoryMsgBlockSizes.length - 1 : nextSizeTry];
     }
 
     const nblock = {
@@ -593,6 +589,7 @@ function InMemoryLog() {
     this.tail = this.head;
     this.jsonCycleMap = new Set();
 
+    this.stringCtr = 0;
     this.writeCount = 0;
 }
 
@@ -602,8 +599,10 @@ function InMemoryLog() {
  */
 InMemoryLog.prototype.clear = function () {
     if (this.head.epos < this.head.blocksize / 2) {
-        const downsizeopt = MemoryMsgBlockSizes.find((value) => this.head.epos >= value * 2);
+        const downsizeopt = MemoryMsgBlockSizes.find((value) => value <= this.head.epos && this.head.epos <= value * 2);
         this.head = createMemoryMsgBlock(null, downsizeopt);
+
+        this.stringCtr = 0;
     }
     else {
         this.head.tags.fill(LogEntryTags.Clear, 0, this.head.epos);
@@ -621,7 +620,7 @@ InMemoryLog.prototype.clear = function () {
 /**
  * Ensure that there is a slot read to be written into
  */
-InMemoryLog.ensureSlot = function () {
+InMemoryLog.prototype.ensureSlot = function () {
     let block = this.tail;
     if (block.epos === block.blocksize) {
         block = createMemoryMsgBlock(block, block.blocksize);
@@ -661,21 +660,21 @@ InMemoryLog.prototype.removeHeadBlock = function () {
  * Add the header info for a msg in the InMemoryLog
  * @method
  */
-InMemoryLog.prototype.addMsgHeader = function (fmtId, level, category) {
+InMemoryLog.prototype.addMsgHeader = function (fmt, level, category) {
     let block = this.tail;
-    if (block.epos + 4 <= block.blocksize) {
+    if (block.epos + 4 >= block.blocksize) {
         block = createMemoryMsgBlock(block, block.blocksize);
         this.tail = block;
     }
 
     block.tags[block.epos] = LogEntryTags.MsgFormat;
-    block.data[block.epos] = fmtId;
+    block.data[block.epos] = fmt.formatId;
 
-    block.tags[block.epos] = LogEntryTags.MsgLevel;
-    block.data[block.epos] = level;
+    block.tags[block.epos + 1] = LogEntryTags.MsgLevel;
+    block.data[block.epos + 1] = level;
 
-    block.tags[block.epos] = LogEntryTags.MsgCategory;
-    block.data[block.epos] = category;
+    block.tags[block.epos + 2] = LogEntryTags.MsgCategory;
+    block.data[block.epos + 2] = category;
 
     block.epos += 3;
 
@@ -709,8 +708,8 @@ InMemoryLog.prototype.addStringEntry = function (tag, data) {
 
     let pid = block.stringMap.get(data);
     if (pid === undefined) {
-        pid = block.stringData.length;
-        block.stringData.push(data);
+        pid = this.stringCtr++;
+        block.stringData[pid] = data;
         block.stringMap.set(data, pid);
     }
     block.data[block.epos] = pid;
@@ -909,6 +908,7 @@ InMemoryLog.prototype.processDateHelper = function (vtype, value) {
  * @param {number} level the level the message is being logged at
  * @param {number} category the category the message is being logged at
  * @param {Object} fmt the format of the message
+ * @param {number} argStart the first index of the real arguments
  * @param {Array} args the arguments for the format message
  */
 InMemoryLog.prototype.logMessage = function (env, level, category, fmt, argStart, args) {
@@ -917,25 +917,24 @@ InMemoryLog.prototype.logMessage = function (env, level, category, fmt, argStart
     let incTimeStamp = false;
     for (let i = 0; i < fmt.formatterArray.length; ++i) {
         const formatEntry = fmt.formatterArray[i];
-        const formatSpec = formatEntry.format;
 
-        if (formatSpec.kind === FormatStringEntryKind.Literal) {
+        if (formatEntry.kind === FormatStringEntryKind.Literal) {
             //don't need to do anything!
         }
-        else if (formatSpec.kind === FormatStringEntryKind.Expando) {
-            const specEnum = formatSpec.enum;
-            if (specEnum === FormatStringEntryKind.SOURCE) {
+        else if (formatEntry.kind === FormatStringEntryKind.Expando) {
+            const specEnum = formatEntry.enum;
+            if (specEnum === FormatStringEnum.SOURCE) {
                 this.addStringEntry(LogEntryTags.JsVarValue_StringIdx, getCallerLineInfo(env));
             }
-            else if (specEnum === FormatStringEntryKind.WALLCLOCK) {
+            else if (specEnum === FormatStringEnum.WALLCLOCK) {
                 this.addNumberEntry(LogEntryTags.JsVarValue_Number, Date.now());
             }
-            else if (specEnum === FormatStringEntryKind.TIMESTAMP) {
+            else if (specEnum === FormatStringEnum.TIMESTAMP) {
                 this.addNumberEntry(LogEntryTags.JsVarValue_Number, env.globalEnv.TIMESTAMP);
                 incTimeStamp = true;
             }
-            else if (specEnum === FormatStringEntryKind.MODULE) {
-                this.addStringEntry(LogEntryTags.JsVarValue_StringIdx, env[formatSpec.name]);
+            else if (specEnum === FormatStringEnum.MODULE) {
+                this.addStringEntry(LogEntryTags.JsVarValue_StringIdx, env.MODULE);
             }
             else {
                 //Otherwise the format macro should just be a constant value
@@ -950,22 +949,22 @@ InMemoryLog.prototype.logMessage = function (env, level, category, fmt, argStart
                 const value = args[argStart + formatEntry.argPosition];
                 const vtype = getTypeNameEnum(value);
 
-                switch (formatSpec.enum) {
-                    case FormatStringEntryKind.BOOL:
+                switch (formatEntry.enum) {
+                    case FormatStringEnum.BOOL:
                         this.processImmutableHelper(TypeNameEnum.TBoolean, vtype, value);
                         break;
-                    case FormatStringEntryKind.NUMBER:
+                    case FormatStringEnum.NUMBER:
                         this.processImmutableHelper(TypeNameEnum.TNumber, vtype, value);
                         break;
-                    case FormatStringEntryKind.STRING:
+                    case FormatStringEnum.STRING:
                         this.processImmutableHelper(TypeNameEnum.TString, vtype, value);
                         break;
-                    case FormatStringEntryKind.DATEISO:
-                    case FormatStringEntryKind.DATEUTC:
-                    case FormatStringEntryKind.DATELOCAL:
+                    case FormatStringEnum.DATEISO:
+                    case FormatStringEnum.DATEUTC:
+                    case FormatStringEnum.DATELOCAL:
                         this.processDateHelper(vtype, value);
                         break;
-                    case FormatStringEntryKind.OBJECT:
+                    case FormatStringEnum.OBJECT:
                         if (vtype === TypeNameEnum.TObject) {
                             this.addExpandedObject(value, formatEntry.expandDepth, formatEntry.expandLength);
                         }
@@ -973,7 +972,7 @@ InMemoryLog.prototype.logMessage = function (env, level, category, fmt, argStart
                             this.addTagOnlyEntry(LogEntryTags.JsBadFormatVar);
                         }
                         break;
-                    case FormatStringEntryKind.ARRAY:
+                    case FormatStringEnum.ARRAY:
                         if (vtype === TypeNameEnum.TJsArray || vtype === TypeNameEnum.TTypedArray) {
                             this.addExpandedArray(value, formatEntry.expandDepth, formatEntry.expandLength);
                         }
@@ -1006,8 +1005,6 @@ InMemoryLog.prototype.logMessage = function (env, level, category, fmt, argStart
     }
     else {
         this.writeCount = 0;
-        this.processMessagesForWrite();
-
         return true;
     }
 };
@@ -1019,7 +1016,7 @@ InMemoryLog.prototype.logMessage = function (env, level, category, fmt, argStart
  */
 InMemoryLog.prototype.processMessagesForWrite = function () {
     let msgCount = 0;
-    for (let cblock = this.head; cblock.next !== null; cblock = cblock.next) {
+    for (let cblock = this.head; cblock !== null; cblock = cblock.next) {
         msgCount += cblock.epos - cblock.spos;
     }
 
@@ -1046,7 +1043,7 @@ InMemoryLog.prototype.processMessagesForWrite = function () {
  */
 InMemoryLog.prototype.processMessagesForWrite_HardFlush = function () {
     let msgCount = 0;
-    for (let cblock = this.head; cblock.next !== null; cblock = cblock.next) {
+    for (let cblock = this.head; cblock !== null; cblock = cblock.next) {
         msgCount += cblock.epos - cblock.spos;
     }
 
@@ -1077,6 +1074,32 @@ function isLevelEnabledForLogging(targetLevel, actualLevel) {
 //Special NOP implementations for disabled levels of logging
 function doMsgLog_NOP(fmt, ...args) { }
 
+function syncFlushAction() {
+    this.processMessagesForWrite();
+    const output = nlogger.formatMsgsSync();
+    process.stdout.write(output);
+}
+
+let s_flushPending = false;
+function asyncFlushAction() {
+    if (!s_flushPending) {
+        setImmediate(() => {
+            s_flushPending = false;
+            this.processMessagesForWrite();
+
+            //
+            //TODO: this should be async
+            //
+            const output = nlogger.formatMsgsSync();
+            process.stdout.write(output);
+        });
+    }
+}
+
+function nopFlushAction() {
+    //no action
+}
+
 /**
  * Constructor for the RootLogger
  * @constructor
@@ -1093,6 +1116,18 @@ function LoggerFactory(appName, options) {
 
     //Blocklists containing the information logged into memory and pending to write out
     s_flushCount = options.flushCount;
+
+    let m_flushAction = undefined;
+    if (options.flushMode === "SYNC") {
+        m_flushAction = syncFlushAction;
+    }
+    else if (options.flushMode === "ASYNC") {
+        m_flushAction = asyncFlushAction;
+    }
+    else {
+        m_flushAction = nopFlushAction;
+    }
+
     const m_inMemoryLog = new InMemoryLog();
 
     //
@@ -1225,31 +1260,35 @@ function LoggerFactory(appName, options) {
         }
 
         function processDefaultCategoryFormat(fmti, level, args) {
-            const fmt = s_fmtMap.get(fmti);
+            const fmt = s_fmtMap[fmti];
             if (fmti === undefined) {
                 console.error("Format name is not defined for this logger -- " + fmt);
                 return;
             }
 
-            const processingmsgs = m_inMemoryLog.logMessage(m_env, level, 1, fmt, args);
+            const processingmsgs = m_inMemoryLog.logMessage(m_env, level, 1, fmt, 0, args);
             if (processingmsgs) {
-                asdf;
+                m_flushAction();
             }
         }
 
         function processExplicitCategoryFormat(categoryi, level, args) {
             const rcategory = -categoryi;
             if (s_enabledCategories[rcategory]) {
-                const fmti = args.shift(); //also fixes up args array
-                const fmt = s_fmtMap.get(fmti);
-                if (fmti === undefined) {
+                if (args.length < 1) {
+                    console.error("Format argument should be provided");
+                    return;
+                }
+
+                const fmt = s_fmtMap.get(args[0]);
+                if (fmt === undefined) {
                     console.error("Format name is not defined for this logger -- " + fmt);
                     return;
                 }
 
-                const processingmsgs = m_inMemoryLog.logMessage(m_env, level, rcategory, fmt, args);
+                const processingmsgs = m_inMemoryLog.logMessage(m_env, level, rcategory, fmt, 1, args);
                 if (processingmsgs) {
-                    asdf;
+                    m_flushAction();
                 }
             }
         }
@@ -1263,7 +1302,7 @@ function LoggerFactory(appName, options) {
                         processImplicitFormat(fmtorctgry, fixedLevel, args);
                     }
                     else if (tsw === "number") {
-                        if (tsw >= 0) {
+                        if (fmtorctgry >= 0) {
                             processDefaultCategoryFormat(fmtorctgry, desiredLevel, args);
                         }
                         else {
@@ -1279,6 +1318,10 @@ function LoggerFactory(appName, options) {
                 }
             };
         }
+
+        //
+        //TODO: conditional logger
+        //
 
         function updateLoggingFunctions(logger, logLevel) {
             logger.fatal = isLevelEnabledForLogging(LoggingLevels.FATAL, m_memoryLogLevel) ? getMsgLogGenerator(LoggingLevels.FATAL) : doMsgLog_NOP;
@@ -1299,7 +1342,7 @@ function LoggerFactory(appName, options) {
             try {
                 m_inMemoryLog.processMessagesForWrite_HardFlush();
                 const output = nlogger.formatMsgsSync();
-                console.log(output);
+                process.stdout.write(output);
             }
             catch (ex) {
                 console.error("Hard failure in emit on emitFullLogSync -- " + ex.toString());
@@ -1381,6 +1424,7 @@ const s_loggerMap = new Map();
 //    //bufferSizeLimit: "number",
 //    //bufferTimeLimit: "number"
 //    flushCount: "number"
+//    flushMode: "string" -- SYNC | ASYNC (default) | NOP
 //    //TODO: when we have other transporters (io, network) need to support config options here
 //
 ////
@@ -1392,10 +1436,11 @@ const s_loggerMap = new Map();
  * @param {string} name of the logger object to construct (calls with the same name will return an aliased logger object)
  * @param {Object} options an object with other options for the construction (undefined => default options)
  */
-module.exports = function (name, level, options) {
+module.exports = function (name, options) {
     if (typeof (name) !== "string") {
         throw new Error(`Expected name of logger but got ${name}`);
     }
+    options = options || {};
 
     const ropts = {
         host: require("os").hostname()
@@ -1420,6 +1465,13 @@ module.exports = function (name, level, options) {
     }
     else {
         ropts.flushCount = options.flushCount;
+    }
+
+    if (options.flushMode === undefined || typeof (options.flushMode) !== "string" || (options.flushMode !== "SYNC" && options.flushMode !== "ASYNC" && options.flushMode !== "NOP")) {
+        ropts.flushMode = "ASYNC";
+    }
+    else {
+        ropts.flushMode = options.flushMode;
     }
 
     //Lazy instantiate the logger factory
