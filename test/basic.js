@@ -3,15 +3,12 @@
 const os = require("os");
 const chalk = require("chalk");
 
-const logpp = require("../src/logger")("basic", "INFO", { transporter: "String", defaultPrefix: false });
+const logpp = require("../src/logger")("basic", { flushMode: "NOP" });
 
 function basicTestRunner(nextcb) {
     function runSingleTest(test) {
-        logpp.info(test.fmt, ...test.arg);
-
-        logpp.emitFullLogSync();
-        const res = logpp.__diagnosticOutput();
-        return res;
+        logpp.info(logpp.Formats[test.fmt], ...test.arg);
+        return logpp.emitFullLogSync(false).trim();
     }
 
     let basictestsRun = 0;
@@ -100,19 +97,19 @@ logpp.addFormat("Compound_Object", { name: "%{0:s}", msg: "Hello", args: ["#modu
 logpp.addFormat("Compound_Object_Object", { name: "%{0:s}", msg: "Hello", args: [4, "%{1:g}", true] });
 
 const basictests = [
-    { fmt: "Basic_Hello", arg: [undefined], oktest: (res) => res === "Hello World!!!" },
+    { fmt: "$Basic_Hello", arg: [undefined], oktest: (res) => res === "Hello World!!!" },
 
-    { fmt: "Basic_HASH", arg: [undefined], oktest: (res) => res === "#" },
-    { fmt: "Basic_HOST", arg: [undefined], oktest: (res) => res === JSON.stringify(os.hostname()) },
-    { fmt: "Basic_APP", arg: [undefined], oktest: (res) => res === JSON.stringify(__filename.toString()) },
-    { fmt: "Basic_MODULE", arg: [undefined], oktest: (res) => res === JSON.stringify("basic") },
-    { fmt: "Basic_SOURCE", arg: [undefined], oktest: (res) => res === JSON.stringify(__filename.toString() + ":10:15") },
-    { fmt: "Basic_WALLCLOCK", arg: [undefined], oktest: (res) => !Number.isNaN(Date.parse(res.substring(1, res.length - 1))) && (new Date() - Date.parse(res.substring(1, res.length - 1))) >= 0 && res.endsWith("Z\"") },
-    { fmt: "Basic_TIMESTAMP", arg: [undefined], oktest: (res) => res === "0" },
-    { fmt: "Basic_TIMESTAMP", arg: [undefined], oktest: (res) => res === "1" },
-    { fmt: "Basic_CALLBACK", arg: [undefined], oktest: (res) => res === "-1" },
-    { fmt: "Basic_REQUEST", arg: [undefined], oktest: (res) => res === "-1" },
-
+    { fmt: "$Basic_HASH", arg: [undefined], oktest: (res) => res === "#" },
+    { fmt: "$Basic_HOST", arg: [undefined], oktest: (res) => res === JSON.stringify(os.hostname()) },
+    { fmt: "$Basic_APP", arg: [undefined], oktest: (res) => res === JSON.stringify(__filename.toString()) },
+    { fmt: "$Basic_MODULE", arg: [undefined], oktest: (res) => res === JSON.stringify("basic") },
+    { fmt: "$Basic_SOURCE", arg: [undefined], oktest: (res) => res === JSON.stringify(__filename.toString() + ":10:15") },
+    { fmt: "$Basic_WALLCLOCK", arg: [undefined], oktest: (res) => !Number.isNaN(Date.parse(res.substring(1, res.length - 1))) && (new Date() - Date.parse(res.substring(1, res.length - 1))) >= 0 && res.endsWith("Z\"") },
+    { fmt: "$Basic_TIMESTAMP", arg: [undefined], oktest: (res) => res === "0" },
+    { fmt: "$Basic_TIMESTAMP", arg: [undefined], oktest: (res) => res === "1" },
+    { fmt: "$Basic_CALLBACK", arg: [undefined], oktest: (res) => res === "-1" },
+    { fmt: "$Basic_REQUEST", arg: [undefined], oktest: (res) => res === "-1" },
+/*
     { fmt: "Basic_PERCENT", arg: [undefined], oktest: (res) => res === "Hello %" },
     { fmt: "Basic_Bool", arg: [true], oktest: (res) => res === "true" },
     { fmt: "Basic_Bool", arg: [false], oktest: (res) => res === "false" },
@@ -174,6 +171,7 @@ const basictests = [
     { fmt: "Compound_Hello_APP", arg: ["World"], oktest: (msg) => msg === "\"World\" from \"basic\"!" },
     { fmt: "Compound_Object", arg: ["Bob", true], oktest: (msg) => msg === "{ \"args\": [ \"basic\", 4, true, true ], \"msg\": \"Hello\", \"name\": \"Bob\" }" },
     { fmt: "Compound_Object_Object", arg: ["Bob", [3, 4]], oktest: (msg) => msg === "{ \"args\": [ 4, [3, 4], true ], \"msg\": \"Hello\", \"name\": \"Bob\" }" }
+    */
 ];
 
 ///////////////////////////

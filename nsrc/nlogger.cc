@@ -537,23 +537,32 @@ public:
         }
     }
 
-    void emitFormatEntry(Formatter& formatter)
+    void emitFormatEntry(Formatter& formatter, bool emitstdprefix)
     {
         const std::shared_ptr<MsgFormat> fmt = s_formats[this->getCurrentDataAsInt()];
         this->advancePos();
 
-        formatter.emitLiteralString(s_loggingLevelToNames.at(this->getCurrentDataAsLoggingLevel()));
-        this->advancePos();
-        formatter.emitLiteralChar('#');
+        if (!emitstdprefix)
+        {
+            this->advancePos();
+            this->advancePos();
+            this->advancePos();
+        }
+        else
+        {
+            formatter.emitLiteralString(s_loggingLevelToNames.at(this->getCurrentDataAsLoggingLevel()));
+            this->advancePos();
+            formatter.emitLiteralChar('#');
 
-        formatter.emitLiteralString(s_enabledCategories[this->getCurrentDataAsInt()].second);
-        this->advancePos();
+            formatter.emitLiteralString(s_enabledCategories[this->getCurrentDataAsInt()].second);
+            this->advancePos();
 
-        formatter.emitLiteralString(" @ ");
-        formatter.emitJsDate(this->getCurrentDataAsTime(), FormatStringEnum::DATEISO, false);
-        this->advancePos();
+            formatter.emitLiteralString(" @ ");
+            formatter.emitJsDate(this->getCurrentDataAsTime(), FormatStringEnum::DATEISO, false);
+            this->advancePos();
 
-        formatter.emitLiteralString(" -- ");
+            formatter.emitLiteralString(" -- ");
+        }
 
         formatter.emitLiteralString(fmt->getInitialFormatStringSegment());
 
@@ -642,14 +651,14 @@ public:
         this->advancePos();
     }
 
-    void emitAllFormatEntries(Formatter& formatter)
+    void emitAllFormatEntries(Formatter& formatter, bool emitstdprefix)
     {
         this->m_cposTag = this->m_tags.cbegin();
         this->m_cposData = this->m_data.cbegin();
 
         while (this->hasMoreEntries())
         {
-            this->emitFormatEntry(formatter);
+            this->emitFormatEntry(formatter, emitstdprefix);
         }
     }
 };
@@ -813,19 +822,24 @@ Napi::Value ProcessMsgs(const Napi::CallbackInfo& info)
 Napi::Value FormatMsgsSync(const Napi::CallbackInfo& info)
 {
     Napi::Env env = info.Env();
-    if (info.Length() != 0)
+    if (info.Length() != 1 || !info[0].IsBoolean())
     {
         Napi::TypeError::New(env, "Wrong arguments").ThrowAsJavaScriptException();
         return env.Undefined();
     }
 
+    bool emitstdprefix = info[0].As<Napi::Boolean>().Value();
+
     Formatter formatter;
     for (auto iter = s_processing.begin(); iter != s_processing.end(); iter++)
     {
-        iter->emitAllFormatEntries(formatter);
+        iter->emitAllFormatEntries(formatter, emitstdprefix);
     }
 
-    return Napi::String::New(env, formatter.getOutputBuffer());
+    Napi::String result = Napi::String::New(env, formatter.getOutputBuffer());
+    formatter.reset();
+
+    return result;
 }
 
 static bool s_firstLoad = true;

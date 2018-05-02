@@ -1,6 +1,6 @@
 "use strict";
 
-const nlogger = require("C:\\Chakra\\logpp\\build\\Release\\nlogger.node");
+const nlogger = require("C:\\Code\\logpp\\build\\Debug\\nlogger.node");
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //Start off with a bunch of costant definitions.
@@ -1210,7 +1210,7 @@ function LoggerFactory(appName, options) {
          */
         this.addFormat = function (fmtName, fmtInfo) {
             try {
-                this["$" + fmtName] = extractMsgFormat(fmtName, s_fmtMap.length, fmtInfo);
+                this.Formats["$" + fmtName] = extractMsgFormat(fmtName, s_fmtMap.length, fmtInfo);
             }
             catch (ex) {
                 console.error("Hard failure in addFormat -- " + ex.toString());
@@ -1337,12 +1337,12 @@ function LoggerFactory(appName, options) {
         /**
         * Synchronously emit the in memory log to the specified writer for failure notification
         * @method
+        * @param {boolean} stdPrefix is true if we want to write a default prefix for each message
         */
-        this.emitFullLogSync = function () {
+        this.emitFullLogSync = function (stdPrefix) {
             try {
                 m_inMemoryLog.processMessagesForWrite_HardFlush();
-                const output = nlogger.formatMsgsSync();
-                process.stdout.write(output);
+                return nlogger.formatMsgsSync(stdPrefix);
             }
             catch (ex) {
                 console.error("Hard failure in emit on emitFullLogSync -- " + ex.toString());
