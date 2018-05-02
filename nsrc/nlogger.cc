@@ -235,7 +235,11 @@ private:
 
 public:
     std::string getOutputBuffer() const { return this->m_output.str(); }
-    void reset() { this->m_output.clear(); }
+    void reset() 
+    { 
+        this->m_output.clear();
+        this->m_output.str("");
+    }
 
     void emitLiteralChar(char c)
     {
@@ -576,12 +580,16 @@ public:
                 formatter.emitLiteralChar(fentry.fenum == FormatStringEnum::HASH ? '#' : '%');
             }
             else if (fentry.fkind == FormatStringEntryKind::Expando) {
+                bool advanceData = true;
+
                 switch (fentry.fenum)
                 {
                 case FormatStringEnum::HOST:
+                    advanceData = false;
                     formatter.emitLiteralString(s_hostName);
                     break;
                 case FormatStringEnum::APP:
+                    advanceData = false;
                     formatter.emitLiteralString(s_appName);
                     break;
                 case FormatStringEnum::MODULE:
@@ -602,7 +610,11 @@ public:
                     formatter.emitSpecialTag(LogEntryTag::JsBadFormatVar);
                     break;
                 }
-                this->advancePos();
+
+                if (advanceData)
+                {
+                    this->advancePos();
+                }
             }
             else
             {
@@ -835,11 +847,9 @@ Napi::Value FormatMsgsSync(const Napi::CallbackInfo& info)
     {
         iter->emitAllFormatEntries(formatter, emitstdprefix);
     }
+    s_processing.clear();
 
-    Napi::String result = Napi::String::New(env, formatter.getOutputBuffer());
-    formatter.reset();
-
-    return result;
+    return Napi::String::New(env, formatter.getOutputBuffer());
 }
 
 static bool s_firstLoad = true;

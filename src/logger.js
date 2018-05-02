@@ -239,7 +239,7 @@ const FormatStringEntryParseMap = new Map();
 FormatStringEntryParseMap.set("##", { kind: FormatStringEntryKind.Literal, enum: FormatStringEnum.HASH });
 FormatStringEntryParseMap.set("%%", { kind: FormatStringEntryKind.Literal, enum: FormatStringEnum.PERCENT });
 
-FormatStringEntryParseMap.set("#host", { kind: FormatStringEntryKind.Expando, enum: FormatStringEnum.HASH });
+FormatStringEntryParseMap.set("#host", { kind: FormatStringEntryKind.Expando, enum: FormatStringEnum.HOST });
 FormatStringEntryParseMap.set("#app", { kind: FormatStringEntryKind.Expando, enum: FormatStringEnum.APP });
 FormatStringEntryParseMap.set("#module", { kind: FormatStringEntryKind.Expando, enum: FormatStringEnum.MODULE });
 FormatStringEntryParseMap.set("#source", { kind: FormatStringEntryKind.Expando, enum: FormatStringEnum.SOURCE });
