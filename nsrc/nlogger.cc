@@ -854,6 +854,55 @@ Napi::Value FormatMsgsSync(const Napi::CallbackInfo& info)
     return Napi::String::New(env, formatter.getOutputBuffer());
 }
 
+class FormatWorker : public Napi::AsyncWorker
+{
+private:
+    asdf;
+
+public:
+
+    FormatWorker(Napi::Function& callback) :
+        Napi::AsyncWorker(callback)
+    {
+        ;
+    }
+
+    virtual ~FormatWorker() 
+    {
+        ;
+    }
+
+
+    void Execute()
+    {
+        // Executed inside the worker-thread.
+        // It is not safe to access JS engine data structure
+        // here, so everything we need for input and output
+        // should go on `this`.
+    }
+
+    void OnOK()
+    {
+        // Executed when the async work is complete
+        // this function will be run inside the main event loop
+        // so it is safe to use JS engine data again
+
+        Napi::HandleScope scope(Env());
+        Callback().Call({ Env().Undefined(), Napi::Number::New(Env(), estimate) });
+    }
+};
+
+Napi::Value FormatMsgsAsync(const Napi::CallbackInfo& info) {
+
+    Napi::Function callback = info[1].As<Napi::Function>();
+
+    PiWorker* piWorker = new PiWorker(callback, points);
+
+    piWorker->Queue();
+
+    return info.Env().Undefined();
+}
+
 Napi::Value SetEnvironmentInfo(const Napi::CallbackInfo& info)
 {
     Napi::Env env = info.Env();
