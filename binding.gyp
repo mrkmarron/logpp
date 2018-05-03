@@ -13,6 +13,12 @@
         "msvs_settings": {
             "VCCLCompilerTool": { "ExceptionHandling": 1 },
         },
-        "sources": [ "./nsrc/nlogger.cc" ]
+        "sources": [ 
+            "./nsrc/common.h",
+            "./nsrc/environment.h",
+            "./nsrc/format.h",
+            "./nsrc/formatter.h",
+            "./nsrc/nlogger.cc" 
+            ]
     }]
 }

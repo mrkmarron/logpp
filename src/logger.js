@@ -1085,6 +1085,7 @@ function doMsgLog_NOP(fmt, ...args) { }
 function syncFlushAction() {
     this.processMessagesForWrite();
     const output = nlogger.formatMsgsSync();
+
     process.stdout.write(output);
 }
 
@@ -1093,13 +1094,9 @@ function asyncFlushAction() {
     if (!s_flushPending) {
         setImmediate(() => {
             s_flushPending = false;
-            this.processMessagesForWrite();
 
-            //
-            //TODO: this should be async
-            //
-            const output = nlogger.formatMsgsSync();
-            process.stdout.write(output);
+            this.processMessagesForWrite();
+            nlogger.formatMsgsAsync();
         });
     }
 }

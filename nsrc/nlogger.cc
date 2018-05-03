@@ -1,187 +1,32 @@
 #include "napi.h"
 
-#include <time.h>
-#include <numeric>
+#include "common.h"
 
-#include <sstream>
-#include <iomanip>
+#include "environment.h"
+#include "format.h"
+#include "formatter.h"
 
-#include <algorithm>
-
-#include <memory>
-#include <vector>
-#include <stack>
-#include <map>
-
-///////////////////////////////////////
-//Constants
-
-enum class FormatStringEntryKind : uint8_t
-{
-    Clear = 0x0,
-    Literal = 0x1,
-    Expando = 0x2,
-    Basic = 0x3,
-    Compound = 0x4
-};
-
-enum class FormatStringEnum : uint8_t
-{
-    Clear = 0x0,
-    HASH = 0x1,
-    HOST = 0x2,
-    APP = 0x3,
-    MODULE = 0x4,
-    SOURCE = 0x5,
-    WALLCLOCK = 0x6,
-    TIMESTAMP = 0x7,
-    CALLBACK = 0x8,
-    REQUEST = 0x9,
-
-    PERCENT = 0x11,
-    BOOL = 0x12,
-    NUMBER = 0x13,
-    STRING = 0x14,
-    DATEISO = 0x15,
-    DATEUTC = 0x16,
-    DATELOCAL = 0x17,
-    GENERAL = 0x18,
-    OBJECT = 0x19,
-    ARRAY = 0x1A
-};
-
-enum class LogEntryTag : uint8_t
-{
-    Clear = 0x0,
-    MsgFormat = 0x1,
-    MsgLevel = 0x2,
-    MsgCategory = 0x3,
-    MsgWallTime = 0x4,
-    MsgEndSentinal = 0x5,
-    LParen = 0x6,
-    RParen = 0x7,
-    LBrack = 0x8,
-    RBrack = 0x9,
-
-    JsVarValue_Undefined = 0x11,
-    JsVarValue_Null = 0x12,
-    JsVarValue_Bool = 0x13,
-    JsVarValue_Number = 0x14,
-    JsVarValue_StringIdx = 0x15,
-    JsVarValue_Date = 0x16,
-
-    PropertyRecord = 0x21,
-    JsBadFormatVar = 0x22,
-    JsVarValue = 0x23,
-    CycleValue = 0x24,
-    OpaqueValue = 0x25,
-    DepthBoundObject = 0x26,
-    LengthBoundObject = 0x27,
-    DepthBoundArray = 0x28,
-    LengthBoundArray = 0x29
-};
-
-enum class LoggingLevel :uint32_t
-{
-    LLOFF = 0x0,
-    LLFATAL = 0x1,
-    LLERROR = 0x3,
-    LLWARN = 0x7,
-    LLINFO = 0xF,
-    LLDETAIL = 0x1F,
-    LLDEBUG = 0x3F,
-    LLTRACE = 0x7F,
-    LLALL = 0xFF
-};
-
-//Keep track of which logging level is enabled
-static LoggingLevel s_enabledLoggingLevel = LoggingLevel::LLINFO;
-static std::map<LoggingLevel, std::string> s_loggingLevelToNames;
-
-//Keep track of which categories are enabled and their names
-static std::vector<std::pair<bool, std::string>> s_enabledCategories;
-
-static std::string s_hostName;
-static std::string s_appName;
-
-#define LOG_LEVEL_ENABLED(level) ((static_cast<uint32_t>(level) & static_cast<uint32_t>(s_enabledLoggingLevel)) == static_cast<uint32_t>(s_enabledLoggingLevel))
-
-///////////////////////////////////////
-//Helpers
-
-class FormatEntry
-{
-public:
-    const FormatStringEntryKind fkind;
-    const FormatStringEnum fenum;
-    std::string ffollow; //the string to put into the log after this content
-
-    FormatEntry() :
-        fkind(FormatStringEntryKind::Clear), fenum(FormatStringEnum::Clear), ffollow()
-    {
-        ;
-    }
-
-    FormatEntry(FormatStringEntryKind fkind, FormatStringEnum fenum, std::string&& ffollow) :
-        fkind(fkind), fenum(fenum), ffollow(std::forward<std::string>(ffollow))
-    {
-        ;
-    }
-
-    FormatEntry(FormatEntry&& other) :
-        fkind(other.fkind), fenum(other.fenum), ffollow(std::forward<std::string>(other.ffollow))
-    {
-        ;
-    }
-};
-
-class MsgFormat
-{
-private:
-    const int64_t m_formatId; //a unique identifier for the format
-    std::vector<FormatEntry> m_fentries; //the array of FormatEntry objects
-    std::string m_initialFormatStringSegment;
-    std::string m_originalFormatString; //the origial raw format string
-
-public:
-    MsgFormat() :
-        m_formatId(0), m_fentries(), m_initialFormatStringSegment(), m_originalFormatString()
-    {
-        ;
-    }
-
-    MsgFormat(int64_t formatId, size_t entryCount, std::string&& initialFormatStringSegment, std::string&& originalFormatString) :
-        m_formatId(formatId), m_fentries(),
-        m_initialFormatStringSegment(std::forward<std::string>(initialFormatStringSegment)),
-        m_originalFormatString(std::forward<std::string>(originalFormatString))
-    {
-        this->m_fentries.reserve(entryCount);
-    }
-
-    void AddFormat(FormatEntry&& entry)
-    {
-        this->m_fentries.emplace_back(std::forward<FormatEntry>(entry));
-    }
-
-    const std::vector<FormatEntry>& getEntries() const { return this->m_fentries; }
-    const std::string& getInitialFormatStringSegment() const { return this->m_initialFormatStringSegment; }
-};
-
-static std::vector<std::shared_ptr<MsgFormat>> s_formats;
+static std::unique_ptr<LoggingEnvironment> s_environment = nullptr;
 
 Napi::Value RegisterFormat(const Napi::CallbackInfo& info)
 {
     Napi::Env env = info.Env();
 
+    if (s_environment == nullptr)
+    {
+        Napi::TypeError::New(env, "Logging Environment is not initialized").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
     if (info.Length() != 6)
     {
-        Napi::TypeError::New(env, "Wrong arguments").ThrowAsJavaScriptException();
+        Napi::TypeError::New(env, "Wrong argument count (expected 6)").ThrowAsJavaScriptException();
         return env.Undefined();
     }
 
     if (!info[0].IsNumber() || !info[1].IsTypedArray() || !info[2].IsTypedArray() || !info[3].IsString() || !info[4].IsArray() || !info[5].IsString())
     {
-        Napi::TypeError::New(env, "Wrong arguments").ThrowAsJavaScriptException();
+        Napi::TypeError::New(env, "Wrong argument types").ThrowAsJavaScriptException();
         return env.Undefined();
     }
 
@@ -197,7 +42,7 @@ Napi::Value RegisterFormat(const Napi::CallbackInfo& info)
     size_t expectedLength = tailingFormatSegmentArray.Length();
     if (enumArray.ElementLength() != expectedLength || kindArray.ElementLength() != expectedLength)
     {
-        Napi::TypeError::New(env, "Wrong arguments").ThrowAsJavaScriptException();
+        Napi::TypeError::New(env, "Error in format entry lengths").ThrowAsJavaScriptException();
         return env.Undefined();
     }
 
@@ -211,7 +56,7 @@ Napi::Value RegisterFormat(const Napi::CallbackInfo& info)
         Napi::Value argv = tailingFormatSegmentArray[i];
         if (!argv.IsString())
         {
-            Napi::TypeError::New(env, "Wrong arguments").ThrowAsJavaScriptException();
+            Napi::TypeError::New(env, "Error in format entry types").ThrowAsJavaScriptException();
             return env.Undefined();
         }
 
@@ -222,181 +67,10 @@ Napi::Value RegisterFormat(const Napi::CallbackInfo& info)
         msgf->AddFormat(FormatEntry(fkind, fenum, tailingSegment.Utf8Value()));
     }
 
-    s_formats.push_back(msgf);
+    s_environment->AddFormat(fmtId, msgf);
 
     return env.Undefined();
 }
-
-//This class controls the formatting
-class Formatter
-{
-private:
-    std::ostringstream m_output;
-
-public:
-    std::string getOutputBuffer() const { return this->m_output.str(); }
-    void reset() 
-    { 
-        this->m_output.clear();
-        this->m_output.str("");
-    }
-
-    void emitLiteralChar(char c)
-    {
-        this->m_output << c;
-    }
-
-    void emitLiteralString(const char* str)
-    {
-        this->m_output << str;
-    }
-
-    void emitLiteralString(const std::string& str)
-    {
-        this->m_output << str;
-    }
-
-    void emitJsString(const std::string& str)
-    {
-        this->m_output << "\"";
-
-        for (auto c = str.cbegin(); c != str.cend(); c++) {
-            switch (*c) {
-            case '"':
-                this->m_output << "\\\"";
-                break;
-            case '\\':
-                this->m_output << "\\\\";
-                break;
-            case '\b':
-                this->m_output << "\\b";
-                break;
-            case '\f':
-                this->m_output << "\\f";
-                break;
-            case '\n':
-                this->m_output << "\\n";
-                break;
-            case '\r':
-                this->m_output << "\\r";
-                break;
-            case '\t':
-                this->m_output << "\\t";
-                break;
-            default:
-                if ('\x00' <= *c && *c <= '\x1f')
-                {
-                    this->m_output << "\\u" << std::hex << std::setw(4) << std::setfill('0') << (int)*c;
-                }
-                else
-                {
-                    this->m_output << *c;
-                }
-            }
-        }
-
-        this->m_output << "\"";
-    }
-
-    void emitJsInt(int64_t val)
-    {
-        this->m_output << val;
-    }
-
-    void emitJsNumber(double val)
-    {
-        if (std::isnan(val))
-        {
-            this->emitLiteralString("null");
-        }
-        else if (val == std::numeric_limits<double>::infinity())
-        {
-            this->emitLiteralString("null");
-        }
-        else if (val == -std::numeric_limits<double>::infinity())
-        {
-            this->emitLiteralString("null");
-        }
-        else if (floor(val) == val)
-        {
-            this->m_output << (int64_t)val;
-        }
-        else
-        {
-            this->m_output << val;
-        }
-    }
-
-    void emitJsDate(std::time_t dval, FormatStringEnum fmt, bool quotes)
-    {
-        if (quotes)
-        {
-            this->m_output << '"';
-        }
-
-        std::time_t tval = dval / 1000;
-        uint32_t msval = dval % 1000;
-
-        if (fmt == FormatStringEnum::DATEUTC)
-        {
-            auto utctime = std::gmtime(&tval);
-            this->m_output << std::put_time(utctime, "%a, %d %b %Y %H:%M:%S GMT");
-        }
-        else if (fmt == FormatStringEnum::DATELOCAL)
-        {
-            auto localtime = std::localtime(&tval);
-            this->m_output << std::put_time(localtime, "%a %b %d %Y %H:%M:%S GMT%z (%Z)");
-        }
-        else
-        {
-            //ISO
-            auto utctime = std::gmtime(&tval);
-            this->m_output << std::put_time(utctime, "%Y-%m-%dT%H:%M:%S") << "." << std::setw(4) << std::setfill('0') << msval << "Z";
-        }
-
-        if (quotes)
-        {
-            this->m_output << '"';
-        }
-    }
-
-    void emitCallStack(const std::string& cstack)
-    {
-        this->emitJsString(cstack);
-    }
-
-    void emitSpecialTag(LogEntryTag tag)
-    {
-        switch (tag)
-        {
-        case LogEntryTag::JsBadFormatVar:
-            this->emitLiteralString("\"<BadFormat>\"");
-            break;
-        case LogEntryTag::DepthBoundObject:
-            this->emitLiteralString("\"{...}\"");
-            break;
-        case LogEntryTag::LengthBoundObject:
-            this->emitLiteralString("\"$rest$\": \"...\"");
-            break;
-        case LogEntryTag::DepthBoundArray:
-            this->emitLiteralString("\"[...]\"");
-            break;
-        case LogEntryTag::LengthBoundArray:
-            this->emitLiteralString("\"...\"");
-            break;
-        case LogEntryTag::CycleValue:
-            this->emitLiteralString("\"<Cycle>\"");
-            break;
-        default:
-            this->emitLiteralString("\"<OpaqueValue>\"");
-            break;
-        }
-    }
-};
-
-#define INIT_LOG_BLOCK_SIZE 64
-static int64_t s_msgTimeLimit = 1000;
-static size_t s_msgCountLimit = 4096;
 
 //We load the JS data into this for later processing
 class LogProcessingBlock
@@ -857,7 +531,6 @@ Napi::Value FormatMsgsSync(const Napi::CallbackInfo& info)
 class FormatWorker : public Napi::AsyncWorker
 {
 private:
-    asdf;
 
 public:
 
@@ -883,17 +556,20 @@ public:
 
     void OnOK()
     {
+        /*
         // Executed when the async work is complete
         // this function will be run inside the main event loop
         // so it is safe to use JS engine data again
 
         Napi::HandleScope scope(Env());
         Callback().Call({ Env().Undefined(), Napi::Number::New(Env(), estimate) });
+        */
     }
 };
 
 Napi::Value FormatMsgsAsync(const Napi::CallbackInfo& info) {
-
+    Napi::Env env = info.Env();
+    /*
     Napi::Function callback = info[1].As<Napi::Function>();
 
     PiWorker* piWorker = new PiWorker(callback, points);
@@ -901,6 +577,8 @@ Napi::Value FormatMsgsAsync(const Napi::CallbackInfo& info) {
     piWorker->Queue();
 
     return info.Env().Undefined();
+    */
+    return env.Undefined();
 }
 
 Napi::Value SetEnvironmentInfo(const Napi::CallbackInfo& info)
