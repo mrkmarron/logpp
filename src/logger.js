@@ -1,6 +1,8 @@
 "use strict";
 
-const nlogger = require("C:\\Code\\logpp\\build\\Debug\\nlogger.node");
+const os = require("os");
+
+const nlogger = require("C:\\Chakra\\logpp\\build\\Debug\\nlogger.node");
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //Start off with a bunch of costant definitions.
@@ -933,6 +935,12 @@ InMemoryLog.prototype.logMessage = function (env, level, category, fmt, argStart
                 this.addNumberEntry(LogEntryTags.JsVarValue_Number, env.globalEnv.TIMESTAMP);
                 incTimeStamp = true;
             }
+            else if (specEnum === FormatStringEnum.CALLBACK) {
+                this.addNumberEntry(LogEntryTags.JsVarValue_Number, env.globalEnv.CALLBACK);
+            }
+            else if (specEnum === FormatStringEnum.REQUEST) {
+                this.addNumberEntry(LogEntryTags.JsVarValue_Number, env.globalEnv.REQUEST);
+            }
             else if (specEnum === FormatStringEnum.MODULE) {
                 this.addStringEntry(LogEntryTags.JsVarValue_StringIdx, env.MODULE);
             }
@@ -1113,6 +1121,8 @@ function LoggerFactory(appName, options) {
         CALLBACK: -1,
         REQUEST: -1
     };
+
+    nlogger.setEnvironmentInfo(os.hostname(), appName);
 
     //Blocklists containing the information logged into memory and pending to write out
     s_flushCount = options.flushCount;

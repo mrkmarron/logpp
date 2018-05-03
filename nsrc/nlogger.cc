@@ -340,12 +340,12 @@ public:
         if (fmt == FormatStringEnum::DATEUTC)
         {
             auto utctime = std::gmtime(&tval);
-            this->m_output << std::put_time(utctime, "%a, %d %b %Y %H:%M:%S %Z");
+            this->m_output << std::put_time(utctime, "%a, %d %b %Y %H:%M:%S GMT");
         }
         else if (fmt == FormatStringEnum::DATELOCAL)
         {
             auto localtime = std::localtime(&tval);
-            this->m_output << std::put_time(localtime, "%a %e %b %Y %H:%M:%S %Z");
+            this->m_output << std::put_time(localtime, "%a %b %d %Y %H:%M:%S GMT%z (%Z)");
         }
         else
         {
@@ -493,6 +493,8 @@ private:
                 formatter.emitJsString(this->getCurrentDataAsString());
                 formatter.emitLiteralString(": ");
                 this->advancePos();
+
+                cs.second = true;
             }
             else if (tag == LogEntryTag::LParen || tag == LogEntryTag::LBrack)
             {
@@ -586,11 +588,11 @@ public:
                 {
                 case FormatStringEnum::HOST:
                     advanceData = false;
-                    formatter.emitLiteralString(s_hostName);
+                    formatter.emitJsString(s_hostName);
                     break;
                 case FormatStringEnum::APP:
                     advanceData = false;
-                    formatter.emitLiteralString(s_appName);
+                    formatter.emitJsString(s_appName);
                     break;
                 case FormatStringEnum::MODULE:
                     formatter.emitJsString(this->getCurrentDataAsString());
@@ -852,8 +854,21 @@ Napi::Value FormatMsgsSync(const Napi::CallbackInfo& info)
     return Napi::String::New(env, formatter.getOutputBuffer());
 }
 
-static bool s_firstLoad = true;
+Napi::Value SetEnvironmentInfo(const Napi::CallbackInfo& info)
+{
+    Napi::Env env = info.Env();
+    if (info.Length() != 2 || !info[0].IsString() || !info[1].IsString())
+    {
+        return env.Undefined();
+    }
 
+    s_hostName = info[0].As<Napi::String>().Utf8Value();
+    s_appName = info[1].As<Napi::String>().Utf8Value();
+
+    return env.Undefined();
+}
+
+static bool s_firstLoad = true;
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     if (s_firstLoad)
     {
@@ -886,6 +901,8 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set(Napi::String::New(env, "processMsgsForEmit"), Napi::Function::New(env, ProcessMsgs));
 
     exports.Set(Napi::String::New(env, "formatMsgsSync"), Napi::Function::New(env, FormatMsgsSync));
+
+    exports.Set(Napi::String::New(env, "setEnvironmentInfo"), Napi::Function::New(env, SetEnvironmentInfo));
 
     return exports;
 }
