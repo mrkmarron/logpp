@@ -1,7 +1,5 @@
 #pragma once
 
-#include "common.h"
-
 class FormatEntry
 {
 public:
@@ -56,6 +54,6 @@ public:
         this->m_fentries.emplace_back(std::forward<FormatEntry>(entry));
     }
 
-    const std::vector<FormatEntry>& getEntries() const { return this->m_fentries; }
-    const std::string& getInitialFormatStringSegment() const { return this->m_initialFormatStringSegment; }
+    const std::vector<FormatEntry>& GetEntries() const { return this->m_fentries; }
+    const std::string& GetInitialFormatStringSegment() const { return this->m_initialFormatStringSegment; }
 };

@@ -1,7 +1,5 @@
 #pragma once
 
-#include "common.h"
-
 //This class controls the formatting
 class Formatter
 {

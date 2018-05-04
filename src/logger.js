@@ -1089,14 +1089,28 @@ function syncFlushAction() {
     process.stdout.write(output);
 }
 
+//
+//TODO: make these let and user configurable
+//
+const s_asyncFlushCB = () => { };
+const s_asyncFlushAction = "console";
+const s_doPrefix = false;
+
 let s_flushPending = false;
 function asyncFlushAction() {
     if (!s_flushPending) {
+        s_flushPending = true;
+
         setImmediate(() => {
             s_flushPending = false;
 
-            this.processMessagesForWrite();
-            nlogger.formatMsgsAsync();
+            try {
+                this.processMessagesForWrite();
+                nlogger.formatMsgsAsync(s_asyncFlushCB, s_asyncFlushAction, s_doPrefix);
+            }
+            catch (ex) {
+                console.error("Hard failure in asyncFlushAction -- " + ex.toString());
+            }
         });
     }
 }
@@ -1119,8 +1133,6 @@ function LoggerFactory(appName, options) {
         REQUEST: -1
     };
 
-    nlogger.setEnvironmentInfo(os.hostname(), appName);
-
     //Blocklists containing the information logged into memory and pending to write out
     s_flushCount = options.flushCount;
 
@@ -1137,9 +1149,7 @@ function LoggerFactory(appName, options) {
 
     const m_inMemoryLog = new InMemoryLog();
 
-    //
-    //TODO: set retain level in native code
-    //
+    nlogger.initializeLogger(LoggingLevels[options.emitLevel], os.hostname(), appName);
 
     /**
      * Create a logger for a given module
@@ -1427,7 +1437,6 @@ const s_loggerMap = new Map();
 //    memoryLevel: "string",
 //    //memoryCategories: "object",
 //    emitLevel: "string",
-//    //emitCategories: "object",
 //    //bufferSizeLimit: "number",
 //    //bufferTimeLimit: "number"
 //    flushCount: "number"
@@ -1481,9 +1490,21 @@ module.exports = function (name, options) {
         ropts.flushMode = options.flushMode;
     }
 
+    //
+    //TODO: if we are in debug mode => flushCount = 0 and flushMode = Sync
+    //
+
     //Lazy instantiate the logger factory
     if (s_loggerFactory === null) {
         s_loggerFactory = new LoggerFactory(require.main.filename, ropts);
+
+        //
+        //TODO: hook errors for emit sync full
+        //
+
+        //
+        //TODO: if in async emit mode add setInterval here and emit callback setup
+        //
     }
 
     //Get the filename of the caller

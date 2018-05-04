@@ -18,6 +18,8 @@
             "./nsrc/environment.h",
             "./nsrc/format.h",
             "./nsrc/formatter.h",
+            "./nsrc/processingblock.h",
+            "./nsrc/formatworker.h",
             "./nsrc/nlogger.cc" 
             ]
     }]

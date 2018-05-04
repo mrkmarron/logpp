@@ -1,5 +1,7 @@
 #pragma once 
 
+#include "napi.h"
+
 #include <cstdint>
 
 #include <time.h>
@@ -92,7 +94,7 @@ enum class LoggingLevel :uint32_t
     LLTRACE = 0x7F,
     LLALL = 0xFF
 };
-#define LOG_LEVEL_ENABLED(level) ((static_cast<uint32_t>(level) & static_cast<uint32_t>(s_enabledLoggingLevel)) == static_cast<uint32_t>(s_enabledLoggingLevel))
+#define LOG_LEVEL_ENABLED(level, enabledLevel) ((static_cast<uint32_t>(level) & static_cast<uint32_t>(enabledLevel)) == static_cast<uint32_t>(enabledLevel))
 
 //Defaults for block flushing are over 1s or more than 4096 entries used
 #define DEFAULT_LOG_TIMELIMIT 1000
