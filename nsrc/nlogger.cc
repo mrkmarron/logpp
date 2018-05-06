@@ -7,7 +7,7 @@
 #include "processingblock.h"
 #include "formatworker.h"
 
-static std::unique_ptr<LoggingEnvironment> s_environment = nullptr;
+static std::shared_ptr<LoggingEnvironment> s_environment(nullptr);
 
 Napi::Value RegisterFormat(const Napi::CallbackInfo& info)
 {
@@ -76,14 +76,15 @@ Napi::Value RegisterFormat(const Napi::CallbackInfo& info)
 Napi::Value ProcessMsgs(const Napi::CallbackInfo& info)
 {
     Napi::Env env = info.Env();
-    if (info.Length() != 4 || !info[0].IsObject() || !info[1].IsBoolean() || !info[2].IsNumber() || !info[3].IsBoolean())
+    if (info.Length() != 5 || !info[0].IsObject() || !info[1].IsBoolean() || !info[2].IsNumber() || !info[3].IsNumber() || !info[4].IsBoolean())
     {
         Napi::TypeError::New(env, "Wrong arguments").ThrowAsJavaScriptException();
         return env.Undefined();
     }
 
     int32_t msgCount = info[2].As<Napi::Number>().Int32Value();
-    bool forceall = info[3].As<Napi::Boolean>().Value();
+    std::time_t now = info[3].As<Napi::Number>().Int64Value();
+    bool forceall = info[4].As<Napi::Boolean>().Value();
 
     Napi::Object inmemblock = info[0].As<Napi::Object>();
     const size_t epos = inmemblock.Get("epos").As<Napi::Number>().Int64Value(); 
@@ -96,13 +97,17 @@ Napi::Value ProcessMsgs(const Napi::CallbackInfo& info)
         Napi::TypeError::New(env, "Bad lengths for block segment").ThrowAsJavaScriptException();
         return env.Undefined();
     }
-    
+
     const uint8_t* tags = tagArray.Data();
     const double* data = dataArray.Data();
 
     const Napi::Array stringData = inmemblock.Get("stringData").As<Napi::Array>();
 
     LoggingEnvironment* lenv = s_environment.get();
+
+    if (cpos == epos) {
+        return Napi::Boolean::New(env, true);
+    }
 
     if (info[1].As<Napi::Boolean>().Value())
     {
@@ -115,10 +120,14 @@ Napi::Value ProcessMsgs(const Napi::CallbackInfo& info)
     while (cpos < epos)
     {
         //check time and # of slots in use
-        if (!forceall && !LogProcessingBlock::MsgTimeExpired(cpos, data, lenv) && !LogProcessingBlock::MsgOverSizeLimit(msgCount, lenv))
+        if (!forceall && !(LogProcessingBlock::MsgTimeExpired(cpos, data, lenv, now) || LogProcessingBlock::MsgOverSizeLimit(msgCount, lenv)))
         {
+            if (into->IsEmptyBlock()) {
+                lenv->DiscardProcesingBlock(into);
+            }
+
             inmemblock.Set("spos", Napi::Number::New(env, static_cast<double>(cpos)));
-            return Napi::Boolean::New(env, false);
+            return Napi::Boolean::New(env, true);
         }
 
         size_t oldcpos = cpos;
@@ -139,11 +148,10 @@ Napi::Value ProcessMsgs(const Napi::CallbackInfo& info)
         {
             lenv->SetProcessingMode('n');
         }
-        else
-        {
-            inmemblock.Set("spos", Napi::Number::New(env, static_cast<double>(cpos)));
-            return Napi::Boolean::New(env, true);
-        }
+    }
+
+    if (into->IsEmptyBlock()) {
+        lenv->DiscardProcesingBlock(into);
     }
 
     inmemblock.Set("spos", Napi::Number::New(env, static_cast<double>(cpos)));
@@ -182,7 +190,7 @@ Napi::Value FormatMsgsSync(const Napi::CallbackInfo& info)
 Napi::Value FormatMsgsAsync(const Napi::CallbackInfo& info)
 {
     Napi::Env env = info.Env();
-    if (info.Length() != 3 || !info[0].IsFunction() || !info[0].IsString() || !info[2].IsBoolean())
+    if (info.Length() != 3 || !info[0].IsFunction() || !info[1].IsString() || !info[2].IsBoolean())
     {
         Napi::TypeError::New(env, "Wrong arguments").ThrowAsJavaScriptException();
         return env.Undefined();
@@ -195,8 +203,8 @@ Napi::Value FormatMsgsAsync(const Napi::CallbackInfo& info)
     std::shared_ptr<LogProcessingBlock> block = s_environment->GetNextFormatBlock();
     if (block != nullptr)
     {
-        std::shared_ptr<FormatWorker> formatWorker = std::make_shared<FormatWorker>(callback, action, block, s_environment.get(), stdPrefix);
-        formatWorker->Queue();
+        s_environment->SetAsyncFormatWorker(new FormatWorker(callback, action, block, s_environment.get(), stdPrefix));
+        s_environment->GetAsyncFormatWorker()->Queue();
     }
 
     return env.Undefined();
@@ -212,7 +220,7 @@ Napi::Value InitializeLogger(const Napi::CallbackInfo& info)
 
     if (info.Length() != 3 || !info[0].IsNumber() || !info[1].IsString() || !info[2].IsString())
     {
-        s_environment = std::make_unique<LoggingEnvironment>(LoggingLevel::LLINFO, "localhost", "[default]");
+        s_environment = std::make_shared<LoggingEnvironment>(LoggingLevel::LLINFO, "localhost", "[default]");
     }
     else
     {
@@ -220,7 +228,7 @@ Napi::Value InitializeLogger(const Napi::CallbackInfo& info)
         std::string host = info[1].As<Napi::String>().Utf8Value();
         std::string app = info[2].As<Napi::String>().Utf8Value();
 
-        s_environment = std::make_unique<LoggingEnvironment>(level, host, app);
+        s_environment = std::make_shared<LoggingEnvironment>(level, host, app);
     }
 
     return env.Undefined();
@@ -234,7 +242,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set(Napi::String::New(env, "processMsgsForEmit"), Napi::Function::New(env, ProcessMsgs));
 
     exports.Set(Napi::String::New(env, "formatMsgsSync"), Napi::Function::New(env, FormatMsgsSync));
-    exports.Set(Napi::String::New(env, "formatMsgsASync"), Napi::Function::New(env, FormatMsgsAsync));
+    exports.Set(Napi::String::New(env, "formatMsgsAsync"), Napi::Function::New(env, FormatMsgsAsync));
 
     return exports;
 }

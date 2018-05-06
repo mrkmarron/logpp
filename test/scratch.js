@@ -1,12 +1,9 @@
 "use strict";
 
-const logpp = require("../src/logger")("basic");
+const logpp = require("../src/logger")("basic", { flushCount: 1 });
 
-setTimeout(() => {
-    logpp.addFormat("Basic_Hello", "Hello World!!!");
-    logpp.addFormat("Compound_Hello_APP", "%{0:s} from #module!");
 
-    logpp.info(logpp.$Basic_Hello);
+logpp.addFormat("Basic_Hello", "Hello World!!!");
+logpp.addFormat("Compound_Hello_APP", "%{0:s} from #module!");
 
-    logpp.emitFullLogSync();
-}, 10000);
+logpp.info(logpp.Formats.$Basic_Hello);

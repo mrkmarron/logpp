@@ -125,6 +125,12 @@ public:
         this->m_data.reserve(sizehint);
     }
 
+    bool IsEmptyBlock() const
+    {
+        return this->m_tags.empty();
+    }
+
+
     void AddDataEntry(LogEntryTag tag, double data)
     {
         this->m_tags.push_back(tag);
@@ -278,10 +284,8 @@ public:
         }
     }
 
-    static bool MsgTimeExpired(size_t cpos, const double* data, const LoggingEnvironment* lenv)
+    static bool MsgTimeExpired(size_t cpos, const double* data, const LoggingEnvironment* lenv, std::time_t now)
     {
-        std::time_t now = std::time(nullptr); //depnds on system time being uint64 convertable
-
         return static_cast<int64_t>(data[cpos + 3]) + lenv->GetMsgTimeLimit() < now;
     }
 

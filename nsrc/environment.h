@@ -26,7 +26,7 @@ private:
     std::vector<std::shared_ptr<LogProcessingBlock>> m_processing;
     char m_processingMode = 'n';
 
-    std::shared_ptr<FormatWorker> m_formatWorker;
+    FormatWorker* m_formatWorker;
 
 public:
     LoggingEnvironment(const LoggingLevel level, const std::string& hostName, const std::string& appName) :
@@ -35,7 +35,7 @@ public:
         m_formats(),
         m_msgTimeLimit(DEFAULT_LOG_TIMELIMIT), m_msgCountLimit(DEFAULT_LOG_SLOTSUSED),
         m_processing(), m_processingMode('n'),
-        m_formatWorker()
+        m_formatWorker(nullptr)
     {
         this->m_categoryNames[1] = "$default"; //$default is enabled by default
 
@@ -89,6 +89,12 @@ public:
     void SetProcessingMode(char c) { this->m_processingMode = c; }
     char GetProcessingMode() const { return this->m_processingMode; }
 
+    void DiscardProcesingBlock(std::shared_ptr<LogProcessingBlock> pb)
+    {
+        //should always be the last block
+        this->m_processing.pop_back();
+    }
+
     void AddBlockFromFormatterAbort(std::shared_ptr<LogProcessingBlock> pb)
     {
         this->m_processing.insert(this->m_processing.begin(), pb);
@@ -109,7 +115,7 @@ public:
         }
     }
 
-    void SetAsyncFormatWorker(std::shared_ptr<FormatWorker> formatWorker) { this->m_formatWorker = formatWorker; }
+    void SetAsyncFormatWorker(FormatWorker* formatWorker) { this->m_formatWorker = formatWorker; }
+    FormatWorker* GetAsyncFormatWorker() { return this->m_formatWorker; }
     void ClearAsyncFormatWorker() { this->m_formatWorker = nullptr; }
-    std::shared_ptr<FormatWorker> GetAsyncFormatWorker() { return this->m_formatWorker; }
 };

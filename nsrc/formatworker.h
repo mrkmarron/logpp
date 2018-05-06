@@ -4,7 +4,7 @@ class FormatWorker : public Napi::AsyncWorker
 {
 private:
     const std::string m_action;
-    std::unique_ptr<Formatter> m_formatter;
+    std::shared_ptr<Formatter> m_formatter;
     std::shared_ptr<LogProcessingBlock> m_block;
     LoggingEnvironment* m_lenv;
     const bool m_stdPrefix;
@@ -12,7 +12,7 @@ private:
 public:
 
     FormatWorker(Napi::Function& callback, const std::string& action, std::shared_ptr<LogProcessingBlock> block, LoggingEnvironment* lenv, bool stdPrefix) :
-        Napi::AsyncWorker(callback), m_action(action), m_formatter(), m_block(block), m_lenv(lenv), m_stdPrefix(stdPrefix)
+        Napi::AsyncWorker(callback), m_action(action), m_formatter(nullptr), m_block(block), m_lenv(lenv), m_stdPrefix(stdPrefix)
     {
         ;
     }
@@ -28,7 +28,7 @@ public:
     {
         if (this->m_formatter == nullptr)
         {
-            this->m_formatter = std::make_unique<Formatter>();
+            this->m_formatter = std::make_shared<Formatter>();
         }
 
         this->m_block->emitAllFormatEntries(this->m_formatter.get(), this->m_lenv, this->m_stdPrefix);
@@ -37,7 +37,6 @@ public:
     virtual void OnOK() override
     {
         Napi::HandleScope scope(Env());
-
         this->m_lenv->ClearAsyncFormatWorker();
 
         if (this->m_action.compare("console") == 0)
@@ -53,8 +52,8 @@ public:
     virtual void OnError(const Napi::Error& e) override
     {
         Napi::HandleScope scope(Env());
+        this->m_lenv->ClearAsyncFormatWorker();
 
         this->m_lenv->AddBlockFromFormatterAbort(this->m_block);
-        this->m_lenv->ClearAsyncFormatWorker();
     }
 };
