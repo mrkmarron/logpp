@@ -1120,9 +1120,9 @@ function syncFlushAction() {
 //
 //TODO: make these let and user configurable
 //
-const s_asyncFlushCB = () => { };
-const s_asyncFlushAction = "console";
-const s_doPrefix = false;
+let s_asyncFlushCB = () => { };
+let s_asyncFlushAction = "console";
+let s_doPrefix = false;
 
 let s_flushTimeout = undefined;
 function asyncFlushCallback() {
@@ -1131,6 +1131,13 @@ function asyncFlushCallback() {
 
         const hasmore = s_inMemoryLog.processMessagesForWrite();
         nlogger.formatMsgsAsync(s_asyncFlushCB, s_asyncFlushAction, s_doPrefix);
+
+        asdf;
+        //
+        //Add empty? method to in memory log -- cb is wrapped in empty check with schedule next callback.
+        //Should not check s_flushTimeout -- add explicit processingPending and clear on callback execution.
+        //
+
 
         if (hasmore) {
             s_flushTimeout = setTimeout(asyncFlushCallback, 500);
@@ -1176,6 +1183,10 @@ function LoggerFactory(appName, options) {
         REQUEST: -1
     };
 
+    //
+    //TODO: this is all messed up and should be done on creating the root logger
+    //
+
     //Blocklists containing the information logged into memory and pending to write out
     s_flushCount = options.flushCount;
 
@@ -1189,6 +1200,11 @@ function LoggerFactory(appName, options) {
     else {
         m_flushAction = nopFlushAction;
     }
+
+    s_asyncFlushAction = options.asyncFlushAction;
+    s_asyncFlushCB = options.asyncFlushCB;
+
+    s_doPrefix = options.doPrefix;
 
     nlogger.initializeLogger(LoggingLevels[options.emitLevel], os.hostname(), appName);
 
@@ -1290,7 +1306,7 @@ function LoggerFactory(appName, options) {
             const lfilename = cstack[0];
 
             //
-            //TODO: add this in later -- use negative fmtId value to indicate
+            //TODO: add this in later with special dict of formats to manage
             //
 
             if (s_formatInfo.has(lfilename)) {
@@ -1308,11 +1324,6 @@ function LoggerFactory(appName, options) {
             return s_formatInfo.get(lfilename);
         }
         */
-
-        /**
-         * TODO: add prefix (or postfix) formatters which will be inserted in all writes.
-         * Support macro only as well as general options -- macro only are nice since uses don't need to pass other args
-         */
 
         function processImplicitFormat(fmtstr, level, args) {
             //NOT IMTPLEMENTED YET
@@ -1473,13 +1484,15 @@ const s_loggerMap = new Map();
 ////////
 //OPTIONS
 //    memoryLevel: "string",
-//    //memoryCategories: "object",
+//    //memoryCategories: "string[]",
 //    emitLevel: "string",
 //    //bufferSizeLimit: "number",
 //    //bufferTimeLimit: "number"
 //    flushCount: "number"
 //    flushMode: "string" -- SYNC | ASYNC (default) | NOP
-//    //TODO: when we have other transporters (io, network) need to support config options here
+//    asyncFlushCB: function
+//    asyncFlushAction: "string" -- console | callback;
+//    doPrefix: "boolean"
 //
 ////
 
@@ -1500,8 +1513,7 @@ module.exports = function (name, options) {
         host: require("os").hostname()
     };
 
-    //TODO: disabled for my debugging
-    const debuggerAttached = false; // /--inspect/.test(process.execArgv.join(" "));
+    const debuggerAttached = /--inspect/.test(process.execArgv.join(" "));
 
     if (options.memoryLevel === undefined || typeof (options.memoryLevel) !== "string" || LoggingLevels[options.memoryLevel] === undefined) {
         ropts.memoryLevel = "DETAIL";
@@ -1535,6 +1547,29 @@ module.exports = function (name, options) {
     }
     else {
         ropts.flushMode = options.flushMode;
+    }
+
+    if (ropts.flushMode === "ASYNC") {
+        if (options.asyncFlushCB || typeof (options.asyncFlushCB) !== "function") {
+            ropts.asyncFlushCB = s_asyncFlushCB;
+        }
+        else {
+            ropts.asyncFlushCB = options.asyncFlushCB;
+        }
+
+        if (options.asyncFlushAction === undefined || typeof (options.asyncFlushAction) !== "string" || (options.asyncFlushAction !== "console" && options.asyncFlushAction !== "callback")) {
+            ropts.asyncFlushAction = "console";
+        }
+        else {
+            ropts.asyncFlushAction = options.asyncFlushAction;
+        }
+    }
+
+    if (options.doPrefix === undefined || typeof (options.doPrefix) !== "boolean") {
+        ropts.doPrefix = false;
+    }
+    else {
+        ropts.doPrefix = options.doPrefix;
     }
 
     //Lazy instantiate the logger factory
