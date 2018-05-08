@@ -42,6 +42,7 @@ public:
         if (this->m_action.compare("console") == 0)
         {
             fprintf(stdout, this->m_formatter->getOutputBuffer().c_str());
+            fflush(stdout);
 
             Callback().Call({ Env().Undefined() });
         }

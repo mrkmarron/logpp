@@ -9,14 +9,14 @@ class LoggingEnvironment
 {
 private:
     //Keep track of which logging level is enabled
-    const LoggingLevel m_enabledLoggingLevel;
+    LoggingLevel m_enabledLoggingLevel;
     std::map<LoggingLevel, std::string> m_loggingLevelToNames;
 
     //Keep track of which category names
     std::map<int64_t, std::string> m_categoryNames;
 
-    const std::string m_hostName;
-    const std::string m_appName;
+    std::string m_hostName;
+    std::string m_appName;
 
     int64_t m_msgTimeLimit;
     size_t m_msgCountLimit;
@@ -48,6 +48,13 @@ public:
         this->m_loggingLevelToNames[LoggingLevel::LLDEBUG] = std::string("DEBUG");
         this->m_loggingLevelToNames[LoggingLevel::LLTRACE] = std::string("TRACE");
         this->m_loggingLevelToNames[LoggingLevel::LLOFF] = std::string("OFF");
+    }
+
+    void InitializeEnvironmentData(const LoggingLevel level, const std::string& hostName, const std::string& appName)
+    {
+        this->m_enabledLoggingLevel = level;
+        this->m_hostName = hostName;
+        this->m_appName = appName;
     }
 
     void AddFormat(int64_t fmtId, std::shared_ptr<MsgFormat> fmt)
@@ -118,4 +125,9 @@ public:
     void SetAsyncFormatWorker(FormatWorker* formatWorker) { this->m_formatWorker = formatWorker; }
     FormatWorker* GetAsyncFormatWorker() { return this->m_formatWorker; }
     void ClearAsyncFormatWorker() { this->m_formatWorker = nullptr; }
+
+    bool HasWorkPending() const
+    {
+        return !this->m_processing.empty();
+    }
 };

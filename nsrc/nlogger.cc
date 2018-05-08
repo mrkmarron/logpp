@@ -7,17 +7,11 @@
 #include "processingblock.h"
 #include "formatworker.h"
 
-static std::shared_ptr<LoggingEnvironment> s_environment(nullptr);
+static LoggingEnvironment s_environment(LoggingLevel::LLOFF, "[undefined]", "[undefined]");
 
 Napi::Value RegisterFormat(const Napi::CallbackInfo& info)
 {
     Napi::Env env = info.Env();
-
-    if (s_environment == nullptr)
-    {
-        Napi::TypeError::New(env, "Logging Environment is not initialized").ThrowAsJavaScriptException();
-        return env.Undefined();
-    }
 
     if (info.Length() != 6)
     {
@@ -68,7 +62,7 @@ Napi::Value RegisterFormat(const Napi::CallbackInfo& info)
         msgf->AddFormat(FormatEntry(fkind, fenum, tailingSegment.Utf8Value()));
     }
 
-    s_environment->AddFormat(fmtId, msgf);
+    s_environment.AddFormat(fmtId, msgf);
 
     return env.Undefined();
 }
@@ -103,7 +97,7 @@ Napi::Value ProcessMsgs(const Napi::CallbackInfo& info)
 
     const Napi::Array stringData = inmemblock.Get("stringData").As<Napi::Array>();
 
-    LoggingEnvironment* lenv = s_environment.get();
+    LoggingEnvironment* lenv = &s_environment;
 
     if (cpos == epos) {
         return Napi::Boolean::New(env, true);
@@ -158,6 +152,20 @@ Napi::Value ProcessMsgs(const Napi::CallbackInfo& info)
     return Napi::Boolean::New(env, false);
 }
 
+Napi::Value AbortAsyncWork(const Napi::CallbackInfo& info)
+{
+    Napi::Env env = info.Env();
+
+    if (s_environment.GetAsyncFormatWorker() != nullptr)
+    {
+        s_environment.AddBlockFromFormatterAbort(s_environment.GetAsyncFormatWorker()->GetProcessingBlock());
+        s_environment.GetAsyncFormatWorker()->Cancel();
+        s_environment.ClearAsyncFormatWorker();
+    }
+
+    return env.Undefined();
+}
+
 Napi::Value FormatMsgsSync(const Napi::CallbackInfo& info)
 {
     Napi::Env env = info.Env();
@@ -169,19 +177,12 @@ Napi::Value FormatMsgsSync(const Napi::CallbackInfo& info)
 
     bool emitstdprefix = info[0].As<Napi::Boolean>().Value();
 
-    if (s_environment->GetAsyncFormatWorker() != nullptr)
-    {
-        s_environment->AddBlockFromFormatterAbort(s_environment->GetAsyncFormatWorker()->GetProcessingBlock());
-        s_environment->GetAsyncFormatWorker()->Cancel();
-        s_environment->ClearAsyncFormatWorker();
-    }
-
     Formatter formatter;
-    std::shared_ptr<LogProcessingBlock> block = s_environment->GetNextFormatBlock();
+    std::shared_ptr<LogProcessingBlock> block = s_environment.GetNextFormatBlock();
     while (block != nullptr)
     {
-        block->emitAllFormatEntries(&formatter, s_environment.get(), emitstdprefix);
-        block = s_environment->GetNextFormatBlock();
+        block->emitAllFormatEntries(&formatter, &s_environment, emitstdprefix);
+        block = s_environment.GetNextFormatBlock();
     }
 
     return Napi::String::New(env, formatter.getOutputBuffer());
@@ -200,36 +201,39 @@ Napi::Value FormatMsgsAsync(const Napi::CallbackInfo& info)
     std::string action = info[1].As<Napi::String>().Utf8Value();
     bool stdPrefix = info[2].As<Napi::Boolean>().Value();
 
-    std::shared_ptr<LogProcessingBlock> block = s_environment->GetNextFormatBlock();
-    if (block != nullptr)
+    std::shared_ptr<LogProcessingBlock> block = s_environment.GetNextFormatBlock();
+    if (block == nullptr)
     {
-        s_environment->SetAsyncFormatWorker(new FormatWorker(callback, action, block, s_environment.get(), stdPrefix));
-        s_environment->GetAsyncFormatWorker()->Queue();
+        callback.Call({ env.Undefined(), env.Undefined() });
+    }
+    else
+    {
+        s_environment.SetAsyncFormatWorker(new FormatWorker(callback, action, block, &s_environment, stdPrefix));
+        s_environment.GetAsyncFormatWorker()->Queue();
     }
 
     return env.Undefined();
 }
 
+Napi::Value HasWorkPending(const Napi::CallbackInfo& info)
+{
+    Napi::Env env = info.Env();
+    return Napi::Boolean::New(env, s_environment.HasWorkPending());
+}
+
 Napi::Value InitializeLogger(const Napi::CallbackInfo& info)
 {
     Napi::Env env = info.Env();
-    if (s_environment != nullptr)
+    if (info.Length() != 3 || !info[0].IsNumber() || !info[1].IsString() || !info[2].IsString())
     {
         return env.Undefined();
     }
 
-    if (info.Length() != 3 || !info[0].IsNumber() || !info[1].IsString() || !info[2].IsString())
-    {
-        s_environment = std::make_shared<LoggingEnvironment>(LoggingLevel::LLINFO, "localhost", "[default]");
-    }
-    else
-    {
-        LoggingLevel level = static_cast<LoggingLevel>(info[0].As<Napi::Number>().Int32Value());
-        std::string host = info[1].As<Napi::String>().Utf8Value();
-        std::string app = info[2].As<Napi::String>().Utf8Value();
+    LoggingLevel level = static_cast<LoggingLevel>(info[0].As<Napi::Number>().Int32Value());
+    std::string host = info[1].As<Napi::String>().Utf8Value();
+    std::string app = info[2].As<Napi::String>().Utf8Value();
 
-        s_environment = std::make_shared<LoggingEnvironment>(level, host, app);
-    }
+    s_environment.InitializeEnvironmentData(level, host, app);
 
     return env.Undefined();
 }
@@ -241,8 +245,11 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
 
     exports.Set(Napi::String::New(env, "processMsgsForEmit"), Napi::Function::New(env, ProcessMsgs));
 
+    exports.Set(Napi::String::New(env, "abortAsyncWork"), Napi::Function::New(env, AbortAsyncWork));
     exports.Set(Napi::String::New(env, "formatMsgsSync"), Napi::Function::New(env, FormatMsgsSync));
     exports.Set(Napi::String::New(env, "formatMsgsAsync"), Napi::Function::New(env, FormatMsgsAsync));
+
+    exports.Set(Napi::String::New(env, "hasWorkPending"), Napi::Function::New(env, HasWorkPending));
 
     return exports;
 }

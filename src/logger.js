@@ -2,25 +2,12 @@
 
 const os = require("os");
 
-const nlogger = require("C:\\Chakra\\logpp\\build\\Debug\\nlogger.node");
+const nlogger = require("C:\\Code\\logpp\\build\\Debug\\nlogger.node");
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //Start off with a bunch of costant definitions.
 //In a number of cases we don't actually define here. Instead we have a comment and literal value which
 //  we actually put in the code where needed (so no need to load in bytecode and very obvious for JIT).
-
-/**
- * Global array of ids -> format specifications
- */
-const s_fmtMap = [];
-
-/**
- * Global array of category ids -> enabled/disabled
- */
-const s_enabledCategories = [
-    false, //0 is not usable since we do -i indexing
-    true //$default is enabled by default
-];
 
 /**
  * Tag values for logging levels.
@@ -191,7 +178,7 @@ const LogEntryTags = {
     LengthBoundArray: 0x29
 };
 
-function interalLogFailure(msg) {
+function internalLogFailure(msg) {
     console.error(msg);
 
     //Something went really wrong and we will probably continue to fail.
@@ -199,6 +186,41 @@ function interalLogFailure(msg) {
     //So, for now, fail fast. We may be able to do a hard recover but for now simple is better.
     process.exit(1);
 }
+
+//Map of all formats known to the loggers
+const s_fmtMap = [];
+
+//Map of all known categories + their enabled disabled status
+const s_enabledCategories = [
+    false, //0 is not usable since we do -i indexing
+    true //$default is enabled by default
+];
+
+const s_environment = {
+    defaultSubLoggerLevel: LoggingLevels.WARN,
+
+    //Number of log writes that we see before we try and flush again -- default to every write
+    flushCount: 0,
+
+    //The flush action we should use when flushCount is hit -- default to sync
+    flushAction: discardFlushAction,
+
+    //The target we want to emit to -- default stdout
+    flushTarget: "console",
+
+    //The flush callback to use -- by default nops
+    flushCB: () => { },
+
+    //Set if we emit a default prefix (level/category/timestamp) on every log message
+    doPrefix: false
+};
+
+//This state is common to all loggers and will be shared.
+const s_globalenv = {
+    TIMESTAMP: 0,
+    CALLBACK: -1,
+    REQUEST: -1
+};
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //Define structure for representing log message formats.
@@ -561,8 +583,6 @@ function extractMsgFormat(fmtName, fmtId, fmtInfo) {
  */
 const MemoryMsgBlockSizes = [256, 512, 1024, 2048, 4096, 8192, 16384];
 const MemoryMsgBlockInitSize = 256;
-
-let s_flushCount = MemoryMsgBlockInitSize / 2;
 
 //internal function for allocating a block
 function createMemoryMsgBlock(previousBlock, sizespec) {
@@ -1053,7 +1073,7 @@ InMemoryLog.prototype.processMessagesForWrite = function () {
         }
 
         if (msgCount === 0) {
-            return;
+            return false;
         }
 
         const complete = nlogger.processMsgsForEmit(this.head, newblock, msgCount, Date.now(), false);
@@ -1100,57 +1120,70 @@ InMemoryLog.prototype.processMessagesForWrite_HardFlush = function () {
 const s_inMemoryLog = new InMemoryLog();
 
 function isLevelEnabledForLogging(targetLevel, actualLevel) {
-    return (targetLevel & actualLevel) === actualLevel;
+    return (targetLevel & actualLevel) === targetLevel;
 }
 
 //Special NOP implementations for disabled levels of logging
-function doMsgLog_NOP(fmt, ...args) { }
+function doMsgLog_NOP(fmtorctgry, ...args) { }
+
+//Special NOP implementations for disabled levels of logging
+function doMsgLog_COND_NOP(cond, fmt, ...args) { }
 
 function syncFlushAction() {
-    if (s_inMemoryLog.getWriteCount() > s_flushCount) {
+    if (s_inMemoryLog.getWriteCount() > s_environment.flushCount) {
         s_inMemoryLog.resetWriteCount();
 
         this.processMessagesForWrite();
         const output = nlogger.formatMsgsSync();
 
-        process.stdout.write(output);
+        if (s_environment.flushTarget === "console") {
+            process.stdout.write(output);
+        }
+        else {
+            s_environment.flushCB(undefined, output);
+        }
     }
 }
 
-//
-//TODO: make these let and user configurable
-//
-let s_asyncFlushCB = () => { };
-let s_asyncFlushAction = "console";
-let s_doPrefix = false;
-
 let s_flushTimeout = undefined;
+let s_formatPending = false;
+
 function asyncFlushCallback() {
     try {
         s_flushTimeout = undefined;
+        s_formatPending = true;
 
         const hasmore = s_inMemoryLog.processMessagesForWrite();
-        nlogger.formatMsgsAsync(s_asyncFlushCB, s_asyncFlushAction, s_doPrefix);
+        nlogger.formatMsgsAsync((err, result) => {
+            s_formatPending = false;
 
-        asdf;
-        //
-        //Add empty? method to in memory log -- cb is wrapped in empty check with schedule next callback.
-        //Should not check s_flushTimeout -- add explicit processingPending and clear on callback execution.
-        //
+            if (nlogger.hasWorkPending()) {
+                s_flushTimeout = setTimeout(asyncFlushCallback, 0);
+            }
+            else if (hasmore) {
+                s_flushTimeout = setTimeout(asyncFlushCallback, 500);
+            }
+            else {
+            }
 
-
-        if (hasmore) {
-            s_flushTimeout = setTimeout(asyncFlushCallback, 500);
-        }
+            if (result !== undefined) {
+                s_environment.flushCB(result);
+            }
+        }, s_environment.flushTarget, s_environment.doPrefix);
     }
     catch (ex) {
-        interalLogFailure("Hard failure in asyncFlushAction -- " + ex.toString());
+        internalLogFailure("Hard failure in asyncFlushCallback -- " + ex.toString());
     }
 }
 
 function asyncFlushAction() {
-    if (s_inMemoryLog.getWriteCount() > s_flushCount) {
+    if (s_inMemoryLog.getWriteCount() > s_environment.flushCount) {
         s_inMemoryLog.resetWriteCount();
+
+        if (s_formatPending) {
+            //don't mess around with async races and let it schedule when it is done
+            return;
+        }
 
         if (s_flushTimeout !== undefined) {
             clearTimeout(s_flushTimeout);
@@ -1159,305 +1192,328 @@ function asyncFlushAction() {
         s_flushTimeout = setTimeout(asyncFlushCallback, 0);
     }
     else {
+        if (s_formatPending) {
+            //don't mess around with async races and let it schedule when it is done
+            return;
+        }
+
         if (s_flushTimeout === undefined) {
             s_flushTimeout = setTimeout(asyncFlushCallback, 500);
         }
     }
 }
 
-function nopFlushAction(pendingWrites) {
+function abortAsyncWork() {
+    if (s_flushTimeout !== undefined) {
+        clearTimeout(s_flushTimeout);
+        s_flushTimeout = undefined;
+    }
+
+    if (s_formatPending) {
+        nlogger.abortAsyncWork();
+        s_formatPending = false;
+    }
+}
+
+function discardFlushAction() {
+    s_inMemoryLog.clear();
+}
+
+function nopFlushAction() {
     //no action
 }
 
 /**
- * Constructor for the RootLogger
- * @constructor
- * @param {string} appName name of the root module (application)
- * @param {Object} the options object
+ * Create a logger for a given module
+ * @method
+ * @param {string} moduleName name of the module this is defined for
+ * @param {Object} options the options for this logger
  */
-function LoggerFactory(appName, options) {
-    //This state is common to all loggers and will be shared.
-    const m_globalenv = {
-        TIMESTAMP: 0,
-        CALLBACK: -1,
-        REQUEST: -1
+this.createLogger = function (moduleName, options) {
+    return new Logger(moduleName, options);
+};
+
+//////////
+//Define the actual logger class that gets created for each module require
+
+/**
+* Constructor for a Logger
+* @constructor
+* @param {string} moduleName name of the module this is defined for
+* @param {Object} options the options for this logger
+*/
+function Logger(moduleName, options) {
+    //Level that this logger will record at going into memory
+    let m_memoryLogLevel = LoggingLevels[options.memoryLevel];
+
+    const m_env = {
+        globalEnv: s_globalenv,
+        MODULE: moduleName,
+        logger_path: __filename,
     };
 
-    //
-    //TODO: this is all messed up and should be done on creating the root logger
-    //
-
-    //Blocklists containing the information logged into memory and pending to write out
-    s_flushCount = options.flushCount;
-
-    let m_flushAction = undefined;
-    if (options.flushMode === "SYNC") {
-        m_flushAction = syncFlushAction;
-    }
-    else if (options.flushMode === "ASYNC") {
-        m_flushAction = asyncFlushAction;
-    }
-    else {
-        m_flushAction = nopFlushAction;
-    }
-
-    s_asyncFlushAction = options.asyncFlushAction;
-    s_asyncFlushCB = options.asyncFlushCB;
-
-    s_doPrefix = options.doPrefix;
-
-    nlogger.initializeLogger(LoggingLevels[options.emitLevel], os.hostname(), appName);
-
     /**
-     * Create a logger for a given module
-     * @method
-     * @param {string} moduleName name of the module this is defined for
-     * @param {Object} options the options for this logger
+     * Set the logging level for this logger
+     * @param {number} logLevel
      */
-    this.createLogger = function (moduleName, options) {
-        return new Logger(moduleName, options);
+    this.setLoggingLevel = function (logLevel) {
+        if (typeof (logLevel) !== "number") {
+            return;
+        }
+
+        try {
+            let slogLevel = sanitizeLogLevel(logLevel);
+            if (s_rootLogger !== this) {
+                if (s_disabledSubLoggerNames.has(moduleName)) {
+                    slogLevel = LoggingLevels.OFF;
+                }
+                else {
+                    const enabledlevel = s_enabledSubLoggerNames.get(moduleName);
+                    slogLevel = enabledlevel !== undefined ? enabledlevel : s_environment.defaultSubLoggerLevel;
+                }
+            }
+
+            if (m_memoryLogLevel !== slogLevel) {
+                updateLoggingFunctions(this, m_memoryLogLevel);
+            }
+        }
+        catch (ex) {
+            internalLogFailure("Hard failure in setLoggingLevel -- " + ex.toString());
+        }
     };
 
-    //////////
-    //Define the actual logger class that gets created for each module require
+    //
+    //TODO: allow add "categories" 1-by-1 also from JSON object or file for nice organization
+    //      Categories are enabled/disabled per logger
+    //
 
     /**
-    * Constructor for a Logger
-    * @constructor
-    * @param {string} moduleName name of the module this is defined for
-    * @param {Object} options the options for this logger
+     * Update the logical time/requestId/callbackId/etc.
+     */
+    this.incrementLogicalTime = function () { s_globalenv.TIMESTAMP++; };
+
+    this.getCurrentRequestId = function () { return s_globalenv.REQUEST; };
+    this.setCurrentRequestId = function (requestId) { s_globalenv.REQUEST = requestId; };
+
+    this.getCurrentCallbackId = function () { return s_globalenv.CALLBACK; };
+    this.setCurrentCallbackId = function (callbackId) { s_globalenv.CALLBACK = callbackId; };
+
+    /**
+     * Add a new format to the format map
+     */
+    this.addFormat = function (fmtName, fmtInfo) {
+        try {
+            this["$" + fmtName] = extractMsgFormat(fmtName, s_fmtMap.length, fmtInfo);
+        }
+        catch (ex) {
+            //This is a "safe" failure so just warn and continue
+            console.error("Failure adding format -- " + ex.toString());
+        }
+    };
+
+    //
+    //TODO: allow add "formats" from JSON object or file for nice organization
+    //
+
+    /*
+    function generateImplicitFormat(fmtInfo, args) {
+        //Get the line string of the caller
+        const cstack = new Error()
+            .stack
+            .split("\n")
+            .slice(2);
+        const lfilename = cstack[0];
+
+        //
+        //TODO: add this in later with special dict of formats to manage
+        //
+
+        if (s_formatInfo.has(lfilename)) {
+            return s_formatInfo.get(lfilename);
+        }
+
+        if (typeof (fmtInfo) === "string") {
+            extractMsgFormat(lfilename, s_formatInfo.size * -1, fmtInfo.substr(1, fmtInfo.length - 2)); //trim %
+        }
+        else {
+            args.unshift(fmtInfo);
+            extractMsgFormat(lfilename, s_formatInfo.size * -1, "%{0:g}");
+        }
+
+        return s_formatInfo.get(lfilename);
+    }
     */
-    function Logger(moduleName, options) {
-        //Level that this logger will record at going into memory
-        let m_memoryLogLevel = options.memoryLevel;
 
-        const m_env = {
-            globalEnv: m_globalenv,
-            MODULE: moduleName,
-            logger_path: __filename,
-        };
+    function processImplicitFormat(fmtstr, level, args) {
+        //NOT IMTPLEMENTED YET
+    }
 
-        /**
-         * Set the logging level for this logger
-         * @param {number} logLevel
-         */
-        this.setLoggingLevel = function (logLevel) {
-            if (typeof (logLevel) !== "number") {
+    function processDefaultCategoryFormat(fmti, level, args) {
+        const fmt = s_fmtMap[fmti];
+        if (fmti === undefined) {
+            console.error("Format name is not defined for this logger -- " + fmt);
+            return;
+        }
+
+        s_inMemoryLog.logMessage(m_env, level, 1, fmt, 0, args);
+        s_environment.flushAction();
+    }
+
+    function processExplicitCategoryFormat(categoryi, level, args) {
+        const rcategory = -categoryi;
+        if (s_enabledCategories[rcategory]) {
+            if (args.length < 1) {
+                console.error("Format argument should be provided");
                 return;
             }
 
-            try {
-                let slogLevel = sanitizeLogLevel(logLevel);
-                if (s_rootLogger !== this) {
-                    if (s_disabledSubLoggerNames.has(moduleName)) {
-                        slogLevel = LoggingLevels.OFF;
-                    }
-                    else {
-                        const enabledlevel = s_enabledSubLoggerNames.get(moduleName);
-                        slogLevel = enabledlevel !== undefined ? enabledlevel : s_defaultSubLoggerLevel;
-                    }
-                }
-
-                if (m_memoryLogLevel !== slogLevel) {
-                    m_memoryLogLevel = slogLevel;
-                    updateLoggingFunctions(this, m_memoryLogLevel);
-                }
-            }
-            catch (ex) {
-                interalLogFailure("Hard failure in setLoggingLevel -- " + ex.toString());
-            }
-        };
-
-        /**
-         * Update the logical time/requestId/callbackId/etc.
-         */
-        this.incrementLogicalTime = function () { m_globalenv.TIMESTAMP++; };
-
-        this.getCurrentRequestId = function () { return m_globalenv.REQUEST; };
-        this.setCurrentRequestId = function (requestId) { m_globalenv.REQUEST = requestId; };
-
-        this.getCurrentCallbackId = function () { return m_globalenv.CALLBACK; };
-        this.setCurrentCallbackId = function (callbackId) { m_globalenv.CALLBACK = callbackId; };
-
-        /**
-         * Add a new format to the format map
-         */
-        this.addFormat = function (fmtName, fmtInfo) {
-            try {
-                this.Formats["$" + fmtName] = extractMsgFormat(fmtName, s_fmtMap.length, fmtInfo);
-            }
-            catch (ex) {
-                //This is a "safe" failure so just warn and continue
-                console.error("Hard failure in addFormat -- " + ex.toString());
-            }
-        };
-
-        //
-        //TODO: allow add "formats" from JSON object or file for nice organization
-        //
-
-        /*
-        function generateImplicitFormat(fmtInfo, args) {
-            //Get the line string of the caller
-            const cstack = new Error()
-                .stack
-                .split("\n")
-                .slice(2);
-            const lfilename = cstack[0];
-
-            //
-            //TODO: add this in later with special dict of formats to manage
-            //
-
-            if (s_formatInfo.has(lfilename)) {
-                return s_formatInfo.get(lfilename);
-            }
-
-            if (typeof (fmtInfo) === "string") {
-                extractMsgFormat(lfilename, s_formatInfo.size * -1, fmtInfo.substr(1, fmtInfo.length - 2)); //trim %
-            }
-            else {
-                args.unshift(fmtInfo);
-                extractMsgFormat(lfilename, s_formatInfo.size * -1, "%{0:g}");
-            }
-
-            return s_formatInfo.get(lfilename);
-        }
-        */
-
-        function processImplicitFormat(fmtstr, level, args) {
-            //NOT IMTPLEMENTED YET
-        }
-
-        function processDefaultCategoryFormat(fmti, level, args) {
-            const fmt = s_fmtMap[fmti];
-            if (fmti === undefined) {
+            const fmt = s_fmtMap.get(args[0]);
+            if (fmt === undefined) {
                 console.error("Format name is not defined for this logger -- " + fmt);
                 return;
             }
 
-            s_inMemoryLog.logMessage(m_env, level, 1, fmt, 0, args);
-            m_flushAction();
+            s_inMemoryLog.logMessage(m_env, level, rcategory, fmt, 1, args);
+            s_environment.flushAction();
         }
+    }
 
-        function processExplicitCategoryFormat(categoryi, level, args) {
-            const rcategory = -categoryi;
-            if (s_enabledCategories[rcategory]) {
-                if (args.length < 1) {
-                    console.error("Format argument should be provided");
-                    return;
+    function getMsgLogGenerator(desiredLevel) {
+        const fixedLevel = desiredLevel;
+        return function (fmtorctgry, ...args) {
+            try {
+                const tsw = typeof (fmtorctgry);
+                if (tsw === "string") {
+                    processImplicitFormat(fmtorctgry, fixedLevel, args);
                 }
-
-                const fmt = s_fmtMap.get(args[0]);
-                if (fmt === undefined) {
-                    console.error("Format name is not defined for this logger -- " + fmt);
-                    return;
-                }
-
-                s_inMemoryLog.logMessage(m_env, level, rcategory, fmt, 1, args);
-                m_flushAction();
-            }
-        }
-
-        function getMsgLogGenerator(desiredLevel) {
-            const fixedLevel = desiredLevel;
-            return function (fmtorctgry, ...args) {
-                try {
-                    const tsw = typeof (fmtorctgry);
-                    if (tsw === "string") {
-                        processImplicitFormat(fmtorctgry, fixedLevel, args);
-                    }
-                    else if (tsw === "number") {
-                        if (fmtorctgry >= 0) {
-                            processDefaultCategoryFormat(fmtorctgry, desiredLevel, args);
-                        }
-                        else {
-                            processExplicitCategoryFormat(fmtorctgry, desiredLevel, args);
-                        }
+                else if (tsw === "number") {
+                    if (fmtorctgry >= 0) {
+                        processDefaultCategoryFormat(fmtorctgry, desiredLevel, args);
                     }
                     else {
-                        console.error("Bad arguments to formatter -- expected category or log format");
+                        processExplicitCategoryFormat(fmtorctgry, desiredLevel, args);
                     }
                 }
-                catch (ex) {
-                    interalLogFailure("Hard failure in logging -- " + ex.toString());
-                }
-            };
-        }
-
-        //
-        //TODO: conditional logger
-        //
-
-        function updateLoggingFunctions(logger, logLevel) {
-            logger.fatal = isLevelEnabledForLogging(LoggingLevels.FATAL, m_memoryLogLevel) ? getMsgLogGenerator(LoggingLevels.FATAL) : doMsgLog_NOP;
-            logger.error = isLevelEnabledForLogging(LoggingLevels.ERROR, m_memoryLogLevel) ? getMsgLogGenerator(LoggingLevels.ERROR) : doMsgLog_NOP;
-            logger.warn = isLevelEnabledForLogging(LoggingLevels.WARN, m_memoryLogLevel) ? getMsgLogGenerator(LoggingLevels.WARN) : doMsgLog_NOP;
-            logger.info = isLevelEnabledForLogging(LoggingLevels.INFO, m_memoryLogLevel) ? getMsgLogGenerator(LoggingLevels.INFO) : doMsgLog_NOP;
-            logger.detail = isLevelEnabledForLogging(LoggingLevels.DETAIL, m_memoryLogLevel) ? getMsgLogGenerator(LoggingLevels.DETAIL) : doMsgLog_NOP;
-            logger.debug = isLevelEnabledForLogging(LoggingLevels.DEBUG, m_memoryLogLevel) ? getMsgLogGenerator(LoggingLevels.DEBUG) : doMsgLog_NOP;
-            logger.trace = isLevelEnabledForLogging(LoggingLevels.TRACE, m_memoryLogLevel) ? getMsgLogGenerator(LoggingLevels.TRACE) : doMsgLog_NOP;
-        }
-        updateLoggingFunctions(this, m_memoryLogLevel);
-
-        /**
-        * Synchronously emit the in memory log to the specified writer for failure notification
-        * @method
-        * @param {boolean} stdPrefix is true if we want to write a default prefix for each message
-        */
-        this.emitFullLogSync = function (stdPrefix) {
-            try {
-                s_inMemoryLog.processMessagesForWrite_HardFlush();
-                return nlogger.formatMsgsSync(stdPrefix);
-            }
-            catch (ex) {
-                interalLogFailure("Hard failure in emit on emitFullLogSync -- " + ex.toString());
-            }
-        };
-
-        /**
-        * Explicitly allow a specifc sub-logger to control output levels
-        * @method
-        * @param {string} subloggerName the name of the sub-logger to enable
-        * @param {number} level the level that the sub-logger is allowed to emit at
-        */
-        this.enableSubLogger = function (subloggerName, level) {
-            if (typeof (subloggerName) !== "string" || typeof (level) !== "number") {
-                return;
-            }
-
-            try {
-                if (s_rootLogger === this) {
-                    s_enabledSubLoggerNames.add(subloggerName, level);
-                    s_disabledSubLoggerNames.delete(subloggerName);
+                else {
+                    console.error("Bad arguments to formatter -- expected category or log format");
                 }
             }
             catch (ex) {
-                interalLogFailure("Hard failure in enableSubLogger -- " + ex.toString());
-            }
-        };
-
-        /**
-        * Explicitly disable a specifc sub-logger -- entirely suppress the output from it
-        * @method
-        * @param {string} subloggerName the name of the sub-logger to enable
-        */
-        this.disableSubLogger = function (subloggerName) {
-            if (typeof (subloggerName) !== "string") {
-                return;
-            }
-
-            try {
-                if (s_rootLogger === this) {
-                    s_enabledSubLoggerNames.delete(subloggerName);
-                    s_disabledSubLoggerNames.add(subloggerName);
-                }
-            }
-            catch (ex) {
-                interalLogFailure("Hard failure in disableSubLogger -- " + ex.toString());
+                internalLogFailure("Hard failure in logging -- " + ex.toString());
             }
         };
     }
+
+    function getConditionalMsgLogGenerator(desiredLevel) {
+        const fixedLevel = desiredLevel;
+        return function (cond, fmtorctgry, ...args) {
+            if (!cond) {
+                return;
+            }
+
+            try {
+                const tsw = typeof (fmtorctgry);
+                if (tsw === "string") {
+                    processImplicitFormat(fmtorctgry, fixedLevel, args);
+                }
+                else if (tsw === "number") {
+                    if (fmtorctgry >= 0) {
+                        processDefaultCategoryFormat(fmtorctgry, desiredLevel, args);
+                    }
+                    else {
+                        processExplicitCategoryFormat(fmtorctgry, desiredLevel, args);
+                    }
+                }
+                else {
+                    console.error("Bad arguments to formatter -- expected category or log format");
+                }
+            }
+            catch (ex) {
+                internalLogFailure("Hard failure in logging -- " + ex.toString());
+            }
+        };
+    }
+
+    function updateLoggingFunctions(logger, logLevel) {
+        m_memoryLogLevel = logLevel;
+
+        logger.fatal = isLevelEnabledForLogging(LoggingLevels.FATAL, m_memoryLogLevel) ? getMsgLogGenerator(LoggingLevels.FATAL) : doMsgLog_NOP;
+        logger.error = isLevelEnabledForLogging(LoggingLevels.ERROR, m_memoryLogLevel) ? getMsgLogGenerator(LoggingLevels.ERROR) : doMsgLog_NOP;
+        logger.warn = isLevelEnabledForLogging(LoggingLevels.WARN, m_memoryLogLevel) ? getMsgLogGenerator(LoggingLevels.WARN) : doMsgLog_NOP;
+        logger.info = isLevelEnabledForLogging(LoggingLevels.INFO, m_memoryLogLevel) ? getMsgLogGenerator(LoggingLevels.INFO) : doMsgLog_NOP;
+        logger.detail = isLevelEnabledForLogging(LoggingLevels.DETAIL, m_memoryLogLevel) ? getMsgLogGenerator(LoggingLevels.DETAIL) : doMsgLog_NOP;
+        logger.debug = isLevelEnabledForLogging(LoggingLevels.DEBUG, m_memoryLogLevel) ? getMsgLogGenerator(LoggingLevels.DEBUG) : doMsgLog_NOP;
+        logger.trace = isLevelEnabledForLogging(LoggingLevels.TRACE, m_memoryLogLevel) ? getMsgLogGenerator(LoggingLevels.TRACE) : doMsgLog_NOP;
+
+        logger.fatalIf = isLevelEnabledForLogging(LoggingLevels.FATAL, m_memoryLogLevel) ? getConditionalMsgLogGenerator(LoggingLevels.FATAL) : doMsgLog_COND_NOP;
+        logger.errorIf = isLevelEnabledForLogging(LoggingLevels.ERROR, m_memoryLogLevel) ? getConditionalMsgLogGenerator(LoggingLevels.ERROR) : doMsgLog_COND_NOP;
+        logger.warnIf = isLevelEnabledForLogging(LoggingLevels.WARN, m_memoryLogLevel) ? getConditionalMsgLogGenerator(LoggingLevels.WARN) : doMsgLog_COND_NOP;
+        logger.infoIf = isLevelEnabledForLogging(LoggingLevels.INFO, m_memoryLogLevel) ? getConditionalMsgLogGenerator(LoggingLevels.INFO) : doMsgLog_COND_NOP;
+        logger.detailIf = isLevelEnabledForLogging(LoggingLevels.DETAIL, m_memoryLogLevel) ? getConditionalMsgLogGenerator(LoggingLevels.DETAIL) : doMsgLog_COND_NOP;
+        logger.debugIf = isLevelEnabledForLogging(LoggingLevels.DEBUG, m_memoryLogLevel) ? getConditionalMsgLogGenerator(LoggingLevels.DEBUG) : doMsgLog_COND_NOP;
+        logger.traceIf = isLevelEnabledForLogging(LoggingLevels.TRACE, m_memoryLogLevel) ? getConditionalMsgLogGenerator(LoggingLevels.TRACE) : doMsgLog_COND_NOP;
+    }
+    updateLoggingFunctions(this, m_memoryLogLevel);
+
+    /**
+    * Synchronously emit the in memory log to the specified writer for failure notification
+    * @method
+    * @param {boolean} stdPrefix is true if we want to write a default prefix for each message
+    */
+    this.emitFullLogSync = function (stdPrefix) {
+        try {
+            abortAsyncWork();
+
+            s_inMemoryLog.processMessagesForWrite_HardFlush();
+            return nlogger.formatMsgsSync(stdPrefix);
+        }
+        catch (ex) {
+            internalLogFailure("Hard failure in emit on emitFullLogSync -- " + ex.toString());
+        }
+    };
+
+    /**
+    * Explicitly allow a specifc sub-logger to control output levels
+    * @method
+    * @param {string} subloggerName the name of the sub-logger to enable
+    * @param {number} level the level that the sub-logger is allowed to emit at
+    */
+    this.enableSubLogger = function (subloggerName, level) {
+        if (typeof (subloggerName) !== "string" || typeof (level) !== "number") {
+            return;
+        }
+
+        try {
+            if (s_rootLogger === this) {
+                s_enabledSubLoggerNames.add(subloggerName, level);
+                s_disabledSubLoggerNames.delete(subloggerName);
+            }
+        }
+        catch (ex) {
+            internalLogFailure("Hard failure in enableSubLogger -- " + ex.toString());
+        }
+    };
+
+    /**
+    * Explicitly disable a specifc sub-logger -- entirely suppress the output from it
+    * @method
+    * @param {string} subloggerName the name of the sub-logger to enable
+    */
+    this.disableSubLogger = function (subloggerName) {
+        if (typeof (subloggerName) !== "string") {
+            return;
+        }
+
+        try {
+            if (s_rootLogger === this) {
+                s_enabledSubLoggerNames.delete(subloggerName);
+                s_disabledSubLoggerNames.add(subloggerName);
+            }
+        }
+        catch (ex) {
+            internalLogFailure("Hard failure in disableSubLogger -- " + ex.toString());
+        }
+    };
 }
 
 /////////////////////////////
@@ -1466,7 +1522,6 @@ function LoggerFactory(appName, options) {
 /**
  * Global variables for the logger factor and root logger -- lazily instantiated
  */
-let s_loggerFactory = null;
 let s_rootLogger = null;
 
 /**
@@ -1474,7 +1529,6 @@ let s_rootLogger = null;
  */
 const s_disabledSubLoggerNames = new Set();
 const s_enabledSubLoggerNames = new Map();
-const s_defaultSubLoggerLevel = LoggingLevels.WARN;
 
 /**
  * Map of the loggers created for various module names
@@ -1496,6 +1550,10 @@ const s_loggerMap = new Map();
 //
 ////
 
+function processSimpleOption(options, realOptions, name, typestr, pred, defaultvalue) {
+    realOptions[name] = (options[name] && typeof (options[name]) === typestr && pred(options[name])) ? options[name] : defaultvalue;
+}
+
 /**
  * Logger constructor function.
  * @exports
@@ -1509,107 +1567,85 @@ module.exports = function (name, options) {
     }
     options = options || {};
 
+    const debuggerAttached = /--inspect/.test(process.execArgv.join(" "));
+
     const ropts = {
         host: require("os").hostname()
     };
 
-    const debuggerAttached = /--inspect/.test(process.execArgv.join(" "));
+    processSimpleOption(options, ropts, "memoryLevel", "string", (optv) => LoggingLevels[optv] !== undefined, "DETAIL");
 
-    if (options.memoryLevel === undefined || typeof (options.memoryLevel) !== "string" || LoggingLevels[options.memoryLevel] === undefined) {
-        ropts.memoryLevel = "DETAIL";
-    }
-    else {
-        ropts.memoryLevel = options.memoryLevel;
-    }
-
-    if (options.emitLevel === undefined || typeof (options.emitLevel) !== "string" || LoggingLevels[options.emitLevel] === undefined) {
-        ropts.emitLevel = (LoggingLevels["INFO"] <= LoggingLevels[ropts.memoryLevel]) ? "INFO" : ropts.memoryLevel;
-    }
-    else {
-        ropts.emitLevel = (LoggingLevels[options.emitLevel] <= LoggingLevels[ropts.memoryLevel]) ? LoggingLevels[options.emitLevel] : ropts.memoryLevel;
-    }
+    processSimpleOption(options, ropts, "emitLevel", "string", (optv) => LoggingLevels[optv] !== undefined, "INFO");
+    ropts.emitLevel = (LoggingLevels[ropts.emitLevel] <= LoggingLevels[ropts.memoryLevel]) ? ropts.emitLevel : ropts.memoryLevel;
 
     if (debuggerAttached) {
-        ropts.flushCount = 0;
-    }
-    else if (options.flushCount === undefined || typeof (options.flushCount) !== "number" || options.flushCount <= 0) {
-        ropts.flushCount = s_flushCount;
-    }
-    else {
-        ropts.flushCount = options.flushCount;
-    }
-
-    if (debuggerAttached) {
-        ropts.flushMode = "SYNC";
-    }
-    if (options.flushMode === undefined || typeof (options.flushMode) !== "string" || (options.flushMode !== "SYNC" && options.flushMode !== "ASYNC" && options.flushMode !== "NOP")) {
-        ropts.flushMode = "ASYNC";
+        processSimpleOption(options, ropts, "flushCount", "number", (optv) => optv >= 0, 0);
+        processSimpleOption(options, ropts, "flushTarget", "string", (optv) => /console|callback/.test(optv), "console");
+        processSimpleOption(options, ropts, "flushMode", "string", (optv) => /SYNC|ASYNC|NOP|DISCARD/.test(optv), "SYNC");
+        processSimpleOption(options, ropts, "flushCallback", "function", (optv) => true, () => { });
     }
     else {
-        ropts.flushMode = options.flushMode;
+        processSimpleOption(options, ropts, "flushCount", "number", (optv) => optv >= 0, MemoryMsgBlockInitSize / 2);
+        processSimpleOption(options, ropts, "flushTarget", "string", (optv) => /console|callback/.test(optv), "console");
+        processSimpleOption(options, ropts, "flushMode", "string", (optv) => /SYNC|ASYNC|NOP|DISCARD/.test(optv), "ASYNC");
+        processSimpleOption(options, ropts, "flushCallback", "function", (optv) => true, () => { });
     }
 
-    if (ropts.flushMode === "ASYNC") {
-        if (options.asyncFlushCB || typeof (options.asyncFlushCB) !== "function") {
-            ropts.asyncFlushCB = s_asyncFlushCB;
-        }
-        else {
-            ropts.asyncFlushCB = options.asyncFlushCB;
-        }
-
-        if (options.asyncFlushAction === undefined || typeof (options.asyncFlushAction) !== "string" || (options.asyncFlushAction !== "console" && options.asyncFlushAction !== "callback")) {
-            ropts.asyncFlushAction = "console";
-        }
-        else {
-            ropts.asyncFlushAction = options.asyncFlushAction;
-        }
-    }
-
-    if (options.doPrefix === undefined || typeof (options.doPrefix) !== "boolean") {
-        ropts.doPrefix = false;
-    }
-    else {
-        ropts.doPrefix = options.doPrefix;
-    }
-
-    //Lazy instantiate the logger factory
-    if (s_loggerFactory === null) {
-        s_loggerFactory = new LoggerFactory(require.main.filename, ropts);
-
-        //
-        //TODO: hook errors for emit sync full
-        //
-    }
-
-    //Get the filename of the caller
-    const cstack = new Error()
-        .stack
-        .split("\n")
-        .slice(1)
-        .map(function (frame) {
-            return frame.substring(frame.indexOf("(") + 1, frame.lastIndexOf(".js:") + 3);
-        });
-    const lfilename = cstack[0];
+    processSimpleOption(options, ropts, "doPrefix", "boolean", (optv) => true, false);
 
     let logger = s_loggerMap.get(name);
     if (!logger) {
+        //Get the filename of the caller
+        const cstack = new Error()
+            .stack
+            .split("\n")
+            .slice(2)
+            .map(function (frame) {
+                return frame.substring(frame.indexOf("(") + 1, frame.lastIndexOf(".js:") + 3);
+            });
+        const lfilename = cstack[0];
+
         if (require.main.filename !== lfilename) {
             if (s_disabledSubLoggerNames.has(lfilename)) {
                 ropts.memoryLevel = LoggingLevels.OFF;
             }
             else {
                 const enabledlevel = s_enabledSubLoggerNames.get(lfilename);
-                ropts.memoryLevel = enabledlevel !== undefined ? enabledlevel : s_defaultSubLoggerLevel;
+                ropts.memoryLevel = enabledlevel !== undefined ? enabledlevel : s_environment.defaultSubLoggerLevel;
             }
         }
 
-        logger = s_loggerFactory.createLogger(name, ropts);
+        logger = new Logger(name, ropts);
         logger.Levels = LoggingLevels;
-        logger.Formats = {};
-        logger.Categories = { $default: -1 };
+        logger.$$default = -1;
 
         if (require.main.filename === lfilename) {
             s_rootLogger = logger;
+
+            s_environment.flushCount = ropts.flushCount;
+
+            if (ropts.flushMode === "SYNC") {
+                s_environment.flushAction = syncFlushAction;
+            }
+            else if (ropts.flushMode === "ASYNC") {
+                s_environment.flushAction = asyncFlushAction;
+            }
+            else if (ropts.flushMode === "NOP") {
+                s_environment.flushAction = nopFlushAction;
+            }
+            else {
+                s_environment.flushAction = discardFlushAction;
+            }
+
+            s_environment.flushTarget = ropts.flushTarget;
+            s_environment.flushCB = ropts.flushCB;
+            s_environment.doPrefix = ropts.doPrefix;
+
+            nlogger.initializeLogger(LoggingLevels[ropts.emitLevel], os.hostname(), lfilename);
+
+            //
+            //TODO: hook errors for emit sync full
+            //
         }
 
         s_loggerMap.set(name, logger);
