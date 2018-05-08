@@ -1161,7 +1161,7 @@ function asyncFlushCallback() {
                 s_flushTimeout = setTimeout(asyncFlushCallback, 0);
             }
             else if (hasmore) {
-                s_flushTimeout = setTimeout(asyncFlushCallback, 500);
+                s_flushTimeout = setTimeout(asyncFlushCallback, 250);
             }
             else {
             }
@@ -1456,16 +1456,31 @@ function Logger(moduleName, options) {
     updateLoggingFunctions(this, m_memoryLogLevel);
 
     /**
-    * Synchronously emit the in memory log to the specified writer for failure notification
+    * Synchronously emit the full in-memory and emit log
     * @method
-    * @param {boolean} stdPrefix is true if we want to write a default prefix for each message
     */
-    this.emitFullLogSync = function (stdPrefix) {
+    this.emitFullLogSync = function () {
         try {
             abortAsyncWork();
 
             s_inMemoryLog.processMessagesForWrite_HardFlush();
-            return nlogger.formatMsgsSync(stdPrefix);
+            return nlogger.formatMsgsSync(s_environment.doPrefix);
+        }
+        catch (ex) {
+            internalLogFailure("Hard failure in emit on emitFullLogSync -- " + ex.toString());
+        }
+    };
+
+    /**
+    * Synchronously emit as much of the in-memory and emit buffer as possible
+    * @method
+    */
+    this.emitLogSync = function () {
+        try {
+            abortAsyncWork();
+
+            s_inMemoryLog.processMessagesForWrite();
+            return nlogger.formatMsgsSync(s_environment.doPrefix);
         }
         catch (ex) {
             internalLogFailure("Hard failure in emit on emitFullLogSync -- " + ex.toString());
@@ -1585,7 +1600,7 @@ module.exports = function (name, options) {
         processSimpleOption(options, ropts, "flushCallback", "function", (optv) => true, () => { });
     }
     else {
-        processSimpleOption(options, ropts, "flushCount", "number", (optv) => optv >= 0, MemoryMsgBlockInitSize / 2);
+        processSimpleOption(options, ropts, "flushCount", "number", (optv) => optv >= 0, MemoryMsgBlockInitSize / 4);
         processSimpleOption(options, ropts, "flushTarget", "string", (optv) => /console|callback/.test(optv), "console");
         processSimpleOption(options, ropts, "flushMode", "string", (optv) => /SYNC|ASYNC|NOP|DISCARD/.test(optv), "ASYNC");
         processSimpleOption(options, ropts, "flushCallback", "function", (optv) => true, () => { });

@@ -96,8 +96,8 @@ enum class LoggingLevel :uint32_t
 };
 #define LOG_LEVEL_ENABLED(level, enabledLevel) ((static_cast<uint32_t>(level) & static_cast<uint32_t>(enabledLevel)) == static_cast<uint32_t>(enabledLevel))
 
-//Defaults for block flushing are over 1s or more than 4096 entries used
-#define DEFAULT_LOG_TIMELIMIT 1000
+//Defaults for block flushing are over 0.5s or more than 4096 entries used
+#define DEFAULT_LOG_TIMELIMIT 500
 #define DEFAULT_LOG_SLOTSUSED 4096
 
 #define INIT_LOG_BLOCK_SIZE 64
