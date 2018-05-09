@@ -1,6 +1,6 @@
 {
     "name": "logpp",
-    "description": "An experimental next generation logging framework for JavaScript and fluent.",
+    "description": "A next generation logging framework for JavaScript.",
     "author": {
         "name": "Mark Marron"
     },
@@ -13,10 +13,12 @@
     "devDependencies": {
         "eslint": "4.18.1",
         "eslint-plugin-markdown": "1.0.0-beta.6",
-        "chalk": "2.3.2"
+        "chalk": "2.3.2",
+        "pino": "*"
     },
     "scripts": {
-        "test": "echo \"Error: no test specified\" && exit 1"
+        "test": "node test/basic.js",
+        "benchmark": "node test/performance.js > test/perfout.txt"
     },
     "main": "logger.js"
 }

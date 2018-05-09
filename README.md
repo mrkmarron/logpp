@@ -133,7 +133,7 @@ The output of this dump can be directed to `stdout` or a file specified by the
 `dumpTarget` option. 
 
 In other cases you may want to programatically (and synchronously) produce a 
-full dump of the `in-memory` log. This can be done with the `emitFullLogSync` 
+full dump of the `in-memory` log. This can be done with the `emitLogSync(true)` 
 API which returns the fully formatted log data as a string. 
 
 ### Multi-Level Log Layer Management
@@ -175,7 +175,7 @@ However, for applications may also want to send the data to a file or a
 remote server. This can be done by setting the `flushTarget` option as 
 `file` or `network` and providing the file/url as the `logSink` option value. 
 In these configurations the logging data is written directly to the sink without 
-any extra processing in the JavaScript layer.
+any extra callbacks in the JavaScript layer.
 
 For the most general case Log++ also supports a callback that is invoked whenever 
 a block of data is processed from the `emit` log. This allows the application 

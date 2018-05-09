@@ -2,7 +2,8 @@
 
 const os = require("os");
 
-const nlogger = require("C:\\Code\\logpp\\build\\Debug\\nlogger.node");
+//const nlogger = require("C:\\Code\\logpp\\build\\Debug\\nlogger.node");
+const nlogger = require("bindings")("nlogger.node");
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //Start off with a bunch of costant definitions.
@@ -1140,7 +1141,9 @@ function syncFlushAction() {
             process.stdout.write(output);
         }
         else {
-            s_environment.flushCB(undefined, output);
+            //
+            //TODO: should be flushCBSync here
+            //
         }
     }
 }
@@ -1170,6 +1173,9 @@ function asyncFlushCallback() {
                 process.stdout.write(result);
             }
             else {
+                //
+                //TODO: we will need to have a flushCB, a flushCBSync, and a abortFlushCB to handle everything
+                //
                 s_environment.flushCB(err, result);
             }
         }, s_environment.doPrefix);
@@ -1225,16 +1231,6 @@ function discardFlushAction() {
 function nopFlushAction() {
     //no action
 }
-
-/**
- * Create a logger for a given module
- * @method
- * @param {string} moduleName name of the module this is defined for
- * @param {Object} options the options for this logger
- */
-this.createLogger = function (moduleName, options) {
-    return new Logger(moduleName, options);
-};
 
 //////////
 //Define the actual logger class that gets created for each module require
@@ -1459,34 +1455,22 @@ function Logger(moduleName, options) {
     updateLoggingFunctions(this, m_memoryLogLevel);
 
     /**
-    * Synchronously emit the full in-memory and emit log
-    * @method
-    */
-    this.emitFullLogSync = function () {
-        try {
-            abortAsyncWork();
-
-            s_inMemoryLog.processMessagesForWrite_HardFlush();
-            return nlogger.formatMsgsSync(s_environment.doPrefix);
-        }
-        catch (ex) {
-            internalLogFailure("Hard failure in emit on emitFullLogSync -- " + ex.toString());
-        }
-    };
-
-    /**
     * Synchronously emit as much of the in-memory and emit buffer as possible
     * @method
     */
-    this.emitLogSync = function () {
+    this.emitLogSync = function (includeFullDetail) {
         try {
             abortAsyncWork();
-
-            s_inMemoryLog.processMessagesForWrite();
+            if (includeFullDetail) {
+                s_inMemoryLog.processMessagesForWrite_HardFlush();
+            }
+            else {
+                s_inMemoryLog.processMessagesForWrite();
+            }
             return nlogger.formatMsgsSync(s_environment.doPrefix);
         }
         catch (ex) {
-            internalLogFailure("Hard failure in emit on emitFullLogSync -- " + ex.toString());
+            internalLogFailure("Hard failure in emit on emitLogSync -- " + ex.toString());
         }
     };
 
@@ -1570,6 +1554,19 @@ const s_loggerMap = new Map();
 
 function processSimpleOption(options, realOptions, name, typestr, pred, defaultvalue) {
     realOptions[name] = (options[name] && typeof (options[name]) === typestr && pred(options[name])) ? options[name] : defaultvalue;
+}
+
+function processLogOnTermination(iserror) {
+    const finallog = s_rootLogger.emitLogSync(iserror);
+
+    if (s_environment.flushTarget === "console") {
+        process.stdout.write(finallog);
+    }
+    else {
+        //
+        //TODO: should be flushCBSync here
+        //
+    }
 }
 
 /**
@@ -1661,9 +1658,13 @@ module.exports = function (name, options) {
 
             nlogger.initializeLogger(LoggingLevels[ropts.emitLevel], os.hostname(), lfilename);
 
-            //
-            //TODO: hook errors for emit sync full
-            //
+            process.on("exit", (code) => {
+                processLogOnTermination(code !== 0);
+            });
+
+            process.on("uncaughtException", () => {
+                processLogOnTermination(true);
+            });
         }
 
         s_loggerMap.set(name, logger);
