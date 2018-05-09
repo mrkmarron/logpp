@@ -1166,10 +1166,13 @@ function asyncFlushCallback() {
             else {
             }
 
-            if (result !== undefined) {
-                s_environment.flushCB(result);
+            if (s_environment.flushTarget === "console") {
+                process.stdout.write(result);
             }
-        }, s_environment.flushTarget, s_environment.doPrefix);
+            else {
+                s_environment.flushCB(err, result);
+            }
+        }, s_environment.doPrefix);
     }
     catch (ex) {
         internalLogFailure("Hard failure in asyncFlushCallback -- " + ex.toString());

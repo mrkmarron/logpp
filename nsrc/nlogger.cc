@@ -191,15 +191,14 @@ Napi::Value FormatMsgsSync(const Napi::CallbackInfo& info)
 Napi::Value FormatMsgsAsync(const Napi::CallbackInfo& info)
 {
     Napi::Env env = info.Env();
-    if (info.Length() != 3 || !info[0].IsFunction() || !info[1].IsString() || !info[2].IsBoolean())
+    if (info.Length() != 2 || !info[0].IsFunction() || !info[1].IsBoolean())
     {
         Napi::TypeError::New(env, "Wrong arguments").ThrowAsJavaScriptException();
         return env.Undefined();
     }
 
     Napi::Function callback = info[0].As<Napi::Function>();
-    std::string action = info[1].As<Napi::String>().Utf8Value();
-    bool stdPrefix = info[2].As<Napi::Boolean>().Value();
+    bool stdPrefix = info[1].As<Napi::Boolean>().Value();
 
     std::shared_ptr<LogProcessingBlock> block = s_environment.GetNextFormatBlock();
     if (block == nullptr)
@@ -208,7 +207,7 @@ Napi::Value FormatMsgsAsync(const Napi::CallbackInfo& info)
     }
     else
     {
-        s_environment.SetAsyncFormatWorker(new FormatWorker(callback, action, block, &s_environment, stdPrefix));
+        s_environment.SetAsyncFormatWorker(new FormatWorker(callback, block, &s_environment, stdPrefix));
         s_environment.GetAsyncFormatWorker()->Queue();
     }
 

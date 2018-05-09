@@ -11,7 +11,7 @@ function write(msg) {
 
 ///////
 //Basic
-/*
+
 const bstart1 = new Date();
 for (let i = 0; i < 50000; ++i) {
     logpp.info(logpp.$Basic_Hello);
@@ -30,7 +30,7 @@ for (let i = 0; i < 50000; ++i) {
 }
 const bendc = new Date();
 console.error(`Total console time = ${bendc - bstartc}`);
-*/
+
 ///////
 //Compound
 
