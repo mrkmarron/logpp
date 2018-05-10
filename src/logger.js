@@ -1281,6 +1281,31 @@ function Logger(moduleName, options) {
         }
     };
 
+    /**
+     * Set the emit logging level
+    * @param {number} logLevel
+    */
+    this.setEmitLevel = function (logLevel) {
+        if (typeof (logLevel) !== "number") {
+            return;
+        }
+
+        try {
+            if (s_rootLogger !== this) {
+                return;
+            }
+
+            const slogLevel = sanitizeLogLevel(logLevel);
+            if (nlogger.getEmitLevel() !== slogLevel) {
+                s_inMemoryLog.processMessagesForWrite_HardFlush();
+                nlogger.setEmitLevel(slogLevel);
+            }
+        }
+        catch (ex) {
+            internalLogFailure("Hard failure in setLoggingLevel -- " + ex.toString());
+        }
+    };
+
     //
     //TODO: allow add "categories" 1-by-1 also from JSON object or file for nice organization
     //      Categories are enabled/disabled per logger
@@ -1307,6 +1332,42 @@ function Logger(moduleName, options) {
         catch (ex) {
             //This is a "safe" failure so just warn and continue
             console.error("Failure adding format -- " + ex.toString());
+        }
+    };
+
+    /**
+     * Set the timeout lmit for messages in the worklist
+     */
+    this.setMsgTimeLimit = function (timeLimit) {
+        if (typeof (timeLimit) !== "number") {
+            return;
+        }
+
+        try {
+            if (s_rootLogger === this) {
+                nlogger.SetMsgTimeLimit(timeLimit);
+            }
+        }
+        catch (ex) {
+            internalLogFailure("Hard failure in setMsgTimeLimit -- " + ex.toString());
+        }
+    };
+
+    /**
+     * Set the space limit for messages in the worklist
+     */
+    this.setMsgSpaceLimit = function (spaceLimit) {
+        if (typeof (spaceLimit) !== "number") {
+            return;
+        }
+
+        try {
+            if (s_rootLogger === this) {
+                nlogger.SetMsgSpaceLimit(spaceLimit);
+            }
+        }
+        catch (ex) {
+            internalLogFailure("Hard failure in setMsgSpaceLimit -- " + ex.toString());
         }
     };
 
@@ -1475,12 +1536,12 @@ function Logger(moduleName, options) {
     };
 
     /**
-    * Explicitly allow a specifc sub-logger to control output levels
+    * Explicitly set the named sublogger to the given level (now or later)
     * @method
     * @param {string} subloggerName the name of the sub-logger to enable
     * @param {number} level the level that the sub-logger is allowed to emit at
     */
-    this.enableSubLogger = function (subloggerName, level) {
+    this.setSubLoggerLevel = function (subloggerName, level) {
         if (typeof (subloggerName) !== "string" || typeof (level) !== "number") {
             return;
         }
@@ -1489,6 +1550,10 @@ function Logger(moduleName, options) {
             if (s_rootLogger === this) {
                 s_enabledSubLoggerNames.add(subloggerName, level);
                 s_disabledSubLoggerNames.delete(subloggerName);
+
+                //
+                //TODO: update the sublogger level if it has already been created
+                //
             }
         }
         catch (ex) {
@@ -1510,6 +1575,10 @@ function Logger(moduleName, options) {
             if (s_rootLogger === this) {
                 s_enabledSubLoggerNames.delete(subloggerName);
                 s_disabledSubLoggerNames.add(subloggerName);
+
+                //
+                //TODO: update the sublogger level if it has already been created
+                //
             }
         }
         catch (ex) {

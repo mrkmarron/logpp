@@ -84,9 +84,10 @@ public:
     void SetMsgSlotsLimit(size_t limit) { this->m_msgCountLimit = limit; }
     size_t GetMsgSlotsLimit() const { return this->m_msgCountLimit; }
 
-    void AddCategory(int64_t categoryId, std::string name) { this->m_categoryNames[categoryId] = name; }
+    void AddCategory(int64_t categoryId, const std::string& name) { this->m_categoryNames[categoryId] = name; }
     const std::string& GetCategoryName(int64_t categoryId) const { return this->m_categoryNames.at(categoryId); }
 
+    void SetEnabledLoggingLevel(LoggingLevel level) { this->m_enabledLoggingLevel = level; }
     LoggingLevel GetEnabledLoggingLevel() const { return this->m_enabledLoggingLevel; }
     const std::string& GetLogLevelName(LoggingLevel level) const { return this->m_loggingLevelToNames.at(level); }
 

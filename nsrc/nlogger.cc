@@ -67,6 +67,59 @@ Napi::Value RegisterFormat(const Napi::CallbackInfo& info)
     return env.Undefined();
 }
 
+Napi::Value AddCategory(const Napi::CallbackInfo& info)
+{
+    Napi::Env env = info.Env();
+    if (info.Length() != 2 || !info[0].IsNumber() || !info[1].IsString() || info[0].As<Napi::Number>().Int64Value() < 0)
+    {
+        return env.Undefined();
+    }
+
+    s_environment.AddCategory(info[0].As<Napi::Number>().Int64Value(), info[1].As<Napi::String>().Utf8Value());
+    return env.Undefined();
+}
+
+Napi::Value GetEmitLevel(const Napi::CallbackInfo& info)
+{
+    return Napi::Number::New(info.Env(), static_cast<uint32_t>(s_environment.GetEnabledLoggingLevel()));
+}
+
+Napi::Value SetEmitLevel(const Napi::CallbackInfo& info)
+{
+    Napi::Env env = info.Env();
+    if (info.Length() != 1 || !info[0].IsNumber() || info[0].As<Napi::Number>().Int32Value() < 0)
+    {
+        return env.Undefined();
+    }
+
+    s_environment.SetEnabledLoggingLevel(static_cast<LoggingLevel>(info[0].As<Napi::Number>().Int32Value()));
+    return env.Undefined();
+}
+
+Napi::Value SetMsgTimeLimit(const Napi::CallbackInfo& info)
+{
+    Napi::Env env = info.Env();
+    if (info.Length() != 1 || !info[0].IsNumber() || info[0].As<Napi::Number>().Int64Value() < 0)
+    {
+        return env.Undefined();
+    }
+
+    s_environment.SetMsgSlotsLimit(info[0].As<Napi::Number>().Int64Value());
+    return env.Undefined();
+}
+
+Napi::Value SetMsgSlotLimit(const Napi::CallbackInfo& info)
+{
+    Napi::Env env = info.Env();
+    if (info.Length() != 1 || !info[0].IsNumber() || info[0].As<Napi::Number>().Int64Value() < 0)
+    {
+        return env.Undefined();
+    }
+
+    s_environment.SetMsgSlotsLimit(info[0].As<Napi::Number>().Int64Value());
+    return env.Undefined();
+}
+
 Napi::Value ProcessMsgs(const Napi::CallbackInfo& info)
 {
     Napi::Env env = info.Env();
@@ -241,6 +294,13 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set(Napi::String::New(env, "initializeLogger"), Napi::Function::New(env, InitializeLogger));
 
     exports.Set(Napi::String::New(env, "registerFormat"), Napi::Function::New(env, RegisterFormat));
+    exports.Set(Napi::String::New(env, "addCategory"), Napi::Function::New(env, AddCategory));
+
+    exports.Set(Napi::String::New(env, "getEmitLevel"), Napi::Function::New(env, GetEmitLevel));
+    exports.Set(Napi::String::New(env, "setEmitLevel"), Napi::Function::New(env, SetEmitLevel));
+
+    exports.Set(Napi::String::New(env, "setMsgTimeLimit"), Napi::Function::New(env, SetMsgTimeLimit));
+    exports.Set(Napi::String::New(env, "setMsgSlotLimit"), Napi::Function::New(env, SetMsgSlotLimit));
 
     exports.Set(Napi::String::New(env, "processMsgsForEmit"), Napi::Function::New(env, ProcessMsgs));
 
