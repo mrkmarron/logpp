@@ -1336,7 +1336,7 @@ function Logger(moduleName, options) {
     };
 
     /**
-     * Set the timeout lmit for messages in the worklist
+     * Set the timeout limit for messages in the worklist
      */
     this.setMsgTimeLimit = function (timeLimit) {
         if (typeof (timeLimit) !== "number") {
@@ -1519,16 +1519,27 @@ function Logger(moduleName, options) {
     * Synchronously emit as much of the in-memory and emit buffer as possible
     * @method
     */
-    this.emitLogSync = function (includeFullDetail) {
+    this.emitLogSync = function (includeFullDetail, optTimingInfo) {
         try {
-            abortAsyncWork();
-            if (includeFullDetail) {
-                s_inMemoryLog.processMessagesForWrite_HardFlush();
+            if (s_rootLogger === this) {
+                abortAsyncWork();
+
+                const timingInfo = optTimingInfo || {};
+                timingInfo.pstart = new Date();
+                if (includeFullDetail) {
+                    s_inMemoryLog.processMessagesForWrite_HardFlush();
+                }
+                else {
+                    s_inMemoryLog.processMessagesForWrite();
+                }
+                timingInfo.pend = new Date();
+
+                timingInfo.fstart = new Date();
+                const result = nlogger.formatMsgsSync(s_environment.doPrefix);
+                timingInfo.fend = new Date();
+
+                return result;
             }
-            else {
-                s_inMemoryLog.processMessagesForWrite();
-            }
-            return nlogger.formatMsgsSync(s_environment.doPrefix);
         }
         catch (ex) {
             internalLogFailure("Hard failure in emit on emitLogSync -- " + ex.toString());
@@ -1611,8 +1622,8 @@ const s_loggerMap = new Map();
 //    memoryLevel: "string",
 //    //memoryCategories: "string[]",
 //    emitLevel: "string",
-//    //bufferSizeLimit: "number",
-//    //bufferTimeLimit: "number"
+//    bufferSizeLimit: "number",
+//    bufferTimeLimit: "number"
 //    flushCount: "number"
 //    flushMode: "string" -- SYNC | ASYNC (default) | NOP
 //    asyncFlushCB: function
@@ -1677,6 +1688,9 @@ module.exports = function (name, options) {
 
     processSimpleOption(options, ropts, "doPrefix", "boolean", (optv) => true, false);
 
+    processSimpleOption(options, ropts, "bufferSizeLimit", "number", (optv) => optv >= 0, 4096);
+    processSimpleOption(options, ropts, "bufferTimeLimit", "number", (optv) => optv >= 0, 500);
+
     let logger = s_loggerMap.get(name);
     if (!logger) {
         //Get the filename of the caller
@@ -1726,6 +1740,8 @@ module.exports = function (name, options) {
             s_environment.doPrefix = ropts.doPrefix;
 
             nlogger.initializeLogger(LoggingLevels[ropts.emitLevel], os.hostname(), lfilename);
+            nlogger.setMsgSlotLimit(ropts.bufferSizeLimit);
+            nlogger.setMsgTimeLimit(ropts.bufferTimeLimit);
 
             process.on("exit", (code) => {
                 processLogOnTermination(code !== 0);

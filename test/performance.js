@@ -21,25 +21,31 @@ function basic() {
     console.error("Starting Basic Performance test...");
 
     console.error("----");
-    const bstart1 = new Date();
-    for (let i = 0; i < 50000; ++i) {
-        logpp.info(logpp.$Basic_Hello);
-    }
-    const bend1 = new Date();
-    console.error(`Total Log++ log time = ${bend1 - bstart1}`);
-
-    const bstart2 = new Date();
-    process.stdout.write(logpp.emitLogSync(true));
-    const bend2 = new Date();
-    console.error(`Total Log++ emit time = ${bend2 - bstart2}`);
-
-    console.error("----");
     const bstartc = new Date();
     for (let i = 0; i < 50000; ++i) {
         process.stdout.write("Hello World!!!\n");
     }
     const bendc = new Date();
     console.error(`Total console time = ${bendc - bstartc}`);
+
+    console.error("----");
+    const bstart1 = new Date();
+    for (let i = 0; i < 50000; ++i) {
+        logpp.info(logpp.$Basic_Hello);
+    }
+    const bend1 = new Date();
+    console.error(`Total Log++ log time (blocking) = ${bend1 - bstart1}`);
+
+    const btimingInfo = {};
+    const boutput = logpp.emitLogSync(true, btimingInfo);
+
+    const bstart2 = new Date();
+    process.stdout.write(boutput);
+    const bend2 = new Date();
+
+    console.error(`Total Log++ process time (blocking) = ${btimingInfo.pend - btimingInfo.pstart}`);
+    console.error(`Total Log++ format time (background) = ${btimingInfo.fend - btimingInfo.fstart}`);
+    console.error(`Total Log++ write time = ${bend2 - bstart2}`);
 
     console.error("----");
     const bstartp = new Date();
@@ -59,6 +65,14 @@ function compound() {
     const app = "basic";
 
     console.error("----");
+    const cstartc = new Date();
+    for (let i = 0; i < 50000; ++i) {
+        process.stdout.write("Hello at " + (new Date()).toISOString() + " from " + app + " with " + JSON.stringify(["iter", i]) + " " + (i - 5) + " -- " + (i % 2 === 0 ? "ok" : "skip") + "\n");
+    }
+    const cendc = new Date();
+    console.error(`Total console time = ${cendc - cstartc}`);
+
+    console.error("----");
     const cstart1 = new Date();
     for (let i = 0; i < 50000; ++i) {
         logpp.info(logpp.$Compound_Hello, ["iter", i], i - 5, i % 2 === 0 ? "ok" : "skip");
@@ -66,18 +80,16 @@ function compound() {
     const cend1 = new Date();
     console.error(`Total Log++ log time = ${cend1 - cstart1}`);
 
-    const cstart2 = new Date();
-    process.stdout.write(logpp.emitLogSync(true));
-    const cend2 = new Date();
-    console.error(`Total Log++ emit time = ${cend2 - cstart2}`);
+    const ctimingInfo = {};
+    const coutput = logpp.emitLogSync(true, ctimingInfo);
 
-    console.error("----");
-    const cstartc = new Date();
-    for (let i = 0; i < 50000; ++i) {
-        process.stdout.write("Hello at " + (new Date()).toISOString() + " from " + app + " with " + JSON.stringify(["iter", i]) + " " + (i - 5) + " -- " + (i % 2 === 0 ? "ok" : "skip") + "\n");
-    }
-    const cendc = new Date();
-    console.error(`Total console time = ${cendc - cstartc}`);
+    const cstart2 = new Date();
+    process.stdout.write(coutput);
+    const cend2 = new Date();
+
+    console.error(`Total Log++ process time (blocking) = ${ctimingInfo.pend - ctimingInfo.pstart}`);
+    console.error(`Total Log++ format time (background) = ${ctimingInfo.fend - ctimingInfo.fstart}`);
+    console.error(`Total Log++ write time = ${cend2 - cstart2}`);
 
     console.error("----");
     const cstartp = new Date();
