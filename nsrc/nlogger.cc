@@ -238,7 +238,7 @@ Napi::Value FormatMsgsSync(const Napi::CallbackInfo& info)
         block = s_environment.GetNextFormatBlock();
     }
 
-    return Napi::String::New(env, formatter.getOutputBuffer());
+    return Napi::String::New(env, formatter.getOutputBuffer(), formatter.getOutputBufferSize());
 }
 
 Napi::Value FormatMsgsAsync(const Napi::CallbackInfo& info)

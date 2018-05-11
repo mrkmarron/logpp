@@ -2,7 +2,7 @@
 
 const os = require("os");
 
-//const nlogger = require("C:\\Code\\logpp\\build\\Debug\\nlogger.node");
+//const nlogger = require("C:\\Chakra\\logpp\\build\\Debug\\nlogger.node");
 const nlogger = require("bindings")("nlogger.node");
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -60,8 +60,8 @@ function sanitizeLogLevel(level) {
  */
 const ExpandDefaults = {
     Depth: 2,
-    ObjectLength: 1024,
-    ArrayLength: 128
+    ObjectLength: 32,
+    ArrayLength: 16
 };
 
 /**
@@ -249,8 +249,8 @@ const s_globalenv = {
 //%{p:n} -- a number
 //%{p:s} -- a string
 //%{p:d-xxx} -- a date formatted as iso, utc, or local
-//%{p:o<d,l>} -- an object expanded up to d levels (default is 2) at most l items in any level (default is * for objects 128 for arrays)
-//%{p:a<d,l>} -- an array expanded up to d levels (default is 2) at most l items in any level (default is * for objects 128 for arrays)
+//%{p:o<d,l>} -- an object expanded up to d levels (default is 2) at most l items in any level (default is 32 for objects 16 for arrays)
+//%{p:a<d,l>} -- an array expanded up to d levels (default is 2) at most l items in any level (default is 32 for objects 16 for arrays)
 //%{p:g} -- general value (general format applied -- no array expansion, object depth of 2)
 //%% -- a literal %
 ////

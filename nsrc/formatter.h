@@ -1,79 +1,137 @@
 #pragma once
 
+#define INITIAL_FORMAT_BUFFER_SIZE 1024
+
 //This class controls the formatting
 class Formatter
 {
 private:
-    std::ostringstream m_output;
+    char* m_buff;
+    size_t m_max;
+    size_t m_curr;
+
+    template<size_t N>
+    void ensure_fixed()
+    {
+        if (this->m_curr + N >= this->m_max)
+        {
+            this->m_max *= 2;
+            this->m_buff = (char*)realloc(this->m_buff, this->m_max);
+        }
+    }
+
+    void ensure(size_t extra)
+    {
+        if (this->m_curr + extra >= this->m_max)
+        {
+            this->m_max *= 2;
+            this->m_buff = (char*)realloc(this->m_buff, this->m_max);
+        }
+    }
 
 public:
-    std::string getOutputBuffer() const { return this->m_output.str(); }
+    Formatter() :
+        m_buff((char*)malloc(INITIAL_FORMAT_BUFFER_SIZE)), m_max(INITIAL_FORMAT_BUFFER_SIZE), m_curr(0)
+    {
+        ;
+    }
+
+    size_t getOutputBufferSize() const { return this->m_curr; }
+    char* getOutputBuffer() const { return this->m_buff; }
+
     void reset()
     {
-        this->m_output.clear();
-        this->m_output.str("");
+        this->m_buff = (char*)malloc(INITIAL_FORMAT_BUFFER_SIZE);
+        this->m_max = INITIAL_FORMAT_BUFFER_SIZE;
+        this->m_curr = 0;
     }
 
     void emitLiteralChar(char c)
     {
-        this->m_output << c;
+        this->ensure(1);
+        this->m_buff[this->m_curr++] = c;
     }
 
-    void emitLiteralString(const char* str)
+    template<size_t N>
+    void emitLiteralString(const char(&str)[N])
     {
-        this->m_output << str;
+        this->ensure(N);
+        memcpy_s(this->m_buff + this->m_curr, N, &str, N);
+
+        this->m_curr += N - 1;
     }
 
     void emitLiteralString(const std::string& str)
     {
-        this->m_output << str;
+        this->ensure(str.length());
+        memcpy_s(this->m_buff + this->m_curr, str.length(), str.c_str(), str.length());
+
+        this->m_curr += str.length();
     }
 
     void emitJsString(const std::string& str)
     {
-        this->m_output << "\"";
+        this->emitLiteralChar('"');
 
         for (auto c = str.cbegin(); c != str.cend(); c++) {
+            this->ensure_fixed<6>();
+
             switch (*c) {
             case '"':
-                this->m_output << "\\\"";
+                this->m_buff[this->m_curr] ='\\';
+                this->m_buff[this->m_curr++] = '"';
                 break;
             case '\\':
-                this->m_output << "\\\\";
+                this->m_buff[this->m_curr++] = '\\';
+                this->m_buff[this->m_curr++] = '\\';
                 break;
             case '\b':
-                this->m_output << "\\b";
+                this->m_buff[this->m_curr++] = '\\';
+                this->m_buff[this->m_curr++] = 'b';
                 break;
             case '\f':
-                this->m_output << "\\f";
+                this->m_buff[this->m_curr++] = '\\';
+                this->m_buff[this->m_curr++] = 'f';
                 break;
             case '\n':
-                this->m_output << "\\n";
+                this->m_buff[this->m_curr++] = '\\';
+                this->m_buff[this->m_curr++] = 'n';
                 break;
             case '\r':
-                this->m_output << "\\r";
+                this->m_buff[this->m_curr++] = '\\';
+                this->m_buff[this->m_curr++] = 'r';
                 break;
             case '\t':
-                this->m_output << "\\t";
+                this->m_buff[this->m_curr++] = '\\';
+                this->m_buff[this->m_curr++] = 't';
                 break;
             default:
-                if ('\x00' <= *c && *c <= '\x1f')
+                if (*c <= 127)
                 {
-                    this->m_output << "\\u" << std::hex << std::setw(4) << std::setfill('0') << (int)*c;
+                    this->m_buff[this->m_curr++] = *c;
                 }
                 else
                 {
-                    this->m_output << *c;
+                    //
+                    //TODO: this encoding
+                    //
+                    this->m_buff[this->m_curr++] = '\\';
+                    this->m_buff[this->m_curr++] = 'u';
+                    this->m_buff[this->m_curr++] = '0';
+                    this->m_buff[this->m_curr++] = '0';
+                    this->m_buff[this->m_curr++] = '0';
+                    this->m_buff[this->m_curr++] = '0';
                 }
             }
         }
 
-        this->m_output << "\"";
+        this->emitLiteralChar('"');
     }
 
     void emitJsInt(int64_t val)
     {
-        this->m_output << val;
+        this->ensure(32);
+        this->m_curr += sprintf_s(this->m_buff + this->m_curr, 32, "%I64i", val);
     }
 
     void emitJsNumber(double val)
@@ -92,11 +150,17 @@ public:
         }
         else if (floor(val) == val)
         {
-            this->m_output << (int64_t)val;
+            this->ensure(32);
+            this->m_curr += sprintf_s(this->m_buff + this->m_curr, 32, "%I64i", static_cast<int64_t>(val));
         }
         else
         {
-            this->m_output << val;
+            this->ensure(32);
+            this->m_curr += sprintf_s(this->m_buff + this->m_curr, 32, "%f", val);
+            while (this->m_buff[this->m_curr - 1] == '0')
+            {
+                this->m_curr--;
+            }
         }
     }
 
@@ -104,32 +168,34 @@ public:
     {
         if (quotes)
         {
-            this->m_output << '"';
+            this->emitLiteralChar('"');
         }
 
         std::time_t tval = dval / 1000;
         uint32_t msval = dval % 1000;
 
+        this->ensure(128);
         if (fmt == FormatStringEnum::DATEUTC)
         {
             auto utctime = std::gmtime(&tval);
-            this->m_output << std::put_time(utctime, "%a, %d %b %Y %H:%M:%S GMT");
+            this->m_curr += strftime(this->m_buff + this->m_curr, 128, "%a, %d %b %Y %H:%M:%S GMT", utctime);
         }
         else if (fmt == FormatStringEnum::DATELOCAL)
         {
             auto localtime = std::localtime(&tval);
-            this->m_output << std::put_time(localtime, "%a %b %d %Y %H:%M:%S GMT%z (%Z)");
+            this->m_curr += strftime(this->m_buff + this->m_curr, 128, "%a %b %d %Y %H:%M:%S GMT%z (%Z)", localtime);
         }
         else
         {
             //ISO
             auto utctime = std::gmtime(&tval);
-            this->m_output << std::put_time(utctime, "%Y-%m-%dT%H:%M:%S") << "." << std::setw(4) << std::setfill('0') << msval << "Z";
+            this->m_curr += strftime(this->m_buff + this->m_curr, 96, "%Y-%m-%dT%H:%M:%S", utctime);
+            this->m_curr += sprintf_s(this->m_buff + this->m_curr, 32, ".%03dZ", msval);
         }
 
         if (quotes)
         {
-            this->m_output << '"';
+            this->emitLiteralChar('"');
         }
     }
 

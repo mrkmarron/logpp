@@ -48,7 +48,14 @@ private:
             formatter->emitLiteralString("null");
             break;
         case LogEntryTag::JsVarValue_Bool:
-            formatter->emitLiteralString(this->getCurrentDataAsBool() ? "true" : "false");
+            if (this->getCurrentDataAsBool())
+            {
+                formatter->emitLiteralString("true");
+            }
+            else
+            {
+                formatter->emitLiteralString("false");
+            }
             break;
         case LogEntryTag::JsVarValue_Number:
             formatter->emitJsNumber(this->getCurrentDataAsFloat());
@@ -244,7 +251,14 @@ public:
                 {
                     switch (fentry.fenum) {
                     case FormatStringEnum::BOOL:
-                        formatter->emitLiteralString(this->getCurrentDataAsBool() ? "true" : "false");
+                        if (this->getCurrentDataAsBool())
+                        {
+                            formatter->emitLiteralString("true");
+                        }
+                        else
+                        {
+                            formatter->emitLiteralString("false");
+                        }
                         break;
                     case FormatStringEnum::NUMBER:
                         formatter->emitJsNumber(this->getCurrentDataAsFloat());

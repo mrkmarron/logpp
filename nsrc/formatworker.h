@@ -38,7 +38,7 @@ public:
         Napi::HandleScope scope(Env());
         this->m_lenv->ClearAsyncFormatWorker();
 
-        Callback().Call({ Env().Undefined(), Napi::String::New(Env(), this->m_formatter->getOutputBuffer()) });
+        Callback().Call({ Env().Undefined(), Napi::String::New(Env(), this->m_formatter->getOutputBuffer(), this->m_formatter->getOutputBufferSize()) });
     }
 
     virtual void OnError(const Napi::Error& e) override
