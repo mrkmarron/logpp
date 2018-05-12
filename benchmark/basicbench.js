@@ -59,6 +59,6 @@ var run = bench([
 ], 10000);
 
 console.log("----");
-console.log("Running InterpolateMulti info('hello world -- logger')");
+console.log("Running InterpolateBasic info('hello world -- logger')");
 
 run(run);
