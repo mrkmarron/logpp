@@ -1179,7 +1179,10 @@ function asyncFlushCallback() {
             else {
             }
 
-            if (s_environment.flushTarget === "console") {
+            if (err) {
+                console.error("Failed format and data lost -- " + err.toString());
+            }
+            else if (s_environment.flushTarget === "console") {
                 process.stdout.write(result);
             }
             else if (s_environment.flushTarget === "stream") {

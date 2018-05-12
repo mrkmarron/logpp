@@ -46,6 +46,6 @@ public:
         Napi::HandleScope scope(Env());
         this->m_lenv->ClearAsyncFormatWorker();
 
-        this->m_lenv->AddBlockFromFormatterAbort(this->m_block);
+        Callback().Call({ e.Value(), Env().Undefined() });
     }
 };
