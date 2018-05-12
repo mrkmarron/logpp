@@ -2,7 +2,7 @@
 
 const os = require("os");
 
-//const nlogger = require("C:\\Chakra\\logpp\\build\\Debug\\nlogger.node");
+//const nlogger = require("C:\\Code\\logpp\\build\\Release\\nlogger.node");
 const nlogger = require("bindings")("nlogger.node");
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1140,6 +1140,16 @@ function syncFlushAction() {
         if (s_environment.flushTarget === "console") {
             process.stdout.write(output);
         }
+        else if (s_environment.flushTarget === "stream") {
+            try {
+                s_environment.stream.write(output);
+            }
+            catch (wex) {
+                s_environment.flushTarget = "console";
+                console.error("Failed stream write -- " + wex.toString());
+                process.stdout.write(output);
+            }
+        }
         else {
             //
             //TODO: should be flushCBSync here
@@ -1171,6 +1181,16 @@ function asyncFlushCallback() {
 
             if (s_environment.flushTarget === "console") {
                 process.stdout.write(result);
+            }
+            else if (s_environment.flushTarget === "stream") {
+                try {
+                    s_environment.stream.write(result);
+                }
+                catch (wex) {
+                    s_environment.flushTarget = "console";
+                    console.error("Failed stream write -- " + wex.toString());
+                    process.stdout.write(result);
+                }
             }
             else {
                 //
@@ -1675,15 +1695,24 @@ module.exports = function (name, options) {
 
     if (debuggerAttached) {
         processSimpleOption(options, ropts, "flushCount", "number", (optv) => optv >= 0, 0);
-        processSimpleOption(options, ropts, "flushTarget", "string", (optv) => /console|callback/.test(optv), "console");
+        processSimpleOption(options, ropts, "flushTarget", "string", (optv) => /console|stream|callback/.test(optv), "console");
         processSimpleOption(options, ropts, "flushMode", "string", (optv) => /SYNC|ASYNC|NOP|DISCARD/.test(optv), "SYNC");
         processSimpleOption(options, ropts, "flushCallback", "function", (optv) => true, () => { });
     }
     else {
         processSimpleOption(options, ropts, "flushCount", "number", (optv) => optv >= 0, MemoryMsgBlockInitSize / 4);
-        processSimpleOption(options, ropts, "flushTarget", "string", (optv) => /console|callback/.test(optv), "console");
+        processSimpleOption(options, ropts, "flushTarget", "string", (optv) => /console|stream|callback/.test(optv), "console");
         processSimpleOption(options, ropts, "flushMode", "string", (optv) => /SYNC|ASYNC|NOP|DISCARD/.test(optv), "ASYNC");
         processSimpleOption(options, ropts, "flushCallback", "function", (optv) => true, () => { });
+    }
+
+    if (ropts.flushTarget === "stream") {
+        if (options.stream === undefined) {
+            ropts.flushMode = "console";
+        }
+        else {
+            ropts.stream = options.stream;
+        }
     }
 
     processSimpleOption(options, ropts, "doPrefix", "boolean", (optv) => true, false);
@@ -1738,6 +1767,10 @@ module.exports = function (name, options) {
             s_environment.flushTarget = ropts.flushTarget;
             s_environment.flushCB = ropts.flushCB;
             s_environment.doPrefix = ropts.doPrefix;
+
+            if (ropts.stream !== undefined) {
+                s_environment.stream = ropts.stream;
+            }
 
             nlogger.initializeLogger(LoggingLevels[ropts.emitLevel], os.hostname(), lfilename);
             nlogger.setMsgSlotLimit(ropts.bufferSizeLimit);

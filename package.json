@@ -14,11 +14,15 @@
         "eslint": "4.18.1",
         "eslint-plugin-markdown": "1.0.0-beta.6",
         "chalk": "2.3.2",
-        "pino": "*"
+        "fastbench": "*",
+        "pino": "*",
+        "winston": "*",
+        "bunyan": "*",
+        "debug": "*"
     },
     "scripts": {
         "test": "node test/basic.js",
-        "benchmark": "node test/performance.js > test/perfout.txt"
+        "benchmark": "node benchmark/basicbench.js"
     },
     "main": "logger.js"
 }
