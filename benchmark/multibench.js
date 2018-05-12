@@ -14,7 +14,7 @@ var dest = fs.createWriteStream(path.join(__dirname, "performanceout.txt"));
 var plogExtreme = require("pino")({ extreme: true }, dest);
 
 var logpp = require("../src/logger")("basic", { flushTarget: "stream", stream: dest });
-logpp.addFormat("hello", "#host #wallclock #timestamp hello world -- logpp");
+logpp.addFormat("hello2", "#host #wallclock #timestamp hello %{0:s} %{1:o} %{2:n}");
 
 process.env.DEBUG = "dlog";
 var debug = require("debug");
@@ -32,33 +32,34 @@ var blog = bunyan.createLogger({
 });
 
 var run = bench([
-    function Basic_Bunyan(cb) {
+    function InterpolateMulti_Bunyan(cb) {
         for (var i = 0; i < max; i++) {
-            blog.info("hello world -- bunyan");
+            blog.info("hello %s %j %d", "world", { obj: true }, 4);
         }
         setImmediate(cb);
     },
-    function Basic_Debug(cb) {
+    function InterpolateMulti_Debug(cb) {
         for (var i = 0; i < max; i++) {
-            dlog("hello world -- debug");
+            dlog("hello " + "world " + JSON.stringify({ obj: true }) + "4");
         }
         setImmediate(cb);
     },
-    function Basic_PinoExtreme(cb) {
+    function InterpolateMulti_PinoExtreme(cb) {
         for (var i = 0; i < max; i++) {
-            plogExtreme.info("hello world -- pino");
+            plogExtreme.info("hello %s %j %d", "world", { obj: true }, 4);
         }
         setImmediate(cb);
     },
-    function Basic_Logpp(cb) {
+    function InterpolateMulti_Logpp(cb) {
         for (var i = 0; i < max; i++) {
-            logpp.info(logpp.$hello);
+            logpp.info(logpp.$hello2, "world", { obj: true }, 4);
         }
         setImmediate(cb);
     }
 ], 10000);
 
 console.log("----");
-console.log("Running InterpolateMulti info('hello world -- logger')");
+console.log("Running InterpolateMulti info('hello %s %j %d', 'world', { obj: true }, 4)");
+
 
 run(run);

@@ -22,7 +22,7 @@
     },
     "scripts": {
         "test": "node test/basic.js",
-        "benchmark": "node benchmark/basicbench.js"
+        "benchmark": "node benchmark/basicbench.js && node benchmark/interpolatebench.js && node benchmark/multibench.js && node benchmark/moremultibench.js"
     },
     "main": "logger.js"
 }

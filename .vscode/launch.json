@@ -9,7 +9,7 @@
             "request": "launch",
             "name": "Launch Program",
             "cwd": "${workspaceFolder}",
-            "program": "${workspaceFolder}\\benchmark\\basicbench.js"
+            "program": "${workspaceFolder}\\benchmark\\largebench.js"
         }
     ]
 }
