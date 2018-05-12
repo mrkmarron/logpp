@@ -256,7 +256,7 @@ Napi::Value FormatMsgsAsync(const Napi::CallbackInfo& info)
     std::shared_ptr<LogProcessingBlock> block = s_environment.GetNextFormatBlock();
     if (block == nullptr)
     {
-        callback.Call({ env.Undefined(), env.Undefined() });
+        callback.Call({ env.Undefined(), Napi::String::New(env, "") });
     }
     else
     {
