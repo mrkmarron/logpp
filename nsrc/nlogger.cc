@@ -96,6 +96,11 @@ Napi::Value SetEmitLevel(const Napi::CallbackInfo& info)
     return env.Undefined();
 }
 
+Napi::Value GetMsgTimeLimit(const Napi::CallbackInfo& info)
+{
+    return Napi::Number::New(info.Env(), static_cast<double>(s_environment.GetMsgTimeLimit()));
+}
+
 Napi::Value SetMsgTimeLimit(const Napi::CallbackInfo& info)
 {
     Napi::Env env = info.Env();
@@ -106,6 +111,11 @@ Napi::Value SetMsgTimeLimit(const Napi::CallbackInfo& info)
 
     s_environment.SetMsgSlotsLimit(info[0].As<Napi::Number>().Int64Value());
     return env.Undefined();
+}
+
+Napi::Value GetMsgSlotLimit(const Napi::CallbackInfo& info)
+{
+    return Napi::Number::New(info.Env(), static_cast<double>(s_environment.GetMsgSlotsLimit()));
 }
 
 Napi::Value SetMsgSlotLimit(const Napi::CallbackInfo& info)
@@ -299,7 +309,10 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set(Napi::String::New(env, "getEmitLevel"), Napi::Function::New(env, GetEmitLevel));
     exports.Set(Napi::String::New(env, "setEmitLevel"), Napi::Function::New(env, SetEmitLevel));
 
+    exports.Set(Napi::String::New(env, "getMsgTimeLimit"), Napi::Function::New(env, GetMsgTimeLimit));
     exports.Set(Napi::String::New(env, "setMsgTimeLimit"), Napi::Function::New(env, SetMsgTimeLimit));
+
+    exports.Set(Napi::String::New(env, "getMsgSlotLimit"), Napi::Function::New(env, GetMsgSlotLimit));
     exports.Set(Napi::String::New(env, "setMsgSlotLimit"), Napi::Function::New(env, SetMsgSlotLimit));
 
     exports.Set(Napi::String::New(env, "processMsgsForEmit"), Napi::Function::New(env, ProcessMsgs));

@@ -8,7 +8,7 @@ const logpp = require("../src/logger")("basic", { flushMode: "NOP" });
 function basicTestRunner(nextcb) {
     function runSingleTest(test) {
         logpp.info(logpp[test.fmt], ...test.arg);
-        return logpp.emitLogSync(true).trim();
+        return logpp.emitLogSync(true, true).trim();
     }
 
     let basictestsRun = 0;

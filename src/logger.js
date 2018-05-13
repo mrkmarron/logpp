@@ -6,6 +6,31 @@ const os = require("os");
 const nlogger = require("bindings")("nlogger.node");
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
+//A diagnostics logger for our logger
+function diaglog_disabled(activity, payload) {
+
+}
+
+let diaglog_wstream = require("fs").createWriteStream("C:\\Users\\marron\\Desktop\\logtrace.txt");
+function diaglog_enabled(activity, payload) {
+    let pls = "";
+    try {
+        if (payload !== undefined) {
+            pls = JSON.stringify(payload);
+        }
+    }
+    catch (ex) {
+        //just drop payload
+    }
+
+    const output = activity + " -- " + pls + " @ " + (new Date()).toISOString() + "\n";
+    //console.log(output);
+    diaglog_wstream.write(output);
+}
+
+let diaglog = diaglog_enabled;
+
+/////////////////////////////////////////////////////////////////////////////////////////////////
 //Start off with a bunch of costant definitions.
 //In a number of cases we don't actually define here. Instead we have a comment and literal value which
 //  we actually put in the code where needed (so no need to load in bytecode and very obvious for JIT).
@@ -179,8 +204,8 @@ const LogEntryTags = {
     LengthBoundArray: 0x29
 };
 
-function internalLogFailure(msg) {
-    console.error(msg);
+function internalLogFailure(msg, ex) {
+    diaglog("internalLogFailure", { msg: msg, ex: ex.toString() });
 
     //Something went really wrong and we will probably continue to fail.
     //This also means we lost visibility into the health of the real process.
@@ -585,6 +610,8 @@ function extractMsgFormat(fmtName, fmtId, fmtInfo) {
 const MemoryMsgBlockSizes = [256, 512, 1024, 2048, 4096, 8192, 16384];
 const MemoryMsgBlockInitSize = 256;
 
+let s_blockIdCtr = 0;
+
 //internal function for allocating a block
 function createMemoryMsgBlock(previousBlock, sizespec) {
     let blocksize = MemoryMsgBlockInitSize;
@@ -593,6 +620,7 @@ function createMemoryMsgBlock(previousBlock, sizespec) {
         blocksize = MemoryMsgBlockSizes[nextSizeTry === MemoryMsgBlockSizes.length ? MemoryMsgBlockSizes.length - 1 : nextSizeTry];
     }
 
+    diaglog("createMemoryMsgBlock", { sizespec: sizespec, blocksize: blocksize, blockId: s_blockIdCtr });
     const nblock = {
         spos: 0,
         epos: 0,
@@ -602,7 +630,8 @@ function createMemoryMsgBlock(previousBlock, sizespec) {
         stringMap: new Map(),
         next: null,
         blocksize: blocksize,
-        previous: previousBlock
+        previous: previousBlock,
+        blockId: s_blockIdCtr++
     };
 
     if (previousBlock) {
@@ -1077,14 +1106,24 @@ InMemoryLog.prototype.processMessagesForWrite = function () {
             return false;
         }
 
+        diaglog("InMemoryLog.processMessagesForWrite.processing", { blockId: this.head.blockId, msgCount: msgCount });
+        const opos = this.head.spos;
         const complete = nlogger.processMsgsForEmit(this.head, newblock, msgCount, Date.now(), false);
 
+        diaglog("InMemoryLog.processMessagesForWrite.complete", { spos: this.head.spos, epos: this.head.epos, opos: opos });
         if (this.head.spos === this.head.epos) {
+            diaglog("InMemoryLog.processMessagesForWrite.remove", { blockId: this.head.blockId });
             this.removeHeadBlock();
         }
         newblock = false;
         keepProcessing = !complete;
     } while (keepProcessing);
+
+    let msgCountf = 0;
+        for (let cblock = this.head; cblock !== null; cblock = cblock.next) {
+            msgCountf += cblock.epos - cblock.spos;
+        }
+        diaglog("InMemoryLog.processMessagesForWrite.finalsize", { processCount: msgCountf });
 
     return (this.head.spos !== this.head.epos) || (this.head.next != null);
 };
@@ -1093,7 +1132,7 @@ InMemoryLog.prototype.processMessagesForWrite = function () {
  * Filter out all the msgs that we want to drop when writing to disk and copy them to the pending write list -- process all records.
  * @method
  */
-InMemoryLog.prototype.processMessagesForWrite_HardFlush = function () {
+InMemoryLog.prototype.processMessagesForWrite_FullFlush = function (fulldetail) {
     let msgCount = 0;
     for (let cblock = this.head; cblock !== null; cblock = cblock.next) {
         msgCount += cblock.epos - cblock.spos;
@@ -1106,9 +1145,11 @@ InMemoryLog.prototype.processMessagesForWrite_HardFlush = function () {
     let keepProcessing = true;
     let newblock = true;
     do {
-        nlogger.processMsgsForEmit(this.head, newblock, msgCount, Date.now(), true);
+        diaglog("InMemoryLog.processMessagesForWrite_FullFlush.processing", { blockId: this.head.blockId });
+        nlogger.processMsgsForEmit(this.head, newblock, msgCount, Date.now(), fulldetail);
 
         if (this.head.spos === this.head.epos) {
+            diaglog("InMemoryLog.processMessagesForWrite_FullFlush.remove", { blockId: this.head.blockId });
             this.removeHeadBlock();
         }
         newblock = false;
@@ -1132,11 +1173,16 @@ function doMsgLog_COND_NOP(cond, fmt, ...args) { }
 
 function syncFlushAction() {
     if (s_inMemoryLog.getWriteCount() > s_environment.flushCount) {
+        diaglog("syncFlushAction", { writeCount: s_inMemoryLog.getWriteCount(), flushCount: s_environment.flushCount });
+
         s_inMemoryLog.resetWriteCount();
 
         this.processMessagesForWrite();
+
+        diaglog("syncFlushAction.formatMsgsSync");
         const output = nlogger.formatMsgsSync();
 
+        diaglog("syncFlushAction.output", { target: s_environment.flushTarget });
         if (s_environment.flushTarget === "console") {
             process.stdout.write(output);
         }
@@ -1145,8 +1191,8 @@ function syncFlushAction() {
                 s_environment.stream.write(output);
             }
             catch (wex) {
+                diaglog("syncFlushAction.failedStreamWrite", { ex: wex.toString() });
                 s_environment.flushTarget = "console";
-                console.error("Failed stream write -- " + wex.toString());
                 process.stdout.write(output);
             }
         }
@@ -1163,61 +1209,87 @@ let s_formatPending = false;
 
 function asyncFlushCallback() {
     try {
-        s_flushTimeout = undefined;
+        diaglog("asyncFlushCallback", { flushtTimeout: s_flushTimeout, formatPending: s_formatPending });
+
         s_formatPending = true;
 
+        if (s_flushTimeout !== undefined) {
+            clearTimeout(s_flushTimeout);
+        }
+        s_flushTimeout = undefined;
+
         const hasmore = s_inMemoryLog.processMessagesForWrite();
+        diaglog("asyncFlushCallback.process", { hasmore: hasmore });
+
         nlogger.formatMsgsAsync((err, result) => {
+            diaglog("formatMsgsAsync.callback", { flushTimeout: s_flushTimeout, formatPending: s_formatPending });
+
             s_formatPending = false;
 
             if (nlogger.hasWorkPending()) {
+                diaglog("formatMsgsAsync.callback.pending", { hasWorkPending: "hasWorkPending" });
                 s_flushTimeout = setTimeout(asyncFlushCallback, 0);
             }
             else if (hasmore) {
+                diaglog("formatMsgsAsync.callback.ms", { hasmore: hasmore });
                 s_flushTimeout = setTimeout(asyncFlushCallback, 250);
             }
             else {
+                diaglog("formatMsgsAsync.callback.nop");
             }
 
             if (err) {
-                console.error("Failed format and data lost -- " + err.toString());
-            }
-            else if (s_environment.flushTarget === "console") {
-                process.stdout.write(result);
-            }
-            else if (s_environment.flushTarget === "stream") {
-                try {
-                    s_environment.stream.write(result);
-                }
-                catch (wex) {
-                    s_environment.flushTarget = "console";
-                    console.error("Failed stream write -- " + wex.toString());
-                    process.stdout.write(result);
-                }
+                diaglog("formatMsgsAsync.callback.err", { error: err.toString() });
             }
             else {
-                //
-                //TODO: we will need to have a flushCB, a flushCBSync, and a abortFlushCB to handle everything
-                //
-                s_environment.flushCB(err, result);
+                diaglog("formatMsgsAsync.callback.ok", { flushTarget: s_environment.flushTarget, resultSize: result.length });
+
+                if (s_environment.flushTarget === "console") {
+                    process.stdout.write(result);
+                }
+                else if (s_environment.flushTarget === "stream") {
+                    try {
+                        s_environment.stream.write(result);
+                    }
+                    catch (wex) {
+                        diaglog("formatMsgsAsync.failedStreamWrite", { ex: wex.toString() });
+
+                        s_environment.flushTarget = "console";
+                        process.stdout.write(result);
+                    }
+                }
+                else {
+                    //
+                    //TODO: we will need to have a flushCB, a flushCBSync, and a abortFlushCB to handle everything
+                    //
+                    s_environment.flushCB(err, result);
+                }
             }
         }, s_environment.doPrefix);
     }
     catch (ex) {
-        internalLogFailure("Hard failure in asyncFlushCallback -- " + ex.toString());
+        internalLogFailure("Hard failure in asyncFlushCallback", ex);
     }
 }
 
 function asyncFlushAction() {
     if (s_inMemoryLog.getWriteCount() > s_environment.flushCount) {
+        diaglog("asyncFlushAction", { writeCount: s_inMemoryLog.getWriteCount(), flushCount: s_environment.flushCount, flushTimeout: s_flushTimeout, formatPending: s_formatPending });
+
         s_inMemoryLog.resetWriteCount();
 
         if (s_formatPending) {
-            //don't mess around with async races and let it schedule when it is done
+            //don't mess around with async races and let it schedule when it is done -- but if we have lots of data process some here
+            if (s_inMemoryLog.count() > nlogger.getMsgSlotLimit() * 4) {
+                diaglog("asyncFlushAction.reducePressureFlush", { currentCount: s_inMemoryLog.count(), targetCount: nlogger.getMsgSlotLimit() });
+                s_inMemoryLog.processMessagesForWrite();
+            }
+
             return;
         }
 
         if (s_flushTimeout !== undefined) {
+            diaglog("asyncFlushAction.cleartimeout");
             clearTimeout(s_flushTimeout);
         }
 
@@ -1230,12 +1302,15 @@ function asyncFlushAction() {
         }
 
         if (s_flushTimeout === undefined) {
+            diaglog("asyncFlushAction.setTimeout");
             s_flushTimeout = setTimeout(asyncFlushCallback, 500);
         }
     }
 }
 
 function abortAsyncWork() {
+    diaglog("abortAsyncWork", { formatPending: s_formatPending, flushTimeout: s_flushTimeout });
+
     if (s_flushTimeout !== undefined) {
         clearTimeout(s_flushTimeout);
         s_flushTimeout = undefined;
@@ -1285,6 +1360,8 @@ function Logger(moduleName, options) {
 
         try {
             let slogLevel = sanitizeLogLevel(logLevel);
+            diaglog("setLoggingLevel", { level: slogLevel });
+
             if (s_rootLogger !== this) {
                 if (s_disabledSubLoggerNames.has(moduleName)) {
                     slogLevel = LoggingLevels.OFF;
@@ -1293,14 +1370,17 @@ function Logger(moduleName, options) {
                     const enabledlevel = s_enabledSubLoggerNames.get(moduleName);
                     slogLevel = enabledlevel !== undefined ? enabledlevel : s_environment.defaultSubLoggerLevel;
                 }
+
+                diaglog("setLoggingLevel.sublogger", { level: slogLevel });
             }
 
             if (m_memoryLogLevel !== slogLevel) {
+                diaglog("setLoggingLevel.update");
                 updateLoggingFunctions(this, m_memoryLogLevel);
             }
         }
         catch (ex) {
-            internalLogFailure("Hard failure in setLoggingLevel -- " + ex.toString());
+            internalLogFailure("Hard failure in setLoggingLevel", ex);
         }
     };
 
@@ -1319,13 +1399,17 @@ function Logger(moduleName, options) {
             }
 
             const slogLevel = sanitizeLogLevel(logLevel);
+            diaglog("setEmitLevel", { level: slogLevel });
+
             if (nlogger.getEmitLevel() !== slogLevel) {
-                s_inMemoryLog.processMessagesForWrite_HardFlush();
+                diaglog("setLoggingLevel.update");
+
+                s_inMemoryLog.processMessagesForWrite_FullFlush(false);
                 nlogger.setEmitLevel(slogLevel);
             }
         }
         catch (ex) {
-            internalLogFailure("Hard failure in setLoggingLevel -- " + ex.toString());
+            internalLogFailure("Hard failure in setLoggingLevel", ex);
         }
     };
 
@@ -1351,10 +1435,12 @@ function Logger(moduleName, options) {
     this.addFormat = function (fmtName, fmtInfo) {
         try {
             this["$" + fmtName] = extractMsgFormat(fmtName, s_fmtMap.length, fmtInfo);
+            return true;
         }
         catch (ex) {
             //This is a "safe" failure so just warn and continue
-            console.error("Failure adding format -- " + ex.toString());
+            diaglog("addFormat.failure", { fmtName: fmtName, fmtInfo: fmtInfo, ex: ex.toString() });
+            return false;
         }
     };
 
@@ -1368,11 +1454,12 @@ function Logger(moduleName, options) {
 
         try {
             if (s_rootLogger === this) {
+                diaglog("setMsgTimeLimit.update");
                 nlogger.SetMsgTimeLimit(timeLimit);
             }
         }
         catch (ex) {
-            internalLogFailure("Hard failure in setMsgTimeLimit -- " + ex.toString());
+            internalLogFailure("Hard failure in setMsgTimeLimit", ex);
         }
     };
 
@@ -1386,11 +1473,12 @@ function Logger(moduleName, options) {
 
         try {
             if (s_rootLogger === this) {
+                diaglog("setMsgSpaceLimit.update");
                 nlogger.SetMsgSpaceLimit(spaceLimit);
             }
         }
         catch (ex) {
-            internalLogFailure("Hard failure in setMsgSpaceLimit -- " + ex.toString());
+            internalLogFailure("Hard failure in setMsgSpaceLimit", ex);
         }
     };
 
@@ -1434,7 +1522,7 @@ function Logger(moduleName, options) {
     function processDefaultCategoryFormat(fmti, level, args) {
         const fmt = s_fmtMap[fmti];
         if (fmti === undefined) {
-            console.error("Format name is not defined for this logger -- " + fmt);
+            diaglog("processDefaultCategoryFormat.undef", { fmti: fmti });
             return;
         }
 
@@ -1446,13 +1534,13 @@ function Logger(moduleName, options) {
         const rcategory = -categoryi;
         if (s_enabledCategories[rcategory]) {
             if (args.length < 1) {
-                console.error("Format argument should be provided");
+                diaglog("processExplicitCategoryFormat.args");
                 return;
             }
 
             const fmt = s_fmtMap.get(args[0]);
             if (fmt === undefined) {
-                console.error("Format name is not defined for this logger -- " + fmt);
+                diaglog("processDefaultCategoryFormat.undef", { fmti: args[0] });
                 return;
             }
 
@@ -1478,11 +1566,11 @@ function Logger(moduleName, options) {
                     }
                 }
                 else {
-                    console.error("Bad arguments to formatter -- expected category or log format");
+                    diaglog("logaction.badformat", { fmtorctgry: fmtorctgry });
                 }
             }
             catch (ex) {
-                internalLogFailure("Hard failure in logging -- " + ex.toString());
+                internalLogFailure("Hard failure in logging", ex);
             }
         };
     }
@@ -1508,11 +1596,11 @@ function Logger(moduleName, options) {
                     }
                 }
                 else {
-                    console.error("Bad arguments to formatter -- expected category or log format");
+                    diaglog("logaction.badformat", { fmtorctgry: fmtorctgry });
                 }
             }
             catch (ex) {
-                internalLogFailure("Hard failure in logging -- " + ex.toString());
+                internalLogFailure("Hard failure in logging", ex);
             }
         };
     }
@@ -1542,21 +1630,24 @@ function Logger(moduleName, options) {
     * Synchronously emit as much of the in-memory and emit buffer as possible
     * @method
     */
-    this.emitLogSync = function (includeFullDetail, optTimingInfo) {
+    this.emitLogSync = function (processall, includeFullDetail, optTimingInfo) {
         try {
             if (s_rootLogger === this) {
+                diaglog("emitLogSync", { includeFullDetail: includeFullDetail });
                 abortAsyncWork();
 
+                diaglog("emitLogSync.process");
                 const timingInfo = optTimingInfo || {};
                 timingInfo.pstart = new Date();
-                if (includeFullDetail) {
-                    s_inMemoryLog.processMessagesForWrite_HardFlush();
+                if (processall) {
+                    s_inMemoryLog.processMessagesForWrite_FullFlush(includeFullDetail);
                 }
                 else {
                     s_inMemoryLog.processMessagesForWrite();
                 }
                 timingInfo.pend = new Date();
 
+                diaglog("emitLogSync.format");
                 timingInfo.fstart = new Date();
                 const result = nlogger.formatMsgsSync(s_environment.doPrefix);
                 timingInfo.fend = new Date();
@@ -1565,7 +1656,7 @@ function Logger(moduleName, options) {
             }
         }
         catch (ex) {
-            internalLogFailure("Hard failure in emit on emitLogSync -- " + ex.toString());
+            internalLogFailure("Hard failure in emit on emitLogSync", ex);
         }
     };
 
@@ -1582,6 +1673,8 @@ function Logger(moduleName, options) {
 
         try {
             if (s_rootLogger === this) {
+                diaglog("setSubLoggerLevel", { name: subloggerName, level: level });
+
                 s_enabledSubLoggerNames.add(subloggerName, level);
                 s_disabledSubLoggerNames.delete(subloggerName);
 
@@ -1591,7 +1684,7 @@ function Logger(moduleName, options) {
             }
         }
         catch (ex) {
-            internalLogFailure("Hard failure in enableSubLogger -- " + ex.toString());
+            internalLogFailure("Hard failure in enableSubLogger", ex);
         }
     };
 
@@ -1607,6 +1700,8 @@ function Logger(moduleName, options) {
 
         try {
             if (s_rootLogger === this) {
+                diaglog("disableSubLogger", { name: subloggerName });
+
                 s_enabledSubLoggerNames.delete(subloggerName);
                 s_disabledSubLoggerNames.add(subloggerName);
 
@@ -1616,7 +1711,7 @@ function Logger(moduleName, options) {
             }
         }
         catch (ex) {
-            internalLogFailure("Hard failure in disableSubLogger -- " + ex.toString());
+            internalLogFailure("Hard failure in disableSubLogger", ex);
         }
     };
 }
@@ -1660,10 +1755,20 @@ function processSimpleOption(options, realOptions, name, typestr, pred, defaultv
 }
 
 function processLogOnTermination(iserror) {
-    const finallog = s_rootLogger.emitLogSync(iserror);
+    diaglog("processLogOnTermination", { iserror: iserror });
+
+    const finallog = s_rootLogger.emitLogSync(true, iserror);
 
     if (s_environment.flushTarget === "console") {
         process.stdout.write(finallog);
+    }
+    else if (s_environment.flushTarget === "stream") {
+        try {
+            s_environment.stream.end(finallog);
+        }
+        catch (wex) {
+            diaglog("formatMsgsAsync.failedStreamWrite", { ex: wex.toString() });
+        }
     }
     else {
         //
@@ -1684,6 +1789,7 @@ module.exports = function (name, options) {
         throw new Error(`Expected name of logger but got ${name}`);
     }
     options = options || {};
+    diaglog("logger.options", { name: name, options: options });
 
     const debuggerAttached = /--inspect/.test(process.execArgv.join(" "));
 
@@ -1723,8 +1829,12 @@ module.exports = function (name, options) {
     processSimpleOption(options, ropts, "bufferSizeLimit", "number", (optv) => optv >= 0, 4096);
     processSimpleOption(options, ropts, "bufferTimeLimit", "number", (optv) => optv >= 0, 500);
 
+    diaglog("logger.ropts", { ropts: ropts });
+
     let logger = s_loggerMap.get(name);
     if (!logger) {
+        diaglog("logger.create");
+
         //Get the filename of the caller
         const cstack = new Error()
             .stack
@@ -1750,6 +1860,8 @@ module.exports = function (name, options) {
         logger.$$default = -1;
 
         if (require.main.filename === lfilename) {
+            diaglog("logger.create.root");
+
             s_rootLogger = logger;
 
             s_environment.flushCount = ropts.flushCount;
