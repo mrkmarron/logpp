@@ -11,7 +11,7 @@ function diaglog_disabled(activity, payload) {
 
 }
 
-let diaglog_wstream = require("fs").createWriteStream("C:\\Users\\marron\\Desktop\\logtrace.txt");
+let diaglog_wstream = undefined; // require("fs").createWriteStream("C:\\Users\\marron\\Desktop\\logtrace.txt");
 function diaglog_enabled(activity, payload) {
     let pls = "";
     try {
@@ -24,11 +24,10 @@ function diaglog_enabled(activity, payload) {
     }
 
     const output = activity + " -- " + pls + " @ " + (new Date()).toISOString() + "\n";
-    //console.log(output);
     diaglog_wstream.write(output);
 }
 
-let diaglog = diaglog_enabled;
+let diaglog = diaglog_disabled;
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //Start off with a bunch of costant definitions.
@@ -205,7 +204,17 @@ const LogEntryTags = {
 };
 
 function internalLogFailure(msg, ex) {
-    diaglog("internalLogFailure", { msg: msg, ex: ex.toString() });
+    try {
+        if (diaglog === diaglog_enabled) {
+            diaglog("internalLogFailure", { msg: msg, ex: ex.toString() });
+        }
+        else {
+            console.error(internalLogFailure + " -- " + ex.toString() + " @ " + (new Date()).toISOString());
+        }
+    }
+    catch (fex) {
+        //yeah I don't even know
+    }
 
     //Something went really wrong and we will probably continue to fail.
     //This also means we lost visibility into the health of the real process.
@@ -608,19 +617,41 @@ function extractMsgFormat(fmtName, fmtId, fmtInfo) {
  * The number of entries we have in a msg block.
  */
 const MemoryMsgBlockSizes = [256, 512, 1024, 2048, 4096, 8192, 16384];
+const MemoryMsgBlockSizesRev = [16384, 8192, 4096, 2048, 1024, 512, 256];
+
 const MemoryMsgBlockInitSize = 256;
+const MemoryMsgBlockLimitSize = 16384;
 
 let s_blockIdCtr = 0;
 
-//internal function for allocating a block
-function createMemoryMsgBlock(previousBlock, sizespec) {
-    let blocksize = MemoryMsgBlockInitSize;
-    if (sizespec) {
-        const nextSizeTry = MemoryMsgBlockSizes.indexOf(sizespec) + 1;
-        blocksize = MemoryMsgBlockSizes[nextSizeTry === MemoryMsgBlockSizes.length ? MemoryMsgBlockSizes.length - 1 : nextSizeTry];
-    }
+function sizeUp(sizespec) {
+    const nextTry = MemoryMsgBlockSizes.find((size) => sizespec < size);
+    return nextTry || MemoryMsgBlockLimitSize;
+}
 
-    diaglog("createMemoryMsgBlock", { sizespec: sizespec, blocksize: blocksize, blockId: s_blockIdCtr });
+function sizeDown(sizespec) {
+    const nextTry = MemoryMsgBlockSizesRev.find((size) => sizespec > size);
+    return nextTry || MemoryMsgBlockInitSize;
+}
+
+function blockSize(utilization, size) {
+    diaglog("blockSize", { utilization: utilization, size: size });
+
+    if (utilization <= size / 4) {
+        return sizeDown(size);
+    }
+    else if (utilization >= size * 3 / 4) {
+        return sizeUp(size);
+    }
+    else {
+        return size;
+    }
+}
+
+//internal function for allocating a block
+function createMemoryMsgBlock(previousBlock, blocksize) {
+    diaglog("createMemoryMsgBlock", { blocksize: blocksize, blockId: s_blockIdCtr });
+
     const nblock = {
         spos: 0,
         epos: 0,
@@ -646,7 +677,7 @@ function createMemoryMsgBlock(previousBlock, sizespec) {
  * @constructor
  */
 function InMemoryLog() {
-    this.head = createMemoryMsgBlock(null);
+    this.head = createMemoryMsgBlock(null, MemoryMsgBlockInitSize);
     this.tail = this.head;
     this.jsonCycleMap = new Set();
 
@@ -655,27 +686,14 @@ function InMemoryLog() {
 }
 
 /**
- * Clear the contents of the InMemoryLog
+ * Reset the contents of the InMemoryLog
  * @method
  */
-InMemoryLog.prototype.clear = function () {
-    if (this.head.epos < this.head.blocksize / 2) {
-        const downsizeopt = MemoryMsgBlockSizes.find((value) => value <= this.head.epos && this.head.epos <= value * 2);
-        this.head = createMemoryMsgBlock(null, downsizeopt);
-
-        this.stringCtr = 0;
-    }
-    else {
-        this.head.tags.fill(LogEntryTags.Clear, 0, this.head.epos);
-        this.head.data.fill(undefined, 0, this.head.epos);
-        this.head.stringData = [];
-        this.head.stringMap.clear();
-        this.head.spos = 0;
-        this.head.epos = 0;
-        this.head.next = null;
-    }
-
+InMemoryLog.prototype.reset = function () {
+    this.head = createMemoryMsgBlock(null, MemoryMsgBlockInitSize);
     this.tail = this.head;
+
+    this.stringCtr = 0;
 };
 
 /**
@@ -684,7 +702,7 @@ InMemoryLog.prototype.clear = function () {
 InMemoryLog.prototype.ensureSlot = function () {
     let block = this.tail;
     if (block.epos === block.blocksize) {
-        block = createMemoryMsgBlock(block, block.blocksize);
+        block = createMemoryMsgBlock(block, blockSize(block.epos - block.spos, block.blocksize));
         this.tail = block;
     }
     return block;
@@ -725,9 +743,9 @@ InMemoryLog.prototype.resetWriteCount = function () {
  * Remove the head block data from this list
  * @method
  */
-InMemoryLog.prototype.removeHeadBlock = function () {
+InMemoryLog.prototype.removeHeadBlock = function (utilization) {
     if (this.head.next == null) {
-        this.clear();
+        this.reset(blockSize(utilization, this.head.blocksize));
     }
     else {
         this.head = this.head.next;
@@ -742,7 +760,7 @@ InMemoryLog.prototype.removeHeadBlock = function () {
 InMemoryLog.prototype.addMsgHeader = function (fmt, level, category) {
     let block = this.tail;
     if (block.epos + 4 >= block.blocksize) {
-        block = createMemoryMsgBlock(block, block.blocksize);
+        block = createMemoryMsgBlock(block, blockSize(block.epos - block.spos, block.blocksize));
         this.tail = block;
     }
 
@@ -1110,20 +1128,14 @@ InMemoryLog.prototype.processMessagesForWrite = function () {
         const opos = this.head.spos;
         const complete = nlogger.processMsgsForEmit(this.head, newblock, msgCount, Date.now(), false);
 
-        diaglog("InMemoryLog.processMessagesForWrite.complete", { spos: this.head.spos, epos: this.head.epos, opos: opos });
+        diaglog("InMemoryLog.processMessagesForWrite.complete", { processed: this.head.spos - opos });
         if (this.head.spos === this.head.epos) {
             diaglog("InMemoryLog.processMessagesForWrite.remove", { blockId: this.head.blockId });
-            this.removeHeadBlock();
+            this.removeHeadBlock(this.head.epos - opos);
         }
         newblock = false;
         keepProcessing = !complete;
     } while (keepProcessing);
-
-    let msgCountf = 0;
-        for (let cblock = this.head; cblock !== null; cblock = cblock.next) {
-            msgCountf += cblock.epos - cblock.spos;
-        }
-        diaglog("InMemoryLog.processMessagesForWrite.finalsize", { processCount: msgCountf });
 
     return (this.head.spos !== this.head.epos) || (this.head.next != null);
 };
@@ -1146,11 +1158,12 @@ InMemoryLog.prototype.processMessagesForWrite_FullFlush = function (fulldetail) 
     let newblock = true;
     do {
         diaglog("InMemoryLog.processMessagesForWrite_FullFlush.processing", { blockId: this.head.blockId });
+        const opos = this.head.spos;
         nlogger.processMsgsForEmit(this.head, newblock, msgCount, Date.now(), fulldetail);
 
         if (this.head.spos === this.head.epos) {
             diaglog("InMemoryLog.processMessagesForWrite_FullFlush.remove", { blockId: this.head.blockId });
-            this.removeHeadBlock();
+            this.removeHeadBlock(this.head.epos - opos);
         }
         newblock = false;
         keepProcessing = !(this.head.next === null && this.head.spos === this.head.epos);
@@ -1323,7 +1336,7 @@ function abortAsyncWork() {
 }
 
 function discardFlushAction() {
-    s_inMemoryLog.clear();
+    s_inMemoryLog.reset(MemoryMsgBlockInitSize);
 }
 
 function nopFlushAction() {

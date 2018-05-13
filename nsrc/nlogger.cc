@@ -199,7 +199,7 @@ Napi::Value ProcessMsgs(const Napi::CallbackInfo& info)
             lenv->SetProcessingMode('s');
             msgcomplete = into->ProcessSaveEntry(cpos, epos, tags, data, stringData);
         }
-        msgCount -= static_cast<int32_t>(epos - cpos);
+        msgCount -= static_cast<int32_t>(cpos - oldcpos);
 
         if (msgcomplete)
         {
