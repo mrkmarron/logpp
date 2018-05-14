@@ -230,6 +230,9 @@ const s_enabledCategories = [
     false, //0 is not usable since we do -i indexing
     true //$default is enabled by default
 ];
+const s_categoryNames = new Map();
+s_categoryNames.set("__dummy__", 0);
+s_categoryNames.set("default", -1);
 
 const s_environment = {
     defaultSubLoggerLevel: LoggingLevels.WARN,
@@ -1347,6 +1350,80 @@ function nopFlushAction() {
 //Define the actual logger class that gets created for each module require
 
 /**
+ * Provide a way to bulk load formats from JSON object, array of JSON objects, file of JSON (or array of JSON), or array of files
+ * @param {Object} logger
+ * @param {Object|Array|String} arg
+ */
+function loadLoggerFormats(logger, arg) {
+    const fs = require("fs");
+
+    const garg = Array.isArray(arg) ? arg : [arg];
+    let rargs = [];
+    garg.forEach((sarg) => {
+        const nfmts = (typeof (sarg) === "string") ? JSON.parse(fs.readFileSync(sarg)) : sarg;
+        rargs = rargs.concat(Array.isArray(nfmts) ? nfmts : [nfmts]);
+    });
+
+    let allok = true;
+    rargs.forEach((fmts) => {
+        Object.keys(fmts).forEach((fmtname) => {
+            allok &= logger.addFormat(fmtname, fmts[fmtname]);
+        });
+    });
+
+    return allok;
+}
+
+/**
+ * Provide a way to bulk load category configurations from JSON object, array of JSON objects, file of JSON (or array of JSON), or array of files
+ * @param {Object} logger
+ * @param {Object|Array|String} arg
+ */
+function loadLoggerCategories(logger, arg) {
+    const fs = require("fs");
+
+    const garg = Array.isArray(arg) ? arg : [arg];
+    let rargs = [];
+    garg.forEach((sarg) => {
+        const nctgrys = (typeof (sarg) === "string") ? JSON.parse(fs.readFileSync(sarg)) : sarg;
+        rargs = rargs.concat(Array.isArray(nctgrys) ? nctgrys : [nctgrys]);
+    });
+
+    let allok = true;
+    rargs.forEach((ctgrys) => {
+        Object.keys(ctgrys).forEach((ctgryname) => {
+            allok &= logger.enableCategory(ctgryname, ctgrys[ctgryname]);
+        });
+    });
+
+    return allok;
+}
+
+/**
+ * Provide a way to bulk load sublogger configurations from JSON object or file of JSON
+ * @param {Object} logger
+ * @param {Object|String} arg
+ */
+function loadSubloggerConfigurations(logger, arg) {
+    const fs = require("fs");
+
+    const slconfigs = (typeof (arg) === "string") ? JSON.parse(fs.readFileSync(arg)) : arg;
+
+    let allok = true;
+    const disabled = (slconfigs.disabled || []);
+    disabled.forEach((slname) => {
+        allok &= logger.disableSubLogger(slname);
+    });
+
+    const configured = slconfigs.enabled || {};
+    Object.keys(configured).forEach((slname) => {
+        allok &= logger.setSubLoggerLevel(slname, LoggingLevels[configured[slname]]);
+    });
+
+    return allok;
+}
+
+/**
 * Constructor for a Logger
 * @constructor
 * @param {string} moduleName name of the module this is defined for
@@ -1426,10 +1503,59 @@ function Logger(moduleName, options) {
         }
     };
 
-    //
-    //TODO: allow add "categories" 1-by-1 also from JSON object or file for nice organization
-    //      Categories are enabled/disabled per logger
-    //
+    /**
+     * Enable a logging category for this logger
+     * @param {string} name the name of the category to enable
+     * @param {boolean|undefined} enabled the (optional) boolean enabled value (default is true)
+     * @returns true if the category was defined and enabled successfully false otherwise
+     */
+    this.enableCategory = function (name, enabled) {
+        if (typeof (name) !== "string" || (enabled !== undefined && typeof (enabled) !== "boolean")) {
+            //This is a "safe" failure so just warn and continue
+            diaglog("enableCategory.failure", { name: name, enabled: enabled });
+            return false;
+        }
+
+        try {
+            let cid = s_categoryNames.get(name);
+            if (cid === undefined) {
+                cid = s_categoryNames.size;
+                s_categoryNames.set(name, cid);
+                nlogger.addCategory(cid, name);
+            }
+
+            if (this === s_rootLogger) {
+                s_enabledCategories[cid] = (enabled === undefined || enabled === true);
+            }
+            else {
+                s_enabledCategories[cid] = s_enabledCategories[cid] || false;
+            }
+
+            this["$$" + name] = -cid;
+            return true;
+        }
+        catch (ex) {
+            //This is a "safe" failure so just warn and continue
+            diaglog("enableCategory.failure", { name: name, enabled: enabled, ex: ex.toString() });
+            return false;
+        }
+    };
+
+    /**
+     * Enable a logging categories for this logger from files or JSON
+     * @param {string|string[]|JSON|JSON[]} arg JSON object(s) of catetory enabled/disabled or file(s) to load this information from
+     * @returns true if all categories were enabled successfully false otherwise
+     */
+    this.enableCategories = function (arg) {
+        try {
+            return loadLoggerCategories(this, arg);
+        }
+        catch (ex) {
+            //This is a "safe" failure so just warn and continue
+            diaglog("enableCategories.failure", { arg: arg, ex: ex.toString() });
+            return false;
+        }
+    };
 
     /**
      * Update the logical time/requestId/callbackId/etc.
@@ -1443,16 +1569,39 @@ function Logger(moduleName, options) {
     this.setCurrentCallbackId = function (callbackId) { s_globalenv.CALLBACK = callbackId; };
 
     /**
-     * Add a new format to the format map
+     * Add a format to the logger
+     * @param {string} fmtName the name to give the format
+     * @param {string|JSON} fmtInfo the descriptor for the format as printf style or JSON style
+     * @returns true if the format was successfully registered false otherwise
      */
     this.addFormat = function (fmtName, fmtInfo) {
         try {
+            //
+            //TODO: we should check for duplicate format entries and reuse them
+            //
+
             this["$" + fmtName] = extractMsgFormat(fmtName, s_fmtMap.length, fmtInfo);
             return true;
         }
         catch (ex) {
             //This is a "safe" failure so just warn and continue
             diaglog("addFormat.failure", { fmtName: fmtName, fmtInfo: fmtInfo, ex: ex.toString() });
+            return false;
+        }
+    };
+
+    /**
+     * Add formats for this logger from files or JSON
+     * @param {string|string[]|JSON|JSON[]} arg JSON object(s) of catetory enabled/disabled or file(s) to load this information from
+     * @returns true if all categories were enabled successfully false otherwise
+     */
+    this.addFormats = function (arg) {
+        try {
+            return loadLoggerFormats(this, arg);
+        }
+        catch (ex) {
+            //This is a "safe" failure so just warn and continue
+            diaglog("addFormats.failure", { arg: arg, ex: ex.toString() });
             return false;
         }
     };
@@ -1494,10 +1643,6 @@ function Logger(moduleName, options) {
             internalLogFailure("Hard failure in setMsgSpaceLimit", ex);
         }
     };
-
-    //
-    //TODO: allow add "formats" from JSON object or file for nice organization
-    //
 
     /*
     function generateImplicitFormat(fmtInfo, args) {
@@ -1681,7 +1826,7 @@ function Logger(moduleName, options) {
     */
     this.setSubLoggerLevel = function (subloggerName, level) {
         if (typeof (subloggerName) !== "string" || typeof (level) !== "number") {
-            return;
+            return false;
         }
 
         try {
@@ -1691,13 +1836,15 @@ function Logger(moduleName, options) {
                 s_enabledSubLoggerNames.add(subloggerName, level);
                 s_disabledSubLoggerNames.delete(subloggerName);
 
-                //
-                //TODO: update the sublogger level if it has already been created
-                //
+                if (s_loggerMap.has(subloggerName)) {
+                    s_loggerMap.get(subloggerName).setLoggingLevel(level);
+                }
             }
+            return true;
         }
         catch (ex) {
             internalLogFailure("Hard failure in enableSubLogger", ex);
+            return false;
         }
     };
 
@@ -1708,7 +1855,7 @@ function Logger(moduleName, options) {
     */
     this.disableSubLogger = function (subloggerName) {
         if (typeof (subloggerName) !== "string") {
-            return;
+            return false;
         }
 
         try {
@@ -1718,13 +1865,30 @@ function Logger(moduleName, options) {
                 s_enabledSubLoggerNames.delete(subloggerName);
                 s_disabledSubLoggerNames.add(subloggerName);
 
-                //
-                //TODO: update the sublogger level if it has already been created
-                //
+                if (s_loggerMap.has(subloggerName)) {
+                    s_loggerMap.get(subloggerName).setLoggingLevel(LoggingLevels.OFF);
+                }
             }
+            return true;
         }
         catch (ex) {
             internalLogFailure("Hard failure in disableSubLogger", ex);
+            return false;
+        }
+    };
+
+    /**
+     * Configure subloggers from files or JSON
+     * @param {string|JSON} arg JSON object(s) of catetory enabled/disabled or file(s) to load this information from
+     * @returns true if all configurations were successful false otherwise
+     */
+    this.configureSubloggers = function (arg) {
+        try {
+            return loadSubloggerConfigurations(this, arg);
+        }
+        catch (ex) {
+            internalLogFailure("Hard failure in configureSubloggers", ex);
+            return false;
         }
     };
 }
@@ -1747,21 +1911,6 @@ const s_enabledSubLoggerNames = new Map();
  * Map of the loggers created for various module names
  */
 const s_loggerMap = new Map();
-
-////////
-//OPTIONS
-//    memoryLevel: "string",
-//    //memoryCategories: "string[]",
-//    emitLevel: "string",
-//    bufferSizeLimit: "number",
-//    bufferTimeLimit: "number"
-//    flushCount: "number"
-//    flushMode: "string" -- SYNC | ASYNC (default) | NOP
-//    asyncFlushCB: function
-//    asyncFlushAction: "string" -- console | callback;
-//    doPrefix: "boolean"
-//
-////
 
 function processSimpleOption(options, realOptions, name, typestr, pred, defaultvalue) {
     realOptions[name] = (options[name] && typeof (options[name]) === typestr && pred(options[name])) ? options[name] : defaultvalue;
@@ -1845,75 +1994,96 @@ module.exports = function (name, options) {
     diaglog("logger.ropts", { ropts: ropts });
 
     let logger = s_loggerMap.get(name);
-    if (!logger) {
-        diaglog("logger.create");
+    try {
+        if (!logger) {
+            diaglog("logger.create");
 
-        //Get the filename of the caller
-        const cstack = new Error()
-            .stack
-            .split("\n")
-            .slice(2)
-            .map(function (frame) {
-                return frame.substring(frame.indexOf("(") + 1, frame.lastIndexOf(".js:") + 3);
-            });
-        const lfilename = cstack[0];
+            //Get the filename of the caller
+            const cstack = new Error()
+                .stack
+                .split("\n")
+                .slice(2)
+                .map(function (frame) {
+                    return frame.substring(frame.indexOf("(") + 1, frame.lastIndexOf(".js:") + 3);
+                });
+            const lfilename = cstack[0];
 
-        if (require.main.filename !== lfilename) {
-            if (s_disabledSubLoggerNames.has(lfilename)) {
-                ropts.memoryLevel = LoggingLevels.OFF;
+            if (require.main.filename !== lfilename) {
+                if (s_disabledSubLoggerNames.has(lfilename) || s_rootLogger === null) {
+                    ropts.memoryLevel = LoggingLevels.OFF;
+                }
+                else {
+                    const enabledlevel = s_enabledSubLoggerNames.get(lfilename);
+                    ropts.memoryLevel = enabledlevel !== undefined ? enabledlevel : s_environment.defaultSubLoggerLevel;
+                }
             }
-            else {
-                const enabledlevel = s_enabledSubLoggerNames.get(lfilename);
-                ropts.memoryLevel = enabledlevel !== undefined ? enabledlevel : s_environment.defaultSubLoggerLevel;
+
+            logger = new Logger(name, ropts);
+            logger.Levels = LoggingLevels;
+            logger.$$default = -1;
+
+            if (require.main.filename === lfilename) {
+                diaglog("logger.create.root");
+
+                s_rootLogger = logger;
+
+                s_environment.flushCount = ropts.flushCount;
+
+                if (ropts.flushMode === "SYNC") {
+                    s_environment.flushAction = syncFlushAction;
+                }
+                else if (ropts.flushMode === "ASYNC") {
+                    s_environment.flushAction = asyncFlushAction;
+                }
+                else if (ropts.flushMode === "NOP") {
+                    s_environment.flushAction = nopFlushAction;
+                }
+                else {
+                    s_environment.flushAction = discardFlushAction;
+                }
+
+                s_environment.flushTarget = ropts.flushTarget;
+                s_environment.flushCB = ropts.flushCB;
+                s_environment.doPrefix = ropts.doPrefix;
+
+                if (ropts.stream !== undefined) {
+                    s_environment.stream = ropts.stream;
+                }
+
+                nlogger.initializeLogger(LoggingLevels[ropts.emitLevel], os.hostname(), lfilename);
+                nlogger.setMsgSlotLimit(ropts.bufferSizeLimit);
+                nlogger.setMsgTimeLimit(ropts.bufferTimeLimit);
+
+                process.on("exit", (code) => {
+                    processLogOnTermination(code !== 0);
+                });
+
+                process.on("uncaughtException", () => {
+                    processLogOnTermination(true);
+                });
+
+                //
+                //TODO: do any bulk child logger level loading
+                //
+
+                //
+                //TODO: update the logging levels of any loggers created before the root logger
+                //
+
+                //
+                //TODO: do any bulk format loading
+                //
+
+                //
+                //TODO: do any bulk category loading
+                //
             }
+
+            s_loggerMap.set(name, logger);
         }
-
-        logger = new Logger(name, ropts);
-        logger.Levels = LoggingLevels;
-        logger.$$default = -1;
-
-        if (require.main.filename === lfilename) {
-            diaglog("logger.create.root");
-
-            s_rootLogger = logger;
-
-            s_environment.flushCount = ropts.flushCount;
-
-            if (ropts.flushMode === "SYNC") {
-                s_environment.flushAction = syncFlushAction;
-            }
-            else if (ropts.flushMode === "ASYNC") {
-                s_environment.flushAction = asyncFlushAction;
-            }
-            else if (ropts.flushMode === "NOP") {
-                s_environment.flushAction = nopFlushAction;
-            }
-            else {
-                s_environment.flushAction = discardFlushAction;
-            }
-
-            s_environment.flushTarget = ropts.flushTarget;
-            s_environment.flushCB = ropts.flushCB;
-            s_environment.doPrefix = ropts.doPrefix;
-
-            if (ropts.stream !== undefined) {
-                s_environment.stream = ropts.stream;
-            }
-
-            nlogger.initializeLogger(LoggingLevels[ropts.emitLevel], os.hostname(), lfilename);
-            nlogger.setMsgSlotLimit(ropts.bufferSizeLimit);
-            nlogger.setMsgTimeLimit(ropts.bufferTimeLimit);
-
-            process.on("exit", (code) => {
-                processLogOnTermination(code !== 0);
-            });
-
-            process.on("uncaughtException", () => {
-                processLogOnTermination(true);
-            });
-        }
-
-        s_loggerMap.set(name, logger);
+    }
+    catch (lcex) {
+        internalLogFailure("Hard Failure in logger creation", lcex);
     }
 
     return logger;
