@@ -1698,7 +1698,7 @@ function Logger(moduleName, options) {
 
             const fmt = s_fmtMap.get(args[0]);
             if (fmt === undefined) {
-                diaglog("processDefaultCategoryFormat.undef", { fmti: args[0] });
+                diaglog("processExplicitCategoryFormat.undef", { fmti: args[0] });
                 return;
             }
 
