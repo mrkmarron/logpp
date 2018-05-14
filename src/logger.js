@@ -1964,6 +1964,8 @@ module.exports = function (name, options) {
     processSimpleOption(options, ropts, "emitLevel", "string", (optv) => LoggingLevels[optv] !== undefined, "INFO");
     ropts.emitLevel = (LoggingLevels[ropts.emitLevel] <= LoggingLevels[ropts.memoryLevel]) ? ropts.emitLevel : ropts.memoryLevel;
 
+    processSimpleOption(options, ropts, "defaultSubloggerLevel", "string", (optv) => LoggingLevels[optv] !== undefined, "WARN");
+
     if (debuggerAttached) {
         processSimpleOption(options, ropts, "flushCount", "number", (optv) => optv >= 0, 0);
         processSimpleOption(options, ropts, "flushTarget", "string", (optv) => /console|stream|callback/.test(optv), "console");
@@ -1991,6 +1993,10 @@ module.exports = function (name, options) {
     processSimpleOption(options, ropts, "bufferSizeLimit", "number", (optv) => optv >= 0, 4096);
     processSimpleOption(options, ropts, "bufferTimeLimit", "number", (optv) => optv >= 0, 500);
 
+    processSimpleOption(options, ropts, "formats", undefined, (optv) => (typeof (optv) === "string" || typeof (optv) === "object"), undefined);
+    processSimpleOption(options, ropts, "categories", undefined, (optv) => (typeof (optv) === "string" || typeof (optv) === "object"), undefined);
+    processSimpleOption(options, ropts, "subloggers", undefined, (optv) => (typeof (optv) === "string" || typeof (optv) === "object"), undefined);
+
     diaglog("logger.ropts", { ropts: ropts });
 
     let logger = s_loggerMap.get(name);
@@ -2007,6 +2013,8 @@ module.exports = function (name, options) {
                     return frame.substring(frame.indexOf("(") + 1, frame.lastIndexOf(".js:") + 3);
                 });
             const lfilename = cstack[0];
+
+            s_environment.defaultSubLoggerLevel = options.defaultSubloggerLevel;
 
             if (require.main.filename !== lfilename) {
                 if (s_disabledSubLoggerNames.has(lfilename) || s_rootLogger === null) {
@@ -2062,21 +2070,24 @@ module.exports = function (name, options) {
                     processLogOnTermination(true);
                 });
 
-                //
-                //TODO: do any bulk child logger level loading
-                //
+                if (ropts.subloggers !== undefined) {
+                    //this can throw and we want to catch in the general config handler below
+                    loadSubloggerConfigurations(s_rootLogger, ropts.subloggers);
+                }
 
-                //
-                //TODO: update the logging levels of any loggers created before the root logger
-                //
+                s_loggerMap.forEach((v, k) => {
+                    v.setLoggingLevel(s_environment.defaultSubLoggerLevel);
+                });
 
-                //
-                //TODO: do any bulk format loading
-                //
+                if (ropts.formats !== undefined) {
+                    //this can throw and we want to catch in the general config handler below
+                    loadLoggerFormats(s_rootLogger, ropts.formats);
+                }
 
-                //
-                //TODO: do any bulk category loading
-                //
+                if (ropts.categories !== undefined) {
+                    //this can throw and we want to catch in the general config handler below
+                    loadLoggerCategories(s_rootLogger, ropts.categories);
+                }
             }
 
             s_loggerMap.set(name, logger);
