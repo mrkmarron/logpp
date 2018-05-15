@@ -1438,13 +1438,24 @@ function Logger(loggerName, options) {
         logger_path: __filename,
         LOGGER: loggerName
     };
+    this.isChild = false;
+
+    this.childLogger = function (prefix) {
+        const cenv = {};
+        Object.keys(this.logger_env).forEach((p) => {
+            cenv[p] = this.logger_env[p];
+        });
+        cenv.prefix = JSON.stringify(typeof (prefix) !== "string" ? JSON.stringify(prefix) : prefix);
+
+        return Object.create(this, { logger_env: cenv, isChild: true });
+    };
 
     /**
      * Set the logging level for this logger
      * @param {number} logLevel
      */
     this.setLoggingLevel = function (logLevel) {
-        if (typeof (logLevel) !== "number") {
+        if (typeof (logLevel) !== "number" || this.isChild) {
             return;
         }
 
@@ -1479,7 +1490,7 @@ function Logger(loggerName, options) {
     * @param {number} logLevel
     */
     this.setEmitLevel = function (logLevel) {
-        if (typeof (logLevel) !== "number") {
+        if (typeof (logLevel) !== "number" || this.isChild) {
             return;
         }
 
@@ -1510,7 +1521,7 @@ function Logger(loggerName, options) {
      * @returns true if the category was defined and enabled successfully false otherwise
      */
     this.enableCategory = function (name, enabled) {
-        if (typeof (name) !== "string" || (enabled !== undefined && typeof (enabled) !== "boolean")) {
+        if (typeof (name) !== "string" || this.isChild || (enabled !== undefined && typeof (enabled) !== "boolean")) {
             //This is a "safe" failure so just warn and continue
             diaglog("enableCategory.failure", { name: name, enabled: enabled });
             return false;
@@ -1575,6 +1586,10 @@ function Logger(loggerName, options) {
      * @returns true if the format was successfully registered false otherwise
      */
     this.addFormat = function (fmtName, fmtInfo) {
+        if (this.isChild) {
+            return false;
+        }
+
         try {
             //
             //TODO: we should check for duplicate format entries and reuse them
@@ -1610,7 +1625,7 @@ function Logger(loggerName, options) {
      * Set the timeout limit for messages in the worklist
      */
     this.setMsgTimeLimit = function (timeLimit) {
-        if (typeof (timeLimit) !== "number") {
+        if (typeof (timeLimit) !== "number" || this.isChild) {
             return;
         }
 
@@ -1629,7 +1644,7 @@ function Logger(loggerName, options) {
      * Set the space limit for messages in the worklist
      */
     this.setMsgSpaceLimit = function (spaceLimit) {
-        if (typeof (spaceLimit) !== "number") {
+        if (typeof (spaceLimit) !== "number" || this.isChild) {
             return;
         }
 
@@ -1825,7 +1840,7 @@ function Logger(loggerName, options) {
     * @param {number} level the level that the sub-logger is allowed to emit at
     */
     this.setSubLoggerLevel = function (subloggerName, level) {
-        if (typeof (subloggerName) !== "string" || typeof (level) !== "number") {
+        if (typeof (subloggerName) !== "string" || typeof (level) !== "number" || this.isChild) {
             return false;
         }
 
@@ -1854,7 +1869,7 @@ function Logger(loggerName, options) {
     * @param {string} subloggerName the name of the sub-logger to enable
     */
     this.disableSubLogger = function (subloggerName) {
-        if (typeof (subloggerName) !== "string") {
+        if (typeof (subloggerName) !== "string" || this.isChild) {
             return false;
         }
 
