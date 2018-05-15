@@ -105,7 +105,7 @@ const FormatStringEnum = {
     HASH: 0x1,
     HOST: 0x2,
     APP: 0x3,
-    MODULE: 0x4,
+    LOGGER: 0x4,
     SOURCE: 0x5,
     WALLCLOCK: 0x6,
     TIMESTAMP: 0x7,
@@ -271,7 +271,7 @@ const s_globalenv = {
 //Valid expandos are:
 //#host      -- name of the host
 //#app       -- name of the root app
-//#module    -- name of the module
+//#logger    -- name of the logger
 //#source    -- source location of log statment (file, line)
 //#wallclock -- wallclock timestamp (defaults to utc)
 //#timestamp -- logical timestamp
@@ -312,7 +312,7 @@ FormatStringEntryParseMap.set("%%", { kind: FormatStringEntryKind.Literal, enum:
 
 FormatStringEntryParseMap.set("#host", { kind: FormatStringEntryKind.Expando, enum: FormatStringEnum.HOST });
 FormatStringEntryParseMap.set("#app", { kind: FormatStringEntryKind.Expando, enum: FormatStringEnum.APP });
-FormatStringEntryParseMap.set("#module", { kind: FormatStringEntryKind.Expando, enum: FormatStringEnum.MODULE });
+FormatStringEntryParseMap.set("#logger", { kind: FormatStringEntryKind.Expando, enum: FormatStringEnum.LOGGER });
 FormatStringEntryParseMap.set("#source", { kind: FormatStringEntryKind.Expando, enum: FormatStringEnum.SOURCE });
 FormatStringEntryParseMap.set("#wallclock", { kind: FormatStringEntryKind.Expando, enum: FormatStringEnum.WALLCLOCK });
 FormatStringEntryParseMap.set("#timestamp", { kind: FormatStringEntryKind.Expando, enum: FormatStringEnum.TIMESTAMP });
@@ -1039,8 +1039,8 @@ InMemoryLog.prototype.logMessage = function (env, level, category, fmt, argStart
             else if (specEnum === FormatStringEnum.REQUEST) {
                 this.addNumberEntry(LogEntryTags.JsVarValue_Number, env.globalEnv.REQUEST);
             }
-            else if (specEnum === FormatStringEnum.MODULE) {
-                this.addStringEntry(LogEntryTags.JsVarValue_StringIdx, env.MODULE);
+            else if (specEnum === FormatStringEnum.LOGGER) {
+                this.addStringEntry(LogEntryTags.JsVarValue_StringIdx, env.LOGGER);
             }
             else {
                 //Otherwise the format macro should just be a constant value
@@ -1426,17 +1426,17 @@ function loadSubloggerConfigurations(logger, arg) {
 /**
 * Constructor for a Logger
 * @constructor
-* @param {string} moduleName name of the module this is defined for
+* @param {string} loggerName name of the logger this is defined for
 * @param {Object} options the options for this logger
 */
-function Logger(moduleName, options) {
+function Logger(loggerName, options) {
     //Level that this logger will record at going into memory
     let m_memoryLogLevel = LoggingLevels[options.memoryLevel];
 
-    const m_env = {
+    this.logger_env = {
         globalEnv: s_globalenv,
-        MODULE: moduleName,
         logger_path: __filename,
+        LOGGER: loggerName
     };
 
     /**
@@ -1453,11 +1453,11 @@ function Logger(moduleName, options) {
             diaglog("setLoggingLevel", { level: slogLevel });
 
             if (s_rootLogger !== this) {
-                if (s_disabledSubLoggerNames.has(moduleName)) {
+                if (s_disabledSubLoggerNames.has(loggerName)) {
                     slogLevel = LoggingLevels.OFF;
                 }
                 else {
-                    const enabledlevel = s_enabledSubLoggerNames.get(moduleName);
+                    const enabledlevel = s_enabledSubLoggerNames.get(loggerName);
                     slogLevel = enabledlevel !== undefined ? enabledlevel : s_environment.defaultSubLoggerLevel;
                 }
 
@@ -1673,22 +1673,22 @@ function Logger(moduleName, options) {
     }
     */
 
-    function processImplicitFormat(fmtstr, level, args) {
+    function processImplicitFormat(lenv, fmtstr, level, args) {
         //NOT IMTPLEMENTED YET
     }
 
-    function processDefaultCategoryFormat(fmti, level, args) {
+    function processDefaultCategoryFormat(lenv, fmti, level, args) {
         const fmt = s_fmtMap[fmti];
         if (fmti === undefined) {
             diaglog("processDefaultCategoryFormat.undef", { fmti: fmti });
             return;
         }
 
-        s_inMemoryLog.logMessage(m_env, level, 1, fmt, 0, args);
+        s_inMemoryLog.logMessage(lenv, level, 1, fmt, 0, args);
         s_environment.flushAction();
     }
 
-    function processExplicitCategoryFormat(categoryi, level, args) {
+    function processExplicitCategoryFormat(lenv, categoryi, level, args) {
         const rcategory = -categoryi;
         if (s_enabledCategories[rcategory]) {
             if (args.length < 1) {
@@ -1702,7 +1702,7 @@ function Logger(moduleName, options) {
                 return;
             }
 
-            s_inMemoryLog.logMessage(m_env, level, rcategory, fmt, 1, args);
+            s_inMemoryLog.logMessage(lenv, level, rcategory, fmt, 1, args);
             s_environment.flushAction();
         }
     }
@@ -1713,14 +1713,14 @@ function Logger(moduleName, options) {
             try {
                 const tsw = typeof (fmtorctgry);
                 if (tsw === "string") {
-                    processImplicitFormat(fmtorctgry, fixedLevel, args);
+                    processImplicitFormat(this.logger_env, fmtorctgry, fixedLevel, args);
                 }
                 else if (tsw === "number") {
                     if (fmtorctgry >= 0) {
-                        processDefaultCategoryFormat(fmtorctgry, desiredLevel, args);
+                        processDefaultCategoryFormat(this.logger_env, fmtorctgry, desiredLevel, args);
                     }
                     else {
-                        processExplicitCategoryFormat(fmtorctgry, desiredLevel, args);
+                        processExplicitCategoryFormat(this.logger_env, fmtorctgry, desiredLevel, args);
                     }
                 }
                 else {
@@ -1743,14 +1743,14 @@ function Logger(moduleName, options) {
             try {
                 const tsw = typeof (fmtorctgry);
                 if (tsw === "string") {
-                    processImplicitFormat(fmtorctgry, fixedLevel, args);
+                    processImplicitFormat(this.logger_env, fmtorctgry, fixedLevel, args);
                 }
                 else if (tsw === "number") {
                     if (fmtorctgry >= 0) {
-                        processDefaultCategoryFormat(fmtorctgry, desiredLevel, args);
+                        processDefaultCategoryFormat(this.logger_env, fmtorctgry, desiredLevel, args);
                     }
                     else {
-                        processExplicitCategoryFormat(fmtorctgry, desiredLevel, args);
+                        processExplicitCategoryFormat(this.logger_env, fmtorctgry, desiredLevel, args);
                     }
                 }
                 else {
@@ -1902,13 +1902,13 @@ function Logger(moduleName, options) {
 let s_rootLogger = null;
 
 /**
- * Map of module names that are enabled for sub-logging + level cap override
+ * Map of logger names that are enabled for sub-logging + level cap override
  */
 const s_disabledSubLoggerNames = new Set();
 const s_enabledSubLoggerNames = new Map();
 
 /**
- * Map of the loggers created for various module names
+ * Map of the loggers created for various logger names
  */
 const s_loggerMap = new Map();
 

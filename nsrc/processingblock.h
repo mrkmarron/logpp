@@ -209,7 +209,7 @@ public:
                     advanceData = false;
                     formatter->emitJsString(lenv->GetAppName());
                     break;
-                case FormatStringEnum::MODULE:
+                case FormatStringEnum::LOGGER:
                     formatter->emitJsString(this->getCurrentDataAsString());
                     break;
                 case FormatStringEnum::SOURCE:

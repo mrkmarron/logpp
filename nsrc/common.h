@@ -32,7 +32,7 @@ enum class FormatStringEnum : uint8_t
     HASH = 0x1,
     HOST = 0x2,
     APP = 0x3,
-    MODULE = 0x4,
+    LOGGER = 0x4,
     SOURCE = 0x5,
     WALLCLOCK = 0x6,
     TIMESTAMP = 0x7,

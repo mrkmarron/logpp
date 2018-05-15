@@ -64,7 +64,7 @@ logpp.addFormat("Basic_Hello", "Hello World!!!");
 logpp.addFormat("Basic_HASH", "##");
 logpp.addFormat("Basic_HOST", "#host");
 logpp.addFormat("Basic_APP", "#app");
-logpp.addFormat("Basic_MODULE", "#module");
+logpp.addFormat("Basic_LOGGER", "#logger");
 logpp.addFormat("Basic_SOURCE", "#source");
 logpp.addFormat("Basic_WALLCLOCK", "#wallclock");
 logpp.addFormat("Basic_TIMESTAMP", "#timestamp");
@@ -92,8 +92,8 @@ logpp.addFormat("Basic_ArrayWDepthLength", "%{0:a<1,2>}");
 ////
 //Compund Formats
 logpp.addFormat("Compound_Hello", "%{0:s} %{1:s}!");
-logpp.addFormat("Compound_Hello_APP", "%{0:s} from #module!");
-logpp.addFormat("Compound_Object", { name: "%{0:s}", msg: "Hello", args: ["#module", 4, "%{1:b}", true] });
+logpp.addFormat("Compound_Hello_APP", "%{0:s} from #logger!");
+logpp.addFormat("Compound_Object", { name: "%{0:s}", msg: "Hello", args: ["#logger", 4, "%{1:b}", true] });
 logpp.addFormat("Compound_Object_Object", { name: "%{0:s}", msg: "Hello", args: [4, "%{1:g}", true] });
 
 const basictests = [
@@ -102,7 +102,7 @@ const basictests = [
     { fmt: "$Basic_HASH", arg: [undefined], oktest: (res) => res === "#" },
     { fmt: "$Basic_HOST", arg: [undefined], oktest: (res) => res === JSON.stringify(os.hostname()) },
     { fmt: "$Basic_APP", arg: [undefined], oktest: (res) => res === JSON.stringify(__filename.toString()) },
-    { fmt: "$Basic_MODULE", arg: [undefined], oktest: (res) => res === JSON.stringify("basic") },
+    { fmt: "$Basic_LOGGER", arg: [undefined], oktest: (res) => res === JSON.stringify("basic") },
     { fmt: "$Basic_SOURCE", arg: [undefined], oktest: (res) => res === JSON.stringify(__filename.toString() + ":10:15") },
     { fmt: "$Basic_WALLCLOCK", arg: [undefined], oktest: (res) => !Number.isNaN(Date.parse(res.substring(1, res.length - 1))) && (new Date() - Date.parse(res.substring(1, res.length - 1))) >= 0 && res.endsWith("Z\"") },
     { fmt: "$Basic_TIMESTAMP", arg: [undefined], oktest: (res) => res === "0" },
