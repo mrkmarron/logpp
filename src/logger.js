@@ -224,6 +224,7 @@ function internalLogFailure(msg, ex) {
 
 //Map of all formats known to the loggers
 const s_fmtMap = [];
+const s_fmtStringToIdMap = new Map();
 
 //Map of all known categories + their enabled disabled status
 const s_enabledCategories = [
@@ -570,6 +571,12 @@ function extractMsgFormat(fmtName, fmtId, fmtInfo) {
         throw new FormatSyntaxError("Format cannot contain newlines", undefined, 0);
     }
 
+    const fmtMemoString = fmtName + fmtString;
+    const fmtMemoId = s_fmtStringToIdMap.get(fmtMemoString);
+    if (fmtMemoId !== undefined) {
+        return fmtMemoId;
+    }
+
     const fArray = [];
     while (cpos < fmtString.length) {
         const cchar = fmtString.charAt(cpos);
@@ -607,12 +614,15 @@ function extractMsgFormat(fmtName, fmtId, fmtInfo) {
     const fmtObj = createMsgFormat(fmtName, fmtId, formatArray);
     s_fmtMap.push(fmtObj);
 
+    //memoize the result
+    s_fmtStringToIdMap.set(fmtMemoString, fmtObj.formatId);
+
     return fmtObj.formatId;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //Define structure for representing the in memory log entries.
-//We want to be able to effciently copy any data needed to construct the log message into this structure.
+//We want to be able to efficiently copy any data needed to construct the log message into this structure.
 //  The actual formatting of the message will take place once we decide we need the message. Either it is
 //  moved to stable storage or we encountered a situation where we want a detailed log dump.
 
@@ -1591,10 +1601,6 @@ function Logger(loggerName, options) {
         }
 
         try {
-            //
-            //TODO: we should check for duplicate format entries and reuse them
-            //
-
             this["$" + fmtName] = extractMsgFormat(fmtName, s_fmtMap.length, fmtInfo);
             return true;
         }
@@ -1668,14 +1674,6 @@ function Logger(loggerName, options) {
             .slice(2);
         const lfilename = cstack[0];
 
-        //
-        //TODO: add this in later with special dict of formats to manage
-        //
-
-        if (s_formatInfo.has(lfilename)) {
-            return s_formatInfo.get(lfilename);
-        }
-
         if (typeof (fmtInfo) === "string") {
             extractMsgFormat(lfilename, s_formatInfo.size * -1, fmtInfo.substr(1, fmtInfo.length - 2)); //trim %
         }
@@ -1687,7 +1685,7 @@ function Logger(loggerName, options) {
         return s_formatInfo.get(lfilename);
     }
     */
-
+   
     function processImplicitFormat(lenv, fmtstr, level, args) {
         //NOT IMTPLEMENTED YET
     }

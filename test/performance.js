@@ -4,7 +4,7 @@ const pino = require("pino")({ extreme: true, safe: false, base: {} });
 const logpp = require("../src/logger")("basic", { flushMode: "NOP" });
 
 logpp.addFormat("Basic_Hello", "Hello World!!!");
-logpp.addFormat("Compound_Hello", "Hello at #wallclock from #module with %{0:a} %{1:n} -- %{2:s}");
+logpp.addFormat("Compound_Hello", "Hello at #wallclock from #logger with %{0:a} %{1:n} -- %{2:s}");
 
 function run() {
     if (benchmarks.length === 0) {
@@ -37,7 +37,7 @@ function basic() {
     console.error(`Total Log++ log time (blocking) = ${bend1 - bstart1}`);
 
     const btimingInfo = {};
-    const boutput = logpp.emitLogSync(true, btimingInfo);
+    const boutput = logpp.emitLogSync(true, true, btimingInfo);
 
     const bstart2 = new Date();
     process.stdout.write(boutput);
@@ -81,7 +81,7 @@ function compound() {
     console.error(`Total Log++ log time = ${cend1 - cstart1}`);
 
     const ctimingInfo = {};
-    const coutput = logpp.emitLogSync(true, ctimingInfo);
+    const coutput = logpp.emitLogSync(true, true, ctimingInfo);
 
     const cstart2 = new Date();
     process.stdout.write(coutput);
