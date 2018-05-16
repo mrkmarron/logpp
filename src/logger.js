@@ -229,11 +229,13 @@ const s_fmtStringToIdMap = new Map();
 //Map of all known categories + their enabled disabled status
 const s_enabledCategories = [
     false, //0 is not usable since we do -i indexing
-    true //$default is enabled by default
+    true, //$default is enabled by default
+    true //$explicit is enabled by default
 ];
 const s_categoryNames = new Map();
 s_categoryNames.set("__dummy__", 0);
 s_categoryNames.set("default", -1);
+s_categoryNames.set("explicit", -2);
 
 const s_environment = {
     defaultSubLoggerLevel: LoggingLevels.WARN,
@@ -543,14 +545,13 @@ function createMsgFormat(fmtName, fmtId, fmtEntryArray) {
 const s_newlineRegex = /(\n|\r)/;
 
 /**
- * Takes a message format string and converts it to our internal format structure.
+ * Takes a message format string and converts it to our internal format structure (and saves it).
  * @function
  * @param {string} fmtName the name of the format
- * @param {number} fmtId the numeric id to be associated with this format
  * @param {string|Object} fmtString the raw format string or a JSON style format
- * @returns {Object} our MsgFormat object
+ * @returns {number} our ID for the saved message format
  */
-function extractMsgFormat(fmtName, fmtId, fmtInfo) {
+function extractMsgFormat(fmtName, fmtInfo) {
     let cpos = 0;
 
     if (typeof (fmtName) !== "string") {
@@ -610,6 +611,7 @@ function extractMsgFormat(fmtName, fmtId, fmtInfo) {
         tailingFormatSegmentArray.push(fmtString.substr(start, end - start));
     }
 
+    const fmtId = s_fmtMap.length;
     nlogger.registerFormat(fmtId, kindArray, enumArray, initialFormatSegment, tailingFormatSegmentArray, fmtString);
     const fmtObj = createMsgFormat(fmtName, fmtId, formatArray);
     s_fmtMap.push(fmtObj);
@@ -1601,7 +1603,7 @@ function Logger(loggerName, options) {
         }
 
         try {
-            this["$" + fmtName] = extractMsgFormat(fmtName, s_fmtMap.length, fmtInfo);
+            this["$" + fmtName] = extractMsgFormat(fmtName, fmtInfo);
             return true;
         }
         catch (ex) {
@@ -1665,8 +1667,12 @@ function Logger(loggerName, options) {
         }
     };
 
-    /*
     function generateImplicitFormat(fmtInfo, args) {
+        if (fmtInfo === null) {
+            diaglog("generateImplicitFormat.badformat", { fmtInfo: fmtInfo });
+            return; //technically an object but not ok with us
+        }
+
         //Get the line string of the caller
         const cstack = new Error()
             .stack
@@ -1675,19 +1681,25 @@ function Logger(loggerName, options) {
         const lfilename = cstack[0];
 
         if (typeof (fmtInfo) === "string") {
-            extractMsgFormat(lfilename, s_formatInfo.size * -1, fmtInfo.substr(1, fmtInfo.length - 2)); //trim %
+            return extractMsgFormat(lfilename, fmtInfo);
         }
         else {
             args.unshift(fmtInfo);
-            extractMsgFormat(lfilename, s_formatInfo.size * -1, "%{0:g}");
+            return extractMsgFormat(lfilename, "%{0:g}");
+        }
+    }
+
+    function processImplicitFormat(lenv, fmtInfo, level, args) {
+        const fmti = generateImplicitFormat(fmtInfo, args);
+
+        const fmt = s_fmtMap[fmti];
+        if (fmti === undefined) {
+            diaglog("processDefaultCategoryFormat.undef", { fmti: fmti });
+            return;
         }
 
-        return s_formatInfo.get(lfilename);
-    }
-    */
-   
-    function processImplicitFormat(lenv, fmtstr, level, args) {
-        //NOT IMTPLEMENTED YET
+        s_inMemoryLog.logMessage(lenv, level, 2 /*explicit category*/, fmt, 0, args);
+        s_environment.flushAction();
     }
 
     function processDefaultCategoryFormat(lenv, fmti, level, args) {
@@ -1697,7 +1709,7 @@ function Logger(loggerName, options) {
             return;
         }
 
-        s_inMemoryLog.logMessage(lenv, level, 1, fmt, 0, args);
+        s_inMemoryLog.logMessage(lenv, level, 1 /*default category*/, fmt, 0, args);
         s_environment.flushAction();
     }
 
@@ -1725,16 +1737,16 @@ function Logger(loggerName, options) {
         return function (fmtorctgry, ...args) {
             try {
                 const tsw = typeof (fmtorctgry);
-                if (tsw === "string") {
-                    processImplicitFormat(this.logger_env, fmtorctgry, fixedLevel, args);
-                }
-                else if (tsw === "number") {
+                if (tsw === "number") {
                     if (fmtorctgry >= 0) {
-                        processDefaultCategoryFormat(this.logger_env, fmtorctgry, desiredLevel, args);
+                        processDefaultCategoryFormat(this.logger_env, fmtorctgry, fixedLevel, args);
                     }
                     else {
-                        processExplicitCategoryFormat(this.logger_env, fmtorctgry, desiredLevel, args);
+                        processExplicitCategoryFormat(this.logger_env, fmtorctgry, fixedLevel, args);
                     }
+                }
+                if (tsw === "string" || tsw === "object") {
+                    processImplicitFormat(this.logger_env, fmtorctgry, fixedLevel, args);
                 }
                 else {
                     diaglog("logaction.badformat", { fmtorctgry: fmtorctgry });
@@ -1755,16 +1767,16 @@ function Logger(loggerName, options) {
 
             try {
                 const tsw = typeof (fmtorctgry);
-                if (tsw === "string") {
-                    processImplicitFormat(this.logger_env, fmtorctgry, fixedLevel, args);
-                }
-                else if (tsw === "number") {
+                if (tsw === "number") {
                     if (fmtorctgry >= 0) {
-                        processDefaultCategoryFormat(this.logger_env, fmtorctgry, desiredLevel, args);
+                        processDefaultCategoryFormat(this.logger_env, fmtorctgry, fixedLevel, args);
                     }
                     else {
-                        processExplicitCategoryFormat(this.logger_env, fmtorctgry, desiredLevel, args);
+                        processExplicitCategoryFormat(this.logger_env, fmtorctgry, fixedLevel, args);
                     }
+                }
+                else if (tsw === "string" || tsw === "object") {
+                    processImplicitFormat(this.logger_env, fmtorctgry, fixedLevel, args);
                 }
                 else {
                     diaglog("logaction.badformat", { fmtorctgry: fmtorctgry });

@@ -37,7 +37,8 @@ public:
         m_processing(), m_processingMode('n'),
         m_formatWorker(nullptr)
     {
-        this->m_categoryNames[1] = "$default"; //$default is enabled by default
+        this->m_categoryNames[1] = "$default"; //$default is defined by default
+        this->m_categoryNames[2] = "$explicit"; //$explicit is defined by default
 
         this->m_loggingLevelToNames[LoggingLevel::LLOFF] = std::string("OFF");
         this->m_loggingLevelToNames[LoggingLevel::LLFATAL] = std::string("FATAL");
