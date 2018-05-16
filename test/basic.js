@@ -72,29 +72,26 @@ logpp.addFormat("Basic_CALLBACK", "#callback");
 logpp.addFormat("Basic_REQUEST", "#request");
 
 logpp.addFormat("Basic_PERCENT", "Hello %%");
-logpp.addFormat("Basic_Bool", "%{0:b}");
-logpp.addFormat("Basic_Number", "%{0:n}");
-logpp.addFormat("Basic_String", "%{0:s}");
-logpp.addFormat("Basic_DateISO", "%{0:di}");
-logpp.addFormat("Basic_DateUTC", "%{0:du}");
-logpp.addFormat("Basic_DateLocal", "%{0:dl}");
-logpp.addFormat("Basic_General", "%{0:g}");
-logpp.addFormat("Basic_Object", "%{0:o}");
-logpp.addFormat("Basic_Array", "%{0:a}");
+logpp.addFormat("Basic_Bool", "%b");
+logpp.addFormat("Basic_Number", "%n");
+logpp.addFormat("Basic_String", "%s");
+logpp.addFormat("Basic_DateISO", "%di");
+logpp.addFormat("Basic_DateLocal", "%dl");
+logpp.addFormat("Basic_General", "%j");
 
-logpp.addFormat("Basic_ObjectWDepth", "%{0:o<1,>}");
-logpp.addFormat("Basic_ArrayWDepth", "%{0:a< 1 , * >}");
-logpp.addFormat("Basic_ObjectWLength", "%{0:o<,1>}");
-logpp.addFormat("Basic_ArrayWLength", "%{0:a<*,2>}");
-logpp.addFormat("Basic_ObjectWDepthLength", "%{0:o<1,1>}");
-logpp.addFormat("Basic_ArrayWDepthLength", "%{0:a<1,2>}");
+logpp.addFormat("Basic_ObjectWDepth", "%j<1,>");
+logpp.addFormat("Basic_ArrayWDepth", "%j< 1 , * >");
+logpp.addFormat("Basic_ObjectWLength", "%j<,1>");
+logpp.addFormat("Basic_ArrayWLength", "%j<*,2>");
+logpp.addFormat("Basic_ObjectWDepthLength", "%j<1,1>");
+logpp.addFormat("Basic_ArrayWDepthLength", "%j<1,2>");
 
 ////
 //Compund Formats
-logpp.addFormat("Compound_Hello", "%{0:s} %{1:s}!");
-logpp.addFormat("Compound_Hello_APP", "%{0:s} from #logger!");
-logpp.addFormat("Compound_Object", { name: "%{0:s}", msg: "Hello", args: ["#logger", 4, "%{1:b}", true] });
-logpp.addFormat("Compound_Object_Object", { name: "%{0:s}", msg: "Hello", args: [4, "%{1:g}", true] });
+logpp.addFormat("Compound_Hello", "%s %s!");
+logpp.addFormat("Compound_Hello_APP", "%s from #logger!");
+logpp.addFormat("Compound_Object", { name: "%s", msg: "Hello", args: ["#logger", 4, "%b", true] });
+logpp.addFormat("Compound_Object_Object", { name: "%s", msg: "Hello", args: [4, "%j", true] });
 
 const basictests = [
     { fmt: "$Basic_Hello", arg: [undefined], oktest: (res) => res === "Hello World!!!" },
@@ -123,14 +120,12 @@ const basictests = [
     { fmt: "$Basic_String", arg: ["\n"], oktest: (res) => res === "\"\\n\"" },
     { fmt: "$Basic_String", arg: ["the quick brown fox"], oktest: (res) => res === "\"the quick brown fox\"" },
     { fmt: "$Basic_DateISO", arg: [new Date()], oktest: (res) => !Number.isNaN(Date.parse(res.substring(1, res.length - 1))) && (new Date() - Date.parse(res.substring(1, res.length - 1))) >= 0 && res.endsWith("Z\"") },
-    { fmt: "$Basic_DateUTC", arg: [new Date()], oktest: (res) => !Number.isNaN(Date.parse(res)) && (new Date() - Date.parse(res)) >= 0 && res.endsWith("GMT\"") },
     { fmt: "$Basic_DateLocal", arg: [new Date()], oktest: (res) => !Number.isNaN(Date.parse(res)) && (new Date() - Date.parse(res)) >= 0 },
 
     { fmt: "$Basic_Bool", arg: [3], oktest: (res) => res === "\"<BadFormat>\"" },
     { fmt: "$Basic_Number", arg: ["1"], oktest: (res) => res === "\"<BadFormat>\"" },
     { fmt: "$Basic_String", arg: [1], oktest: (res) => res === "\"<BadFormat>\"" },
     { fmt: "$Basic_DateISO", arg: [101], oktest: (res) => res === "\"<BadFormat>\"" },
-    { fmt: "$Basic_DateUTC", arg: ["Tuesday"], oktest: (res) => res === "\"<BadFormat>\"" },
 
     { fmt: "$Basic_General", arg: [undefined], oktest: (res) => res === "undefined" },
     { fmt: "$Basic_General", arg: [null], oktest: (res) => res === "null" },
@@ -141,23 +136,23 @@ const basictests = [
     { fmt: "$Basic_General", arg: [() => 3], oktest: (res) => res === "\"<OpaqueValue>\"" },
     { fmt: "$Basic_General", arg: [Symbol("ok")], oktest: (res) => res === "\"<OpaqueValue>\"" },
 
-    { fmt: "$Basic_Object", arg: [{}], oktest: (res) => res === "{}" },
-    { fmt: "$Basic_Object", arg: [{ p1: 1 }], oktest: (res) => res === "{\"p1\": 1}" },
-    { fmt: "$Basic_Object", arg: [{ p2: 2, p1: Symbol("ok") }], oktest: (res) => res === "{\"p2\": 2, \"p1\": \"<OpaqueValue>\"}" },
+    { fmt: "$Basic_General", arg: [{}], oktest: (res) => res === "{}" },
+    { fmt: "$Basic_General", arg: [{ p1: 1 }], oktest: (res) => res === "{\"p1\": 1}" },
+    { fmt: "$Basic_General", arg: [{ p2: 2, p1: Symbol("ok") }], oktest: (res) => res === "{\"p2\": 2, \"p1\": \"<OpaqueValue>\"}" },
     { fmt: "$Basic_General", arg: [{ p1: 1 }], oktest: (res) => res === "{\"p1\": 1}" },
 
-    { fmt: "$Basic_Array", arg: [[]], oktest: (res) => res === "[]" },
-    { fmt: "$Basic_Array", arg: [[1]], oktest: (res) => res === "[1]" },
-    { fmt: "$Basic_Array", arg: [[1, true]], oktest: (res) => res === "[1, true]" },
+    { fmt: "$Basic_General", arg: [[]], oktest: (res) => res === "[]" },
+    { fmt: "$Basic_General", arg: [[1]], oktest: (res) => res === "[1]" },
+    { fmt: "$Basic_General", arg: [[1, true]], oktest: (res) => res === "[1, true]" },
     { fmt: "$Basic_General", arg: [[1]], oktest: (res) => res === "[1]" },
 
-    { fmt: "$Basic_Object", arg: [{ x: { p1: 1 }, y: 1 }], oktest: (res) => res === "{\"x\": {\"p1\": 1}, \"y\": 1}" },
-    { fmt: "$Basic_Object", arg: [{ x: [1], y: 1 }], oktest: (res) => res === "{\"x\": [1], \"y\": 1}" },
-    { fmt: "$Basic_Object", noprint: true, arg: [(() => { const r = { p1: 2 }; r["r"] = r; return r; })()], oktest: (res) => res === "{\"p1\": 2, \"r\": \"<Cycle>\"}" },
+    { fmt: "$Basic_General", arg: [{ x: { p1: 1 }, y: 1 }], oktest: (res) => res === "{\"x\": {\"p1\": 1}, \"y\": 1}" },
+    { fmt: "$Basic_General", arg: [{ x: [1], y: 1 }], oktest: (res) => res === "{\"x\": [1], \"y\": 1}" },
+    { fmt: "$Basic_General", noprint: true, arg: [(() => { const r = { p1: 2 }; r["r"] = r; return r; })()], oktest: (res) => res === "{\"p1\": 2, \"r\": \"<Cycle>\"}" },
 
-    { fmt: "$Basic_Array", arg: [[[1], 2]], oktest: (res) => res === "[[1], 2]" },
-    { fmt: "$Basic_Array", arg: [[{ p1: 1 }, 2]], oktest: (res) => res === "[{\"p1\": 1}, 2]" },
-    { fmt: "$Basic_Array", noprint: true, arg: [(() => { const r = [2]; r.push(r); return r; })()], oktest: (res) => res === "[2, \"<Cycle>\"]" },
+    { fmt: "$Basic_General", arg: [[[1], 2]], oktest: (res) => res === "[[1], 2]" },
+    { fmt: "$Basic_General", arg: [[{ p1: 1 }, 2]], oktest: (res) => res === "[{\"p1\": 1}, 2]" },
+    { fmt: "$Basic_General", noprint: true, arg: [(() => { const r = [2]; r.push(r); return r; })()], oktest: (res) => res === "[2, \"<Cycle>\"]" },
 
     { fmt: "$Basic_ObjectWDepth", arg: [{ x: { p1: 1 }, y: 1 }], oktest: (res) => res === "{\"x\": \"{...}\", \"y\": 1}" },
     { fmt: "$Basic_ObjectWDepth", arg: [{ x: [1], y: 1 }], oktest: (res) => res === "{\"x\": \"[...]\", \"y\": 1}" },
@@ -169,8 +164,8 @@ const basictests = [
 
     { fmt: "$Compound_Hello", arg: ["Hello", "World"], oktest: (msg) => msg === "\"Hello\" \"World\"!" },
     { fmt: "$Compound_Hello_APP", arg: ["World"], oktest: (msg) => msg === "\"World\" from \"basic\"!" },
-    { fmt: "$Compound_Object", arg: ["Bob", true], oktest: (msg) => msg === "{ \"args\": [ \"basic\", 4, true, true ], \"msg\": \"Hello\", \"name\": \"Bob\" }" },
-    { fmt: "$Compound_Object_Object", arg: ["Bob", [3, 4]], oktest: (msg) => msg === "{ \"args\": [ 4, [3, 4], true ], \"msg\": \"Hello\", \"name\": \"Bob\" }" }
+    { fmt: "$Compound_Object", arg: ["Bob", true], oktest: (msg) => msg === "{ \"name\": \"Bob\", \"msg\": \"Hello\", \"args\": [ \"basic\", 4, true, true ] }" },
+    { fmt: "$Compound_Object_Object", arg: ["Bob", [3, 4]], oktest: (msg) => msg === "{ \"name\": \"Bob\", \"msg\": \"Hello\", \"args\": [ 4, [3, 4], true ] }" }
 ];
 
 ///////////////////////////

@@ -4,7 +4,7 @@ const pino = require("pino")({ extreme: true, safe: false, base: {} });
 const logpp = require("../src/logger")("basic", { flushMode: "NOP" });
 
 logpp.addFormat("Basic_Hello", "Hello World!!!");
-logpp.addFormat("Compound_Hello", "Hello at #wallclock from #logger with %{0:a} %{1:n} -- %{2:s}");
+logpp.addFormat("Compound_Hello", "Hello at #wallclock from #logger with %j %n -- %s");
 
 function run() {
     if (benchmarks.length === 0) {

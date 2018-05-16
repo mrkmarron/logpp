@@ -2,8 +2,8 @@
 
 const os = require("os");
 
-//const nlogger = require("C:\\Chakra\\logpp\\build\\Release\\nlogger.node");
-const nlogger = require("bindings")("nlogger.node");
+const nlogger = require("C:\\Chakra\\logpp\\build\\Release\\nlogger.node");
+//const nlogger = require("bindings")("nlogger.node");
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //A diagnostics logger for our logger
@@ -83,8 +83,7 @@ function sanitizeLogLevel(level) {
  */
 const ExpandDefaults = {
     Depth: 2,
-    ObjectLength: 32,
-    ArrayLength: 16
+    Length: 32
 };
 
 /**
@@ -112,13 +111,13 @@ const FormatStringEnum = {
     REQUEST: 0x9,
 
     PERCENT: 0x11,
+    ARGREQUIRED: 0x12,
     BOOL: 0x12,
     NUMBER: 0x13,
     STRING: 0x14,
     DATEISO: 0x15,
     DATELOCAL: 0x16,
-    GENERAL: 0x17,
-    OBJECT: 0x18
+    GENERAL: 0x17
 };
 
 /**
@@ -326,8 +325,7 @@ FormatStringEntryParseMap.set("n", { kind: FormatStringEntryKind.Basic, enum: Fo
 FormatStringEntryParseMap.set("s", { kind: FormatStringEntryKind.Basic, enum: FormatStringEnum.STRING });
 FormatStringEntryParseMap.set("di", { kind: FormatStringEntryKind.Basic, enum: FormatStringEnum.DATEISO });
 FormatStringEntryParseMap.set("dl", { kind: FormatStringEntryKind.Basic, enum: FormatStringEnum.DATELOCAL });
-FormatStringEntryParseMap.set("j", { kind: FormatStringEntryKind.Basic, enum: FormatStringEnum.GENERAL });
-FormatStringEntryParseMap.set("o", { kind: FormatStringEntryKind.Compound, enum: FormatStringEnum.OBJECT });
+FormatStringEntryParseMap.set("j", { kind: FormatStringEntryKind.Compound, enum: FormatStringEnum.GENERAL });
 
 const s_expandoFormatStrings = [];
 const s_basicFormatStrings = [];
@@ -348,7 +346,7 @@ FormatStringEntryParseMap.forEach((v, k) => {
 
 const s_expandoStringRe = new RegExp("^(" + s_expandoFormatStrings.join("|") + ")$");
 const s_basicFormatStringRe = new RegExp("^\\%(" + s_basicFormatStrings.join("|") + ")$");
-const s_compoundFormatStringRe = new RegExp("^\\%(" + s_compoundFormatStrings.join("|") + ")(<(\\d+|\\*)?,(\\d+|\\*)?>)$");
+const s_compoundFormatStringRe = new RegExp("^\\%(" + s_compoundFormatStrings.join("|") + ")(<(\\d+|\\*)?,(\\d+|\\*)?>)?$");
 
 /**
  * Construct a msgFormat entry for a compound formatter.
@@ -393,7 +391,6 @@ function expandToJsonFormatter(jobj) {
     else if (typeid === TypeNameEnum.TObject) {
         return "{ " +
             Object.keys(jobj)
-                .sort()
                 .map(function (key) { return "\"" + key + "\": " + expandToJsonFormatter(jobj[key]); })
                 .join(", ") +
             " }";
@@ -438,7 +435,7 @@ function extractExpandoSpecifier(fmtString, vpos) {
 }
 
 //Helper regexs for parsing numbers in format specifier
-const s_formatDepthLengthRegex = /([o|a])<[ ]*(\d+|\*)?[ ]*,[ ]*(\d+|\*)?[ ]*>}/y;
+const s_formatDepthLengthRegex = /<[ ]*(\d+|\*)?[ ]*,[ ]*(\d+|\*)?[ ]*>/y;
 
 /**
  * Helper function to extract and construct an argument format specifier or throws is the format specifier is malformed.
@@ -447,32 +444,12 @@ const s_formatDepthLengthRegex = /([o|a])<[ ]*(\d+|\*)?[ ]*,[ ]*(\d+|\*)?[ ]*>}/
  * @param {number} vpos the current position in the string
  * @returns Object the expando MsgFormatEntry and the range of the string that was idenitifed as the formatter
  */
-function extractArgumentFormatSpecifier(fmtString, vpos) {
+function extractArgumentFormatSpecifier(fmtString, vpos, argPosition) {
     if (fmtString.startsWith("%%", vpos)) {
         return formatEntryInfoExtractorHelper(FormatStringEntryKind.Literal, FormatStringEnum.PERCENT, vpos, vpos + "%%".length);
     }
     else {
-        if (!fmtString.startsWith("%{", vpos)) {
-            throw new FormatSyntaxError("Stray '%' in argument formatter", fmtString, vpos);
-        }
-
-        s_formatArgPosNumberRegex.lastIndex = vpos + "%{".length;
-
-        const argPositionMatch = s_formatArgPosNumberRegex.exec(fmtString);
-        if (!argPositionMatch) {
-            throw new FormatSyntaxError("Bad position specifier in format", fmtString, s_formatArgPosNumberRegex.lastIndex);
-        }
-
-        const argPosition = Number.parseInt(argPositionMatch[0]);
-        if (argPosition < 0) {
-            throw new FormatSyntaxError("Bad position specifier in format", fmtString, s_formatArgPosNumberRegex.lastIndex);
-        }
-
-        let specPos = vpos + "%{".length + argPositionMatch[0].length;
-        if (fmtString.charAt(specPos) !== ":") {
-            throw new FormatSyntaxError("Bad formatting specifier", fmtString, specPos);
-        }
-        specPos++;
+        const specPos = vpos + 1;
 
         const cchar = fmtString.charAt(specPos);
         const basicFormatOptionStr = s_basicFormatStrings.find(function (value) { return value.length === 1 ? value === cchar : fmtString.startsWith(value, specPos); });
@@ -484,38 +461,32 @@ function extractArgumentFormatSpecifier(fmtString, vpos) {
 
         if (basicFormatOptionStr) {
             const basicFormatOptionInfo = FormatStringEntryParseMap.get(basicFormatOptionStr);
-            const fendpos = specPos + basicFormatOptionStr.length + 1; //"fmt}".length
+            const fendpos = specPos + basicFormatOptionStr.length; //"fmt".length
             return formatEntryInfoExtractorHelper(basicFormatOptionInfo.kind, basicFormatOptionInfo.enum, vpos, fendpos, argPosition, -1, -1);
         }
         else {
             const DL_STAR = 1073741824;
 
-            if (fmtString.startsWith("o}", specPos)) {
-                return formatEntryInfoExtractorHelper(FormatStringEntryKind.Compound, FormatStringEnum.OBJECT, vpos, specPos + "o}".length, argPosition, ExpandDefaults.Depth, ExpandDefaults.ObjectLength);
-            }
-            else if (fmtString.startsWith("a}", specPos)) {
-                return formatEntryInfoExtractorHelper(FormatStringEntryKind.Compound, FormatStringEnum.ARRAY, vpos, specPos + "a}".length, argPosition, ExpandDefaults.Depth, ExpandDefaults.ArrayLength);
+            s_formatDepthLengthRegex.lastIndex = specPos + 1; //advance j
+            const dlMatch = s_formatDepthLengthRegex.exec(fmtString);
+
+            if (dlMatch === null) {
+                const fendpos = specPos + 1; //"j".length
+                return formatEntryInfoExtractorHelper(FormatStringEntryKind.Compound, FormatStringEnum.GENERAL, vpos, fendpos, argPosition, ExpandDefaults.Depth, ExpandDefaults.Length);
             }
             else {
-                s_formatDepthLengthRegex.lastIndex = specPos;
-                const dlMatch = s_formatDepthLengthRegex.exec(fmtString);
-                if (!dlMatch) {
-                    throw new FormatSyntaxError("Bad position specifier in format", fmtString, s_formatDepthLengthRegex.lastIndex);
-                }
-
-                const ttag = (dlMatch[1] === "o") ? FormatStringEnum.OBJECT : FormatStringEnum.ARRAY;
                 let tdepth = ExpandDefaults.Depth;
-                let tlength = (dlMatch[1] === "o") ? ExpandDefaults.ObjectLength : ExpandDefaults.ArrayLength;
+                let tlength = ExpandDefaults.Length;
+
+                if (dlMatch[1]) {
+                    tdepth = (dlMatch[1] !== "*") ? Number.parseInt(dlMatch[1]) : DL_STAR;
+                }
 
                 if (dlMatch[2]) {
-                    tdepth = (dlMatch[2] !== "*") ? Number.parseInt(dlMatch[2]) : DL_STAR;
+                    tlength = (dlMatch[2] !== "*") ? Number.parseInt(dlMatch[2]) : DL_STAR;
                 }
 
-                if (dlMatch[3]) {
-                    tlength = (dlMatch[3] !== "*") ? Number.parseInt(dlMatch[3]) : DL_STAR;
-                }
-
-                return formatEntryInfoExtractorHelper(FormatStringEntryKind.Compound, ttag, vpos, specPos + dlMatch[0].length, argPosition, tdepth, tlength);
+                return formatEntryInfoExtractorHelper(FormatStringEntryKind.Compound, FormatStringEnum.GENERAL, vpos, specPos + 1 + dlMatch[0].length, argPosition, tdepth, tlength);
             }
         }
     }
@@ -574,6 +545,7 @@ function extractMsgFormat(fmtName, fmtInfo) {
         return fmtMemoId;
     }
 
+    let argPosition = 0;
     const fArray = [];
     while (cpos < fmtString.length) {
         const cchar = fmtString.charAt(cpos);
@@ -581,8 +553,12 @@ function extractMsgFormat(fmtName, fmtInfo) {
             cpos++;
         }
         else {
-            const fmt = (cchar === "#") ? extractExpandoSpecifier(fmtString, cpos) : extractArgumentFormatSpecifier(fmtString, cpos);
+            const fmt = (cchar === "#") ? extractExpandoSpecifier(fmtString, cpos) : extractArgumentFormatSpecifier(fmtString, cpos, argPosition);
             fArray.push(fmt);
+
+            if (fmt.fmt.enum >= FormatStringEnum.ARGREQUIRED) {
+                argPosition++;
+            }
 
             cpos = fmt.formatEnd;
         }
@@ -872,25 +848,29 @@ InMemoryLog.prototype.addJsVarValueEntry = function (tenum, data) {
 };
 
 /**
- * Add functions to process general values via lookup on typeid number in prototype array
+ * Add an expanded general value to the InMemoryLog
+ * @method
+ * @param {Object} obj the object to expand into the InMemoryLog
+ * @param {number} depth the max depth to recursively expand the object
+ * @param {number} length the max number of properties to expand
  */
-const AddGeneralValue_RemainingTypesCallTable = new Array(TypeNameEnum.TypeLimit);
-AddGeneralValue_RemainingTypesCallTable.fill(null);
-
-AddGeneralValue_RemainingTypesCallTable[TypeNameEnum.TDate] = function (inMemoryLog, value, depth) {
-    inMemoryLog.addNumberEntry(LogEntryTags.JsVarValue_Date, value.valueOf());
-};
-AddGeneralValue_RemainingTypesCallTable[TypeNameEnum.TObject] = function (inMemoryLog, value, depth) {
-    inMemoryLog.addExpandedObject(value, depth, ExpandDefaults.ObjectLength);
-};
-AddGeneralValue_RemainingTypesCallTable[TypeNameEnum.TJsArray] = function (inMemoryLog, value, depth) {
-    inMemoryLog.addExpandedArray(value, depth, ExpandDefaults.ArrayLength);
-};
-AddGeneralValue_RemainingTypesCallTable[TypeNameEnum.TTypedArray] = function (inMemoryLog, value, depth) {
-    inMemoryLog.addExpandedArray(value, depth, ExpandDefaults.ArrayLength);
-};
-AddGeneralValue_RemainingTypesCallTable[TypeNameEnum.TUnknown] = function (inMemoryLog, value, depth) {
-    inMemoryLog.addTagOnlyEntry(LogEntryTags.OpaqueValue);
+InMemoryLog.prototype.addGeneralValue = function (value, depth, length) {
+    const typeid = getTypeNameEnum(value);
+    if (typeid <= TypeNameEnum.LastImmutableType) {
+        this.addJsVarValueEntry(typeid, value);
+    }
+    else if (typeid === TypeNameEnum.TDate) {
+        this.addNumberEntry(LogEntryTags.JsVarValue_Date, value.valueOf());
+    }
+    else if (typeid === TypeNameEnum.TObject) {
+        this.addExpandedObject(value, depth, length);
+    }
+    else if (typeid === TypeNameEnum.TJsArray || typeid === TypeNameEnum.TTypedArray) {
+        this.addExpandedArray(value, depth, length);
+    }
+    else {
+        this.addTagOnlyEntry(LogEntryTags.OpaqueValue);
+    }
 };
 
 /**
@@ -917,22 +897,16 @@ InMemoryLog.prototype.addExpandedObject = function (obj, depth, length) {
 
         let allowedLengthRemain = length;
         for (const p in obj) {
-            this.addStringEntry(LogEntryTags.PropertyRecord, p);
-
-            const value = obj[p];
-            const typeid = getTypeNameEnum(value);
-            if (typeid <= TypeNameEnum.LastImmutableType) {
-                this.addJsVarValueEntry(typeid, value);
-            }
-            else {
-                (AddGeneralValue_RemainingTypesCallTable[typeid])(this, value, depth - 1);
-            }
-
-            allowedLengthRemain--;
             if (allowedLengthRemain <= 0) {
                 this.addTagOnlyEntry(LogEntryTags.LengthBoundObject);
                 break;
             }
+            allowedLengthRemain--;
+
+            this.addStringEntry(LogEntryTags.PropertyRecord, p);
+
+            const value = obj[p];
+            this.addGeneralValue(value, depth - 1, length);
         }
 
         //Set processing as false for cycle detection
@@ -965,13 +939,7 @@ InMemoryLog.prototype.addExpandedArray = function (obj, depth, length) {
 
         for (let i = 0; i < obj.length; ++i) {
             const value = obj[i];
-            const typeid = getTypeNameEnum(value);
-            if (typeid <= TypeNameEnum.LastImmutableType) {
-                this.addJsVarValueEntry(typeid, value);
-            }
-            else {
-                (AddGeneralValue_RemainingTypesCallTable[typeid])(this, value, depth - 1);
-            }
+            this.addGeneralValue(value, depth - 1, length);
 
             if (i >= length - 1) {
                 this.addTagOnlyEntry(LogEntryTags.LengthBoundArray);
@@ -1082,33 +1050,11 @@ InMemoryLog.prototype.logMessage = function (env, level, category, fmt, argStart
                         this.processImmutableHelper(TypeNameEnum.TString, vtype, value);
                         break;
                     case FormatStringEnum.DATEISO:
-                    case FormatStringEnum.DATEUTC:
                     case FormatStringEnum.DATELOCAL:
                         this.processDateHelper(vtype, value);
                         break;
-                    case FormatStringEnum.OBJECT:
-                        if (vtype === TypeNameEnum.TObject) {
-                            this.addExpandedObject(value, formatEntry.expandDepth, formatEntry.expandLength);
-                        }
-                        else {
-                            this.addTagOnlyEntry(LogEntryTags.JsBadFormatVar);
-                        }
-                        break;
-                    case FormatStringEnum.ARRAY:
-                        if (vtype === TypeNameEnum.TJsArray || vtype === TypeNameEnum.TTypedArray) {
-                            this.addExpandedArray(value, formatEntry.expandDepth, formatEntry.expandLength);
-                        }
-                        else {
-                            this.addTagOnlyEntry(LogEntryTags.JsBadFormatVar);
-                        }
-                        break;
                     default:
-                        if (vtype <= TypeNameEnum.LastImmutableType) {
-                            this.addJsVarValueEntry(vtype, value);
-                        }
-                        else {
-                            (AddGeneralValue_RemainingTypesCallTable[vtype])(this, value, formatEntry.depth);
-                        }
+                        this.addGeneralValue(value, formatEntry.expandDepth, formatEntry.expandLength);
                         break;
                 }
             }
