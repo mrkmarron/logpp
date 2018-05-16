@@ -2,8 +2,8 @@
 
 const os = require("os");
 
-const nlogger = require("C:\\Chakra\\logpp\\build\\Release\\nlogger.node");
-//const nlogger = require("bindings")("nlogger.node");
+//const nlogger = require("C:\\Chakra\\logpp\\build\\Release\\nlogger.node");
+const nlogger = require("bindings")("nlogger.node");
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //A diagnostics logger for our logger
