@@ -44,11 +44,9 @@ enum class FormatStringEnum : uint8_t
     NUMBER = 0x13,
     STRING = 0x14,
     DATEISO = 0x15,
-    DATEUTC = 0x16,
-    DATELOCAL = 0x17,
-    GENERAL = 0x18,
-    OBJECT = 0x19,
-    ARRAY = 0x1A
+    DATELOCAL = 0x16,
+    GENERAL = 0x17,
+    OBJECT = 0x18
 };
 
 enum class LogEntryTag : uint8_t

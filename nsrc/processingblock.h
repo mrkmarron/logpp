@@ -283,7 +283,6 @@ public:
                         formatter->emitJsString(this->getCurrentDataAsString());
                         break;
                     case FormatStringEnum::DATEISO:
-                    case FormatStringEnum::DATEUTC:
                     case FormatStringEnum::DATELOCAL:
                         formatter->emitJsDate(this->getCurrentDataAsTime(), fentry.fenum, true);
                         break;

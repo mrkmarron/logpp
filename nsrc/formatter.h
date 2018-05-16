@@ -175,12 +175,7 @@ public:
         uint32_t msval = dval % 1000;
 
         this->ensure(128);
-        if (fmt == FormatStringEnum::DATEUTC)
-        {
-            auto utctime = std::gmtime(&tval);
-            this->m_curr += strftime(this->m_buff + this->m_curr, 128, "%a, %d %b %Y %H:%M:%S GMT", utctime);
-        }
-        else if (fmt == FormatStringEnum::DATELOCAL)
+        if (fmt == FormatStringEnum::DATELOCAL)
         {
             auto localtime = std::localtime(&tval);
             this->m_curr += strftime(this->m_buff + this->m_curr, 128, "%a %b %d %Y %H:%M:%S GMT%z (%Z)", localtime);

@@ -116,11 +116,9 @@ const FormatStringEnum = {
     NUMBER: 0x13,
     STRING: 0x14,
     DATEISO: 0x15,
-    DATEUTC: 0x16,
-    DATELOCAL: 0x17,
-    GENERAL: 0x18,
-    OBJECT: 0x19,
-    ARRAY: 0x1A
+    DATELOCAL: 0x16,
+    GENERAL: 0x17,
+    OBJECT: 0x18
 };
 
 /**
@@ -286,13 +284,13 @@ const s_globalenv = {
 
 ////
 //Valid format specifiers are:
-//%{p:b} -- a boolean value
-//%{p:n} -- a number
-//%{p:s} -- a string
-//%{p:d-xxx} -- a date formatted as iso, utc, or local
-//%{p:o<d,l>} -- an object expanded up to d levels (default is 2) at most l items in any level (default is 32 for objects 16 for arrays)
-//%{p:a<d,l>} -- an array expanded up to d levels (default is 2) at most l items in any level (default is 32 for objects 16 for arrays)
-//%{p:g} -- general value (general format applied -- no array expansion, object depth of 2)
+//%b -- a boolean value
+//%n -- a number
+//%s -- a string
+//%d -- a date formatted as iso
+//%dl -- a date formatted as local
+//%o<d,l> -- an object expanded up to d levels (default is 2) at most l items in any level (default is 32 for objects 16 for arrays)
+//%j -- general value (general format applied -- no array expansion, object depth of 2)
 //%% -- a literal %
 ////
 
@@ -327,11 +325,9 @@ FormatStringEntryParseMap.set("b", { kind: FormatStringEntryKind.Basic, enum: Fo
 FormatStringEntryParseMap.set("n", { kind: FormatStringEntryKind.Basic, enum: FormatStringEnum.NUMBER });
 FormatStringEntryParseMap.set("s", { kind: FormatStringEntryKind.Basic, enum: FormatStringEnum.STRING });
 FormatStringEntryParseMap.set("di", { kind: FormatStringEntryKind.Basic, enum: FormatStringEnum.DATEISO });
-FormatStringEntryParseMap.set("du", { kind: FormatStringEntryKind.Basic, enum: FormatStringEnum.DATEUTC });
 FormatStringEntryParseMap.set("dl", { kind: FormatStringEntryKind.Basic, enum: FormatStringEnum.DATELOCAL });
-FormatStringEntryParseMap.set("g", { kind: FormatStringEntryKind.Basic, enum: FormatStringEnum.GENERAL });
+FormatStringEntryParseMap.set("j", { kind: FormatStringEntryKind.Basic, enum: FormatStringEnum.GENERAL });
 FormatStringEntryParseMap.set("o", { kind: FormatStringEntryKind.Compound, enum: FormatStringEnum.OBJECT });
-FormatStringEntryParseMap.set("a", { kind: FormatStringEntryKind.Compound, enum: FormatStringEnum.ARRAY });
 
 const s_expandoFormatStrings = [];
 const s_basicFormatStrings = [];
@@ -351,8 +347,8 @@ FormatStringEntryParseMap.forEach((v, k) => {
 });
 
 const s_expandoStringRe = new RegExp("^(" + s_expandoFormatStrings.join("|") + ")$");
-const s_basicFormatStringRe = new RegExp("^\\%{(\\d+):(" + s_basicFormatStrings.join("|") + ")}$");
-const s_compoundFormatStringRe = new RegExp("^\\%{(\\d+):(" + s_compoundFormatStrings.join("|") + ")(<(\\d+|\\*)?,(\\d+|\\*)?>)}$");
+const s_basicFormatStringRe = new RegExp("^\\%(" + s_basicFormatStrings.join("|") + ")$");
+const s_compoundFormatStringRe = new RegExp("^\\%(" + s_compoundFormatStrings.join("|") + ")(<(\\d+|\\*)?,(\\d+|\\*)?>)$");
 
 /**
  * Construct a msgFormat entry for a compound formatter.
@@ -442,7 +438,6 @@ function extractExpandoSpecifier(fmtString, vpos) {
 }
 
 //Helper regexs for parsing numbers in format specifier
-const s_formatArgPosNumberRegex = /\d+/y;
 const s_formatDepthLengthRegex = /([o|a])<[ ]*(\d+|\*)?[ ]*,[ ]*(\d+|\*)?[ ]*>}/y;
 
 /**
