@@ -8,7 +8,6 @@ const nlogger = require("bindings")("nlogger.node");
 /////////////////////////////////////////////////////////////////////////////////////////////////
 //A diagnostics logger for our logger
 function diaglog_disabled(activity, payload) {
-
 }
 
 let diaglog_wstream = undefined; // require("fs").createWriteStream("C:\\Users\\marron\\Desktop\\logtrace.txt");
@@ -179,11 +178,13 @@ const LogEntryTags = {
     MsgLevel: 0x2,
     MsgCategory: 0x3,
     MsgWallTime: 0x4,
-    MsgEndSentinal: 0x5,
-    LParen: 0x6,
-    RParen: 0x7,
-    LBrack: 0x8,
-    RBrack: 0x9,
+    MSGLogger: 0x5,
+    MSGChildInfo: 0x6,
+    MsgEndSentinal: 0x7,
+    LParen: 0x8,
+    RParen: 0x9,
+    LBrack: 0xA,
+    RBrack: 0xB,
 
     JsVarValue_Undefined: 0x11,
     JsVarValue_Null: 0x12,
@@ -772,9 +773,9 @@ InMemoryLog.prototype.removeHeadBlock = function (utilization) {
  * Add the header info for a msg in the InMemoryLog
  * @method
  */
-InMemoryLog.prototype.addMsgHeader = function (fmt, level, category) {
+InMemoryLog.prototype.addMsgHeader = function (fmt, level, category, env) {
     let block = this.tail;
-    if (block.epos + 4 >= block.blocksize) {
+    if (block.epos + 6 >= block.blocksize) {
         block = createMemoryMsgBlock(block, blockSize(block.epos - block.spos, block.blocksize));
         this.tail = block;
     }
@@ -793,6 +794,14 @@ InMemoryLog.prototype.addMsgHeader = function (fmt, level, category) {
     block.tags[block.epos] = LogEntryTags.MsgWallTime;
     block.data[block.epos] = Date.now();
     block.epos++;
+
+    if (s_environment.doPrefix) {
+        this.addStringEntry(LogEntryTags.MSGLogger, env.LOGGER);
+    }
+
+    if (env.isChild) {
+        this.addStringEntry(LogEntryTags.MSGChildInfo, env.childPrefixString);
+    }
 };
 
 /**
@@ -1024,7 +1033,7 @@ InMemoryLog.prototype.processDateHelper = function (vtype, value) {
  * @param {Array} args the arguments for the format message
  */
 InMemoryLog.prototype.logMessage = function (env, level, category, fmt, argStart, args) {
-    this.addMsgHeader(fmt, level, category);
+    this.addMsgHeader(fmt, level, category, env);
 
     let incTimeStamp = false;
     for (let i = 0; i < fmt.formatterArray.length; ++i) {
@@ -1452,12 +1461,25 @@ function Logger(loggerName, options) {
     };
     this.isChild = false;
 
-    this.childLogger = function (prefix) {
+    this.childLogger = function (childPrefix) {
         const cenv = {};
         Object.keys(this.logger_env).forEach((p) => {
             cenv[p] = this.logger_env[p];
         });
-        cenv.prefix = JSON.stringify(typeof (prefix) !== "string" ? JSON.stringify(prefix) : prefix);
+        cenv.LOGGER = this.logger_env.LOGGER + ".child";
+
+        cenv.childPrefix = {};
+        if (this.childPrefix) {
+            Object.keys(this.childPrefix).forEach((p) => {
+                cenv.childPrefix[p] = this.childPrefix[p];
+            });
+        }
+        if (childPrefix !== null && typeof (childPrefix) === "object") {
+            Object.keys(childPrefix).forEach((p) => {
+                cenv.childPrefix[p] = childPrefix[p];
+            });
+        }
+        cenv.childPrefixString = JSON.stringify(cenv.childPrefix);
 
         return Object.create(this, { logger_env: cenv, isChild: true });
     };
@@ -1991,7 +2013,7 @@ module.exports = function (name, options) {
 
     processSimpleOption(options, ropts, "defaultSubloggerLevel", "string", (optv) => LoggingLevels[optv] !== undefined, "WARN");
 
-    if (debuggerAttached) {
+    if (debuggerAttached && !options.disableAutoDebugger) {
         processSimpleOption(options, ropts, "flushCount", "number", (optv) => optv >= 0, 0);
         processSimpleOption(options, ropts, "flushTarget", "string", (optv) => /console|stream|callback/.test(optv), "console");
         processSimpleOption(options, ropts, "flushMode", "string", (optv) => /SYNC|ASYNC|NOP|DISCARD/.test(optv), "SYNC");
@@ -2021,6 +2043,12 @@ module.exports = function (name, options) {
     processSimpleOption(options, ropts, "formats", undefined, (optv) => (typeof (optv) === "string" || typeof (optv) === "object"), undefined);
     processSimpleOption(options, ropts, "categories", undefined, (optv) => (typeof (optv) === "string" || typeof (optv) === "object"), undefined);
     processSimpleOption(options, ropts, "subloggers", undefined, (optv) => (typeof (optv) === "string" || typeof (optv) === "object"), undefined);
+
+    //special diagnostics flags
+    processSimpleOption(options, ropts, "enableDiagnosticLog", "boolean", (optv) => true, false);
+    if (ropts.enableDiagnosticLog) {
+        processSimpleOption(options, ropts, "diagnosticLogStream", "object", (optv) => true, null);
+    }
 
     diaglog("logger.ropts", { ropts: ropts });
 
@@ -2057,6 +2085,11 @@ module.exports = function (name, options) {
 
             if (require.main.filename === lfilename) {
                 diaglog("logger.create.root");
+
+                if (ropts.enableDiagnosticLog && ropts.diagnosticLogStream) {
+                    diaglog_wstream = ropts.diagnosticLogStream;
+                    diaglog = diaglog_enabled;
+                }
 
                 s_rootLogger = logger;
 

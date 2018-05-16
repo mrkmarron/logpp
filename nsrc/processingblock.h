@@ -163,6 +163,7 @@ public:
         const std::shared_ptr<MsgFormat> fmt = lenv->GetFormat(this->getCurrentDataAsInt());
         this->advancePos();
 
+        bool dosep = false;
         if (!emitstdprefix)
         {
             this->advancePos();
@@ -171,6 +172,7 @@ public:
         }
         else
         {
+            dosep = true;
             formatter->emitLiteralString(lenv->GetLogLevelName(this->getCurrentDataAsLoggingLevel()));
             this->advancePos();
             formatter->emitLiteralChar('#');
@@ -182,7 +184,21 @@ public:
             formatter->emitJsDate(this->getCurrentDataAsTime(), FormatStringEnum::DATEISO, false);
             this->advancePos();
 
+            formatter->emitLiteralString(" from ");
+            formatter->emitLiteralString(lenv->GetHostName());
+            formatter->emitLiteralString("::");
+            formatter->emitLiteralString(this->getCurrentDataAsString());
+            this->advancePos();
+        }
+
+        if (this->getCurrentTag() == LogEntryTag::MSGChildInfo) {
             formatter->emitLiteralString(" -- ");
+            formatter->emitLiteralString(this->getCurrentDataAsString());
+        }
+
+        if (dosep)
+        {
+            formatter->emitLiteralString(" | ");
         }
 
         formatter->emitLiteralString(fmt->GetInitialFormatStringSegment());
@@ -338,7 +354,9 @@ public:
         while (cpos < epos && tags[cpos] != static_cast<uint8_t>(LogEntryTag::MsgEndSentinal))
         {
             const LogEntryTag ttag = static_cast<LogEntryTag>(tags[cpos]);
-            if (ttag != LogEntryTag::JsVarValue_StringIdx && ttag != LogEntryTag::PropertyRecord)
+            bool isSimpleValueTag = !((ttag == LogEntryTag::JsVarValue_StringIdx) | (ttag == LogEntryTag::PropertyRecord) | (ttag == LogEntryTag::MSGLogger) | (ttag == LogEntryTag::MSGChildInfo));
+
+            if (isSimpleValueTag)
             {
                 this->AddDataEntry(ttag, data[cpos]);
             }
