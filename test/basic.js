@@ -1,61 +1,18 @@
 "use strict";
 
+const runner = require("./runner");
 const os = require("os");
-const chalk = require("chalk");
 
 const logpp = require("../src/logger")("basic", { flushMode: "NOP" });
 
-function basicTestRunner(nextcb) {
-    function runSingleTest(test) {
-        logpp.info(logpp[test.fmt], ...test.arg);
-        return logpp.emitLogSync(true, true).trim();
-    }
-
-    let basictestsRun = 0;
-    let basictestsFailed = 0;
-
-    function runSingleTestCB() {
-        const test = basictests[basictestsRun++];
-        try {
-            process.stdout.write(`log.info("${test.fmt}", ${test.noprint ? "-skip print-" : JSON.stringify(test.arg)})...`);
-            const res = runSingleTest(test);
-            process.stdout.write(res + " ->");
-            if (test.oktest(res)) {
-                process.stdout.write(chalk.green(" passed\n"));
-            }
-            else {
-                basictestsFailed = basictestsFailed + 1;
-
-                process.stdout.write(chalk.red(` failed with "${res}"\n`));
-            }
-        }
-        catch (ex) {
-            basictestsFailed = basictestsFailed + 1;
-
-            process.stdout.write(chalk.red(` failed with exception: ${ex}\n`));
-        }
-
-        if (basictestsRun !== basictests.length) {
-            setImmediate(runSingleTestCB);
-        }
-        else {
-            process.stdout.write("----\n");
-            if (basictestsFailed !== 0) {
-                process.stdout.write(chalk.red.bold(`${basictestsFailed} failures out of ${basictestsRun} tests!!!\n`));
-            }
-            else {
-                process.stdout.write(chalk.green.bold(`All ${basictestsRun} tests passed!\n`));
-            }
-
-            setImmediate(nextcb);
-        }
-    }
-
-    process.stdout.write("Running basic tests...\n");
-    setImmediate(runSingleTestCB);
+function runSingleTest(test) {
+    logpp.info(logpp[test.fmt], ...test.arg);
+    return logpp.emitLogSync(true, true).trim();
 }
 
-///////////////////////////
+function printTestInfo(test) {
+    return `log.info("${test.fmt}", ${test.noprint ? "-skip print-" : JSON.stringify(test.arg)})...`;
+}
 
 ////
 //Basic Formats
@@ -100,7 +57,7 @@ const basictests = [
     { fmt: "$Basic_HOST", arg: [undefined], oktest: (res) => res === JSON.stringify(os.hostname()) },
     { fmt: "$Basic_APP", arg: [undefined], oktest: (res) => res === JSON.stringify(__filename.toString()) },
     { fmt: "$Basic_LOGGER", arg: [undefined], oktest: (res) => res === JSON.stringify("basic") },
-    { fmt: "$Basic_SOURCE", arg: [undefined], oktest: (res) => res === JSON.stringify(__filename.toString() + ":10:15") },
+    { fmt: "$Basic_SOURCE", arg: [undefined], oktest: (res) => res === JSON.stringify(__filename.toString() + ":9:11") },
     { fmt: "$Basic_WALLCLOCK", arg: [undefined], oktest: (res) => !Number.isNaN(Date.parse(res.substring(1, res.length - 1))) && (new Date() - Date.parse(res.substring(1, res.length - 1))) >= 0 && res.endsWith("Z\"") },
     { fmt: "$Basic_TIMESTAMP", arg: [undefined], oktest: (res) => res === "0" },
     { fmt: "$Basic_TIMESTAMP", arg: [undefined], oktest: (res) => res === "1" },
@@ -170,6 +127,7 @@ const basictests = [
 
 ///////////////////////////
 
-basicTestRunner(() => {
+const basicRunner = runner.generalSyncRunner(runSingleTest, printTestInfo, basictests);
+basicRunner(() => {
     process.stdout.write("\nAll tests done!");
 });

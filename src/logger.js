@@ -29,7 +29,7 @@ function diaglog_enabled(activity, payload) {
 let diaglog = diaglog_disabled;
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
-//Start off with a bunch of costant definitions.
+//Start off with a bunch of constant definitions.
 //In a number of cases we don't actually define here. Instead we have a comment and literal value which
 //  we actually put in the code where needed (so no need to load in bytecode and very obvious for JIT).
 
