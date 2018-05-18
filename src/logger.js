@@ -1648,7 +1648,7 @@ function Logger(loggerName, options) {
         }
         else {
             args.unshift(fmtInfo);
-            return extractMsgFormat(lfilename, "%{0:g}");
+            return extractMsgFormat(lfilename, "%j");
         }
     }
 
@@ -1708,7 +1708,7 @@ function Logger(loggerName, options) {
                         processExplicitCategoryFormat(this.logger_env, fmtorctgry, fixedLevel, args);
                     }
                 }
-                if (tsw === "string" || tsw === "object") {
+                else if (tsw === "string" || tsw === "object") {
                     processImplicitFormat(this.logger_env, fmtorctgry, fixedLevel, args);
                 }
                 else {

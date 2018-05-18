@@ -9,7 +9,7 @@
             "request": "launch",
             "name": "Launch Program",
             "cwd": "${workspaceFolder}",
-            "program": "${workspaceFolder}\\test\\basic.js"
+            "program": "${workspaceFolder}\\test\\msg_enable.js"
         }
     ]
 }

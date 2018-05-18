@@ -207,9 +207,9 @@ Napi::Value ProcessMsgs(const Napi::CallbackInfo& info)
         }
     }
 
-    if (into->IsEmptyBlock()) {
-        lenv->DiscardProcesingBlock(into);
-    }
+    //if (into->IsEmptyBlock()) {
+    //    lenv->DiscardProcesingBlock(into);
+   // }
 
     inmemblock.Set("spos", Napi::Number::New(env, static_cast<double>(cpos)));
     return Napi::Boolean::New(env, false);
