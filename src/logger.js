@@ -2,7 +2,7 @@
 
 const os = require("os");
 
-//const nlogger = require("C:\\Chakra\\logpp\\build\\Release\\nlogger.node");
+//const nlogger = require("C:\\Code\\logpp\\build\\Debug\\nlogger.node");
 const nlogger = require("bindings")("nlogger.node");
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -10,7 +10,8 @@ const nlogger = require("bindings")("nlogger.node");
 function diaglog_disabled(activity, payload) {
 }
 
-let diaglog_wstream = undefined; // require("fs").createWriteStream("C:\\Users\\marron\\Desktop\\logtrace.txt");
+let lazyfs = undefined;
+let diaglog_wfd = undefined;
 function diaglog_enabled(activity, payload) {
     let pls = "";
     try {
@@ -23,7 +24,10 @@ function diaglog_enabled(activity, payload) {
     }
 
     const output = activity + " -- " + pls + " @ " + (new Date()).toISOString() + "\n";
-    diaglog_wstream.write(output);
+    if (lazyfs === undefined) {
+        lazyfs = require("fs");
+    }
+    lazyfs.writeSync(diaglog_wfd || process.stdout, output);
 }
 
 let diaglog = diaglog_disabled;
@@ -1077,30 +1081,39 @@ InMemoryLog.prototype.logMessage = function (env, level, category, fmt, argStart
  * @ returns true if there is data that was not processed (but will need to be processed eventually)
  */
 InMemoryLog.prototype.processMessagesForWrite = function () {
+    let msgCount = 0;
+    for (let cblock = this.head; cblock !== null; cblock = cblock.next) {
+        msgCount += cblock.epos - cblock.spos;
+    }
+
+    if (msgCount === 0) {
+        return false;
+    }
+
+    nlogger.processMsgsReserveBlock(this.head.spos, this.head.epos);
     let keepProcessing = true;
-    let newblock = true;
     do {
-        let msgCount = 0;
+        msgCount = 0;
         for (let cblock = this.head; cblock !== null; cblock = cblock.next) {
             msgCount += cblock.epos - cblock.spos;
         }
 
         if (msgCount === 0) {
-            return false;
+            break;
         }
 
         diaglog("InMemoryLog.processMessagesForWrite.processing", { blockId: this.head.blockId, msgCount: msgCount });
         const opos = this.head.spos;
-        const complete = nlogger.processMsgsForEmit(this.head, newblock, msgCount, Date.now(), false);
+        const complete = nlogger.processMsgsForEmit(this.head, msgCount, Date.now(), false, false);
 
         diaglog("InMemoryLog.processMessagesForWrite.complete", { processed: this.head.spos - opos });
         if (this.head.spos === this.head.epos) {
             diaglog("InMemoryLog.processMessagesForWrite.remove", { blockId: this.head.blockId });
             this.removeHeadBlock(this.head.epos - opos);
         }
-        newblock = false;
         keepProcessing = !complete;
     } while (keepProcessing);
+    nlogger.processMsgsComplete();
 
     return (this.head.spos !== this.head.epos) || (this.head.next != null);
 };
@@ -1110,29 +1123,24 @@ InMemoryLog.prototype.processMessagesForWrite = function () {
  * @method
  */
 InMemoryLog.prototype.processMessagesForWrite_FullFlush = function (fulldetail) {
-    let msgCount = 0;
-    for (let cblock = this.head; cblock !== null; cblock = cblock.next) {
-        msgCount += cblock.epos - cblock.spos;
-    }
+    //These don't matter since we are going to process everything anyway
+    const msgMax = Number.MAX_SAFE_INTEGER;
+    const timeMax = Number.MAX_SAFE_INTEGER;
 
-    if (msgCount === 0) {
-        return;
-    }
-
+    nlogger.processMsgsReserveBlock(this.head.spos, this.head.epos);
     let keepProcessing = true;
-    let newblock = true;
     do {
         diaglog("InMemoryLog.processMessagesForWrite_FullFlush.processing", { blockId: this.head.blockId });
         const opos = this.head.spos;
-        nlogger.processMsgsForEmit(this.head, newblock, msgCount, Date.now(), fulldetail);
+        nlogger.processMsgsForEmit(this.head, msgMax, timeMax, true, fulldetail);
 
         if (this.head.spos === this.head.epos) {
             diaglog("InMemoryLog.processMessagesForWrite_FullFlush.remove", { blockId: this.head.blockId });
             this.removeHeadBlock(this.head.epos - opos);
         }
-        newblock = false;
         keepProcessing = !(this.head.next === null && this.head.spos === this.head.epos);
     } while (keepProcessing);
+    nlogger.processMsgsComplete();
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1452,7 +1460,7 @@ function Logger(loggerName, options) {
 
             if (m_memoryLogLevel !== slogLevel) {
                 diaglog("setLoggingLevel.update");
-                updateLoggingFunctions(this, m_memoryLogLevel);
+                updateLoggingFunctions(this, slogLevel);
             }
         }
         catch (ex) {
@@ -1684,7 +1692,7 @@ function Logger(loggerName, options) {
                 return;
             }
 
-            const fmt = s_fmtMap.get(args[0]);
+            const fmt = s_fmtMap[args[0]];
             if (fmt === undefined) {
                 diaglog("processExplicitCategoryFormat.undef", { fmti: args[0] });
                 return;
@@ -1988,7 +1996,7 @@ module.exports = function (name, options) {
     //special diagnostics flags
     processSimpleOption(options, ropts, "enableDiagnosticLog", "boolean", (optv) => true, false);
     if (ropts.enableDiagnosticLog) {
-        processSimpleOption(options, ropts, "diagnosticLogStream", "object", (optv) => true, null);
+        processSimpleOption(options, ropts, "diagnosticLogFile", "number", (optv) => true, undefined);
     }
 
     diaglog("logger.ropts", { ropts: ropts });
@@ -2024,11 +2032,11 @@ module.exports = function (name, options) {
             logger.Levels = LoggingLevels;
             logger.$$default = -1;
 
-            if (require.main.filename === lfilename) {
+            if (require.main.filename === lfilename && s_rootLogger === null) {
                 diaglog("logger.create.root");
 
-                if (ropts.enableDiagnosticLog && ropts.diagnosticLogStream) {
-                    diaglog_wstream = ropts.diagnosticLogStream;
+                if (ropts.enableDiagnosticLog && ropts.diagnosticLogFile) {
+                    diaglog_wfd = ropts.diagnosticLogFile;
                     diaglog = diaglog_enabled;
                 }
 

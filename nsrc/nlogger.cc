@@ -130,18 +130,36 @@ Napi::Value SetMsgSlotLimit(const Napi::CallbackInfo& info)
     return env.Undefined();
 }
 
-Napi::Value ProcessMsgs(const Napi::CallbackInfo& info)
+Napi::Value ProcessMsgsReserveBlock(const Napi::CallbackInfo& info)
 {
     Napi::Env env = info.Env();
-    if (info.Length() != 5 || !info[0].IsObject() || !info[1].IsBoolean() || !info[2].IsNumber() || !info[3].IsNumber() || !info[4].IsBoolean())
+    if (info.Length() != 2 || !info[0].IsNumber() || !info[1].IsNumber())
     {
         Napi::TypeError::New(env, "Wrong arguments").ThrowAsJavaScriptException();
         return env.Undefined();
     }
 
-    int32_t msgCount = info[2].As<Napi::Number>().Int32Value();
-    std::time_t now = info[3].As<Napi::Number>().Int64Value();
-    bool forceall = info[4].As<Napi::Boolean>().Value();
+    const int32_t spos = info[0].As<Napi::Number>().Int32Value();
+    const int32_t epos = info[1].As<Napi::Number>().Int32Value();
+    size_t sizehint = std::max((epos - spos) + 16, INIT_LOG_BLOCK_SIZE);
+    s_environment.AddProcessingBlock(std::make_shared<LogProcessingBlock>(sizehint));
+
+    return env.Undefined();
+}
+
+Napi::Value ProcessMsgs(const Napi::CallbackInfo& info)
+{
+    Napi::Env env = info.Env();
+    if (info.Length() != 5 || !info[0].IsObject() || !info[1].IsNumber() || !info[2].IsNumber() || !info[3].IsBoolean() || !info[4].IsBoolean())
+    {
+        Napi::TypeError::New(env, "Wrong arguments").ThrowAsJavaScriptException();
+        return env.Undefined();
+    }
+
+    int32_t msgCount = info[1].As<Napi::Number>().Int32Value();
+    std::time_t now = info[2].As<Napi::Number>().Int64Value();
+    bool forceall = info[3].As<Napi::Boolean>().Value();
+    bool fulldetail = info[4].As<Napi::Boolean>().Value();
 
     Napi::Object inmemblock = info[0].As<Napi::Object>();
     const size_t epos = inmemblock.Get("epos").As<Napi::Number>().Int64Value(); 
@@ -160,36 +178,26 @@ Napi::Value ProcessMsgs(const Napi::CallbackInfo& info)
 
     const Napi::Array stringData = inmemblock.Get("stringData").As<Napi::Array>();
 
-    LoggingEnvironment* lenv = &s_environment;
-
-    if (cpos == epos) {
+    if (cpos == epos)
+    {
         return Napi::Boolean::New(env, true);
     }
 
-    if (info[1].As<Napi::Boolean>().Value())
-    {
-        size_t sizehint = std::max(static_cast<int32_t>(((epos - cpos) * 3) / 2), INIT_LOG_BLOCK_SIZE);
-        lenv->AddProcessingBlock(std::make_shared<LogProcessingBlock>(sizehint));
-    }
+    std::shared_ptr<LogProcessingBlock> into = s_environment.GetActiveProcessingBlock();
 
-    std::shared_ptr<LogProcessingBlock> into = lenv->GetActiveProcessingBlock();
-
+    LoggingEnvironment* lenv = &s_environment;
     while (cpos < epos)
     {
         //check time and # of slots in use
         if (!forceall && !(LogProcessingBlock::MsgTimeExpired(cpos, data, lenv, now) || LogProcessingBlock::MsgOverSizeLimit(msgCount, lenv)))
         {
-            if (into->IsEmptyBlock()) {
-                lenv->DiscardProcesingBlock(into);
-            }
-
             inmemblock.Set("spos", Napi::Number::New(env, static_cast<double>(cpos)));
             return Napi::Boolean::New(env, true);
         }
 
         size_t oldcpos = cpos;
         bool msgcomplete = true;
-        if ((lenv->GetProcessingMode() == 'n' && LogProcessingBlock::ShouldDiscard(cpos, data, lenv)) || lenv->GetProcessingMode() == 'd')
+        if ((lenv->GetProcessingMode() == 'n' && !fulldetail && LogProcessingBlock::ShouldDiscard(cpos, data, lenv)) || lenv->GetProcessingMode() == 'd')
         {
             lenv->SetProcessingMode('d');
             msgcomplete = LogProcessingBlock::ProcessDiscardEntry(cpos, epos, tags);
@@ -207,12 +215,21 @@ Napi::Value ProcessMsgs(const Napi::CallbackInfo& info)
         }
     }
 
-    //if (into->IsEmptyBlock()) {
-    //    lenv->DiscardProcesingBlock(into);
-   // }
-
     inmemblock.Set("spos", Napi::Number::New(env, static_cast<double>(cpos)));
     return Napi::Boolean::New(env, false);
+}
+
+Napi::Value ProcessMsgsComplete(const Napi::CallbackInfo& info)
+{
+    Napi::Env env = info.Env();
+
+    std::shared_ptr<LogProcessingBlock> into = s_environment.GetActiveProcessingBlock();
+    if (into->IsEmptyBlock())
+    {
+        s_environment.DiscardProcesingBlock(into);
+    }
+
+    return env.Undefined();
 }
 
 Napi::Value AbortAsyncWork(const Napi::CallbackInfo& info)
@@ -315,7 +332,9 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set(Napi::String::New(env, "getMsgSlotLimit"), Napi::Function::New(env, GetMsgSlotLimit));
     exports.Set(Napi::String::New(env, "setMsgSlotLimit"), Napi::Function::New(env, SetMsgSlotLimit));
 
+    exports.Set(Napi::String::New(env, "processMsgsReserveBlock"), Napi::Function::New(env, ProcessMsgsReserveBlock));
     exports.Set(Napi::String::New(env, "processMsgsForEmit"), Napi::Function::New(env, ProcessMsgs));
+    exports.Set(Napi::String::New(env, "processMsgsComplete"), Napi::Function::New(env, ProcessMsgsComplete));
 
     exports.Set(Napi::String::New(env, "abortAsyncWork"), Napi::Function::New(env, AbortAsyncWork));
     exports.Set(Napi::String::New(env, "formatMsgsSync"), Napi::Function::New(env, FormatMsgsSync));

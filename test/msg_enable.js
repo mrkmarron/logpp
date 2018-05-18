@@ -2,9 +2,7 @@
 
 const runner = require("./runner");
 
-const dstream = require("fs").createWriteStream("C:\\Users\\markm\\Desktop\\logtrace.txt");
-
-const logpp = require("../src/logger")("msg_enable", { flushMode: "NOP", enableDiagnosticLog: true, diagnosticLogStream: dstream });
+const logpp = require("../src/logger")("msg_enable", { flushMode: "NOP" });
 
 function runSingleTest(test) {
     test.action();
@@ -24,23 +22,30 @@ const leveltests = [
 
     { name: "log.warn", action: () => { logpp.warn(logpp.$Hello); }, oktest: (res) => res === "Hello World!!!" },
     { name: "log.detail.full", full: true, action: () => { logpp.detail(logpp.$Hello); }, oktest: (res) => res === "Hello World!!!" },
-    { name: "log.detail.normal", full: false, action: () => { logpp.detail(logpp.$Hello); }, oktest: (res) => res === "" },
+    { name: "log.detail.normal", action: () => { logpp.detail(logpp.$Hello); }, oktest: (res) => res === "" },
     { name: "log.trace.full", full: true, action: () => { logpp.trace(logpp.$Hello); }, oktest: (res) => res === "" },
-    { name: "log.trace.normal", full: false, action: () => { logpp.trace(logpp.$Hello); }, oktest: (res) => res === "" },
+    { name: "log.trace.normal", action: () => { logpp.trace(logpp.$Hello); }, oktest: (res) => res === "" },
 
     { name: "setLevel.info", action: () => { logpp.setLoggingLevel(logpp.Levels.INFO); }, oktest: (res) => res === "" },
     { name: "log.info.level", full: true, action: () => { logpp.info(logpp.$Hello); }, oktest: (res) => res === "Hello World!!!" },
     { name: "log.detail.level", full: true, action: () => { logpp.detail(logpp.$Hello); }, oktest: (res) => res === "" },
 
-    { name: "log.info.nocategory", full: true, action: () => { logpp.info(logpp.$$awesome, logpp.$Hello); }, oktest: (res) => res === "" },
+    { name: "log.info.nocategory", action: () => { logpp.info(logpp.$$awesome, logpp.$Hello); }, oktest: (res) => res === "" },
     { name: "enableCategory.awesome", action: () => { logpp.enableCategory("awesome", true); }, oktest: (res) => res === "" },
-    { name: "log.info.category", full: true, action: () => { logpp.info(logpp.$$awesome, logpp.$Hello); }, oktest: (res) => res === "Hello World!!!" },
+    { name: "log.info.category", action: () => { logpp.info(logpp.$$awesome, logpp.$Hello); }, oktest: (res) => res === "Hello World!!!" },
 
     { name: "enableCategory.awesome.off", action: () => { logpp.enableCategory("awesome", false); }, oktest: (res) => res === "" },
-    { name: "log.info.offcategory", full: true, action: () => { logpp.info(logpp.$$awesome, logpp.$Hello); }, oktest: (res) => res === "" }
+    { name: "log.info.offcategory", action: () => { logpp.info(logpp.$$awesome, logpp.$Hello); }, oktest: (res) => res === "" },
+
+    { name: "log.infoIf.true", action: () => { logpp.infoIf(true, logpp.$Hello); }, oktest: (res) => res === "Hello World!!!" },
+    { name: "log.infoIf.false", action: () => { logpp.infoIf(false, logpp.$Hello); }, oktest: (res) => res === "" },
+    { name: "log.detailIf.true", action: () => { logpp.detailIf(true, logpp.$Hello); }, oktest: (res) => res === "" },
+    { name: "log.detailIf.true.full", full: true, action: () => { logpp.detailIf(true, logpp.$Hello); }, oktest: (res) => res === "" },
+    { name: "reenableCategory.awesome", action: () => { logpp.enableCategory("awesome", true); }, oktest: (res) => res === "" },
+    { name: "log.infoIf.category.true", action: () => { logpp.infoIf(true, logpp.$$awesome, logpp.$Hello); }, oktest: (res) => res === "Hello World!!!" }
 ];
 
 const levelRunner = runner.generalSyncRunner(runSingleTest, printTestInfo, leveltests);
 levelRunner(() => {
-    process.stdout.write("\nAll tests done!");
+    process.stdout.write("\nAll tests done!\n\n");
 });

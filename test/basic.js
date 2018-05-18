@@ -129,5 +129,5 @@ const basictests = [
 
 const basicRunner = runner.generalSyncRunner(runSingleTest, printTestInfo, basictests);
 basicRunner(() => {
-    process.stdout.write("\nAll tests done!");
+    process.stdout.write("\nAll tests done!\n\n");
 });
