@@ -2,7 +2,7 @@
 
 const os = require("os");
 
-//const nlogger = require("C:\\Chakra\\logpp\\build\\Release\\nlogger.node");
+//const nlogger = require("C:\\Code\\logpp\\build\\Debug\\nlogger.node");
 const nlogger = require("bindings")("nlogger.node");
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1430,7 +1430,7 @@ function Logger(loggerName, options) {
         }
         cenv.childPrefixString = JSON.stringify(cenv.childPrefix);
 
-        return Object.create(this, { logger_env: cenv, isChild: true });
+        return Object.create(this, { logger_env: { configurable: true, enumerable: true, writable: true, value: cenv }, isChild: { configurable: true, enumerable: true, writable: true, value: true } });
     };
 
     /**
@@ -1982,7 +1982,7 @@ module.exports = function (name, options) {
 
     if (ropts.flushTarget === "stream") {
         if (options.stream === undefined) {
-            ropts.flushMode = "console";
+            ropts.flushTarget = "console";
         }
         else {
             ropts.stream = options.stream;

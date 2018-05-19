@@ -21,7 +21,7 @@
         "debug": "*"
     },
     "scripts": {
-        "test": "node test/basic.js && node test/msg_enable.js",
+        "test": "node test/basic.js && node test/msg_enable.js && node test/sublogger.js",
         "benchmark": "node benchmark/basicbench.js && node benchmark/interpolatebench.js && node benchmark/multibench.js && node benchmark/moremultibench.js"
     },
     "main": "logger.js"

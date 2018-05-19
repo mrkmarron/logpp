@@ -27,11 +27,11 @@ const subtests = [
     { name: "sublogger.off", action: () => { logpp.disableSubLogger("log2"); log2.doit(); }, oktest: (msg) => msg === "" },
     { name: "sublogger.up3", action: () => { logpp.setSubLoggerLevel("log2", logpp.Levels.INFO); log2.doit(); }, oktest: (msg) => msg === "Ok Log2!!!" },
 
-    { name: "emit.change", action: () => { logpp.setEmitLevel(logpp.Levels.WARN); log2.doit(); logpp.info(logpp.$Hello); }, oktest: (msg) => msg === "" },
-    { name: "emit.change", action: () => { logpp.setEmitLevel(logpp.Levels.Info); log2.doit(); logpp.info(logpp.$Hello); }, oktest: (msg) => msg === "Hello World!!!\nOk Log2!!!" },
+    { name: "emit.change.down", action: () => { logpp.setEmitLevel(logpp.Levels.WARN); log2.doit(); logpp.info(logpp.$Hello); }, oktest: (msg) => msg === "Ok Log2!!!" },
+    { name: "emit.change.up", action: () => { logpp.setEmitLevel(logpp.Levels.INFO); log2.doit(); logpp.info(logpp.$Hello); }, oktest: (msg) => msg === "Ok Log2!!!\nHello World!!!" },
 
     { name: "childlog", action: () => { childlog = logpp.childLogger({ cl: true }); }, oktest: (msg) => msg === "" },
-    { name: "childlog.default", action: () => { childlog.info(childlog.$LName); }, oktest: (msg) => msg === "sublogger.child" },
+    { name: "childlog.default", action: () => { childlog.info(childlog.$LName); }, oktest: (msg) => msg === "\"sublogger.child\"" },
     { name: "childlog.up", action: () => { childlog.setLoggingLevel(childlog.Levels.DETAIL); childlog.detail(childlog.$LName); }, oktest: (msg) => msg === "" },
 ];
 
