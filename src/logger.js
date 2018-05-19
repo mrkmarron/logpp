@@ -2,7 +2,7 @@
 
 const os = require("os");
 
-//const nlogger = require("C:\\Code\\logpp\\build\\Debug\\nlogger.node");
+//const nlogger = require("C:\\Chakra\\logpp\\build\\Release\\nlogger.node");
 const nlogger = require("bindings")("nlogger.node");
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1401,7 +1401,7 @@ function loadSubloggerConfigurations(logger, arg) {
 */
 function Logger(loggerName, options) {
     //Level that this logger will record at going into memory
-    let m_memoryLogLevel = LoggingLevels[options.memoryLevel];
+    let m_memoryLogLevel = options.memoryLevel;
 
     this.logger_env = {
         globalEnv: s_globalenv,
@@ -1829,7 +1829,7 @@ function Logger(loggerName, options) {
             if (s_rootLogger === this) {
                 diaglog("setSubLoggerLevel", { name: subloggerName, level: level });
 
-                s_enabledSubLoggerNames.add(subloggerName, level);
+                s_enabledSubLoggerNames.set(subloggerName, level);
                 s_disabledSubLoggerNames.delete(subloggerName);
 
                 if (s_loggerMap.has(subloggerName)) {
@@ -1912,6 +1912,11 @@ function processSimpleOption(options, realOptions, name, typestr, pred, defaultv
     realOptions[name] = (options[name] && typeof (options[name]) === typestr && pred(options[name])) ? options[name] : defaultvalue;
 }
 
+function processSimpleOptionTransform(options, realOptions, name, typestr, pred, defaultvalue, transform) {
+    const opt = (options[name] && typeof (options[name]) === typestr && pred(options[name])) ? options[name] : defaultvalue;
+    realOptions[name] = transform(opt);
+}
+
 function processLogOnTermination(iserror) {
     diaglog("processLogOnTermination", { iserror: iserror });
 
@@ -1955,12 +1960,12 @@ module.exports = function (name, options) {
         host: require("os").hostname()
     };
 
-    processSimpleOption(options, ropts, "memoryLevel", "string", (optv) => LoggingLevels[optv] !== undefined, "DETAIL");
+    processSimpleOptionTransform(options, ropts, "memoryLevel", "string", (optv) => LoggingLevels[optv] !== undefined, "DETAIL", (optv) => LoggingLevels[optv]);
 
-    processSimpleOption(options, ropts, "emitLevel", "string", (optv) => LoggingLevels[optv] !== undefined, "INFO");
-    ropts.emitLevel = (LoggingLevels[ropts.emitLevel] <= LoggingLevels[ropts.memoryLevel]) ? ropts.emitLevel : ropts.memoryLevel;
+    processSimpleOptionTransform(options, ropts, "emitLevel", "string", (optv) => LoggingLevels[optv] !== undefined, "INFO", (optv) => LoggingLevels[optv]);
+    ropts.emitLevel = Math.min(ropts.emitLevel, ropts.memoryLevel);
 
-    processSimpleOption(options, ropts, "defaultSubloggerLevel", "string", (optv) => LoggingLevels[optv] !== undefined, "WARN");
+    processSimpleOptionTransform(options, ropts, "defaultSubloggerLevel", "string", (optv) => LoggingLevels[optv] !== undefined, "WARN", (optv) => LoggingLevels[optv]);
 
     if (debuggerAttached && !options.disableAutoDebugger) {
         processSimpleOption(options, ropts, "flushCount", "number", (optv) => optv >= 0, 0);
@@ -2016,8 +2021,6 @@ module.exports = function (name, options) {
                 });
             const lfilename = cstack[0];
 
-            s_environment.defaultSubLoggerLevel = options.defaultSubloggerLevel;
-
             if (require.main.filename !== lfilename) {
                 if (s_disabledSubLoggerNames.has(lfilename) || s_rootLogger === null) {
                     ropts.memoryLevel = LoggingLevels.OFF;
@@ -2042,6 +2045,7 @@ module.exports = function (name, options) {
 
                 s_rootLogger = logger;
 
+                s_environment.defaultSubLoggerLevel = ropts.defaultSubloggerLevel;
                 s_environment.flushCount = ropts.flushCount;
 
                 if (ropts.flushMode === "SYNC") {
@@ -2065,7 +2069,7 @@ module.exports = function (name, options) {
                     s_environment.stream = ropts.stream;
                 }
 
-                nlogger.initializeLogger(LoggingLevels[ropts.emitLevel], os.hostname(), lfilename);
+                nlogger.initializeLogger(ropts.emitLevel, os.hostname(), lfilename);
                 nlogger.setMsgSlotLimit(ropts.bufferSizeLimit);
                 nlogger.setMsgTimeLimit(ropts.bufferTimeLimit);
 
