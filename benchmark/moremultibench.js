@@ -13,7 +13,7 @@ var dest = fs.createWriteStream(path.join(__dirname, "performanceout.txt"));
 
 var plogExtreme = require("pino")({ extreme: true }, dest);
 
-var logpp = require("../src/logger")("basic", { flushTarget: "stream", stream: dest });
+var logpp = require("../src/logger")("basic", { flushTarget: "stream", stream: dest, prefix: false });
 logpp.addFormat("hello3", "#host #wallclock #timestamp hello at #wallclock from #logger with %j %n -- %s");
 
 process.env.DEBUG = "dlog";

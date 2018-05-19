@@ -2,7 +2,7 @@
 
 const os = require("os");
 
-//const nlogger = require("C:\\Code\\logpp\\build\\Debug\\nlogger.node");
+//const nlogger = require("C:\\Code\\logpp\\build\\Release\\nlogger.node");
 const nlogger = require("bindings")("nlogger.node");
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -255,7 +255,7 @@ const s_environment = {
     flushCB: () => { },
 
     //Set if we emit a default prefix (level/category/timestamp) on every log message
-    doPrefix: false
+    doPrefix: true
 };
 
 //This state is common to all loggers and will be shared.
@@ -1909,7 +1909,7 @@ const s_enabledSubLoggerNames = new Map();
 const s_loggerMap = new Map();
 
 function processSimpleOption(options, realOptions, name, typestr, pred, defaultvalue) {
-    realOptions[name] = (options[name] && typeof (options[name]) === typestr && pred(options[name])) ? options[name] : defaultvalue;
+    realOptions[name] = (options.hasOwnProperty(name) && typeof (options[name]) === typestr && pred(options[name])) ? options[name] : defaultvalue;
 }
 
 function processSimpleOptionTransform(options, realOptions, name, typestr, pred, defaultvalue, transform) {
@@ -1989,7 +1989,7 @@ module.exports = function (name, options) {
         }
     }
 
-    processSimpleOption(options, ropts, "doPrefix", "boolean", (optv) => true, false);
+    processSimpleOption(options, ropts, "prefix", "boolean", (optv) => true, true);
 
     processSimpleOption(options, ropts, "bufferSizeLimit", "number", (optv) => optv >= 0, 4096);
     processSimpleOption(options, ropts, "bufferTimeLimit", "number", (optv) => optv >= 0, 500);
@@ -2063,7 +2063,7 @@ module.exports = function (name, options) {
 
                 s_environment.flushTarget = ropts.flushTarget;
                 s_environment.flushCB = ropts.flushCB;
-                s_environment.doPrefix = ropts.doPrefix;
+                s_environment.doPrefix = ropts.prefix;
 
                 if (ropts.stream !== undefined) {
                     s_environment.stream = ropts.stream;

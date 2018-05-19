@@ -2,7 +2,7 @@
 
 const runner = require("./runner");
 
-const logpp = require("../src/logger")("msg_enable", { flushMode: "NOP" });
+const logpp = require("../src/logger")("msg_enable", { flushMode: "NOP", prefix: false });
 
 function runSingleTest(test) {
     test.action();
@@ -47,5 +47,5 @@ const leveltests = [
 
 const levelRunner = runner.generalSyncRunner(runSingleTest, printTestInfo, leveltests);
 levelRunner(() => {
-    process.stdout.write("\nAll tests done!\n\n");
+    process.stdout.write("\n");
 });

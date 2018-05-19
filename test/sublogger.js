@@ -2,7 +2,7 @@
 
 const runner = require("./runner");
 
-const logpp = require("../src/logger")("sublogger", { flushMode: "NOP" });
+const logpp = require("../src/logger")("sublogger", { flushMode: "NOP", prefix: false });
 
 function runSingleTest(test) {
     test.action();
@@ -38,5 +38,5 @@ const subtests = [
 
 const subRunner = runner.generalSyncRunner(runSingleTest, printTestInfo, subtests);
 subRunner(() => {
-    process.stdout.write("\nAll tests done!\n\n");
+    process.stdout.write("\n");
 });

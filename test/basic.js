@@ -3,7 +3,7 @@
 const runner = require("./runner");
 const os = require("os");
 
-const logpp = require("../src/logger")("basic", { flushMode: "NOP" });
+const logpp = require("../src/logger")("basic", { flushMode: "NOP", prefix: false });
 
 function runSingleTest(test) {
     logpp.info(logpp[test.fmt], ...test.arg);
@@ -129,5 +129,5 @@ const basictests = [
 
 const basicRunner = runner.generalSyncRunner(runSingleTest, printTestInfo, basictests);
 basicRunner(() => {
-    process.stdout.write("\nAll tests done!\n\n");
+    process.stdout.write("\n");
 });

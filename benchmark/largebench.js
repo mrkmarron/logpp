@@ -13,7 +13,7 @@ var dest = fs.createWriteStream(path.join(__dirname, "performanceout.txt"));
 
 var plogExtreme = require("pino")({ extreme: true }, dest);
 
-var logpp = require("../src/logger")("basic", { flushTarget: "stream", stream: dest });
+var logpp = require("../src/logger")("basic", { flushTarget: "stream", stream: dest, prefix: false });
 logpp.addFormat("deep", "%j");
 logpp.addFormat("deepall", "%j<*,*>");
 logpp.addFormat("long", "%s");
