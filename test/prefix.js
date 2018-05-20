@@ -26,5 +26,5 @@ const prefixtests = [
 
 const prefixRunner = runner.generalSyncRunner(runSingleTest, printTestInfo, prefixtests);
 prefixRunner(() => {
-    process.stdout.write("\nAll tests done!\n\n");
+    process.stdout.write("\n");
 });

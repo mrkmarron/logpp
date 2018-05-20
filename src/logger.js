@@ -1329,17 +1329,19 @@ function loadLoggerFormats(logger, arg) {
 
     const garg = Array.isArray(arg) ? arg : [arg];
     let rargs = [];
-    garg.forEach((sarg) => {
+    for (let i = 0; i < garg.length; ++i) {
+        const sarg = garg[i];
         const nfmts = (typeof (sarg) === "string") ? JSON.parse(fs.readFileSync(sarg)) : sarg;
         rargs = rargs.concat(Array.isArray(nfmts) ? nfmts : [nfmts]);
-    });
+    }
 
     let allok = true;
-    rargs.forEach((fmts) => {
+    for (let i = 0; i < garg.length; ++i) {
+        const fmts = rargs[i];
         Object.keys(fmts).forEach((fmtname) => {
             allok &= logger.addFormat(fmtname, fmts[fmtname]);
         });
-    });
+    }
 
     return allok;
 }
@@ -1354,17 +1356,19 @@ function loadLoggerCategories(logger, arg) {
 
     const garg = Array.isArray(arg) ? arg : [arg];
     let rargs = [];
-    garg.forEach((sarg) => {
+    for (let i = 0; i < garg.length; ++i) {
+        const sarg = garg[i];
         const nctgrys = (typeof (sarg) === "string") ? JSON.parse(fs.readFileSync(sarg)) : sarg;
         rargs = rargs.concat(Array.isArray(nctgrys) ? nctgrys : [nctgrys]);
-    });
+    }
 
     let allok = true;
-    rargs.forEach((ctgrys) => {
+    for (let i = 0; i < garg.length; ++i) {
+        const ctgrys = rargs[i];
         Object.keys(ctgrys).forEach((ctgryname) => {
             allok &= logger.enableCategory(ctgryname, ctgrys[ctgryname]);
         });
-    });
+    }
 
     return allok;
 }

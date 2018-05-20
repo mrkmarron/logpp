@@ -1,0 +1,4 @@
+{
+    "configured": { "log5": "WARN" },
+    "disabled": ["whoa"]
+}
