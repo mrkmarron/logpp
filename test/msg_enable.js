@@ -45,7 +45,7 @@ const leveltests = [
     { name: "log.infoIf.category.true", action: () => { logpp.infoIf(true, logpp.$$awesome, logpp.$Hello); }, oktest: (res) => res === "Hello World!!!" }
 ];
 
-const levelRunner = runner.generalSyncRunner(runSingleTest, printTestInfo, leveltests);
+const levelRunner = runner.generalSyncRunner(runSingleTest, printTestInfo, leveltests, "level");
 levelRunner(() => {
     process.stdout.write("\n");
 });

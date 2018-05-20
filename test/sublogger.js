@@ -36,7 +36,7 @@ const subtests = [
 ];
 
 
-const subRunner = runner.generalSyncRunner(runSingleTest, printTestInfo, subtests);
+const subRunner = runner.generalSyncRunner(runSingleTest, printTestInfo, subtests, "sub and child logger");
 subRunner(() => {
     process.stdout.write("\n");
 });

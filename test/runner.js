@@ -2,7 +2,7 @@
 
 const chalk = require("chalk");
 
-function generalRunnerTemplate(runSingleTest, printTestInfo, testList) {
+function generalRunnerTemplate(runSingleTest, printTestInfo, testList, name) {
     return (completecb) => {
         let testsRun = 0;
         let testsFailed = 0;
@@ -44,7 +44,7 @@ function generalRunnerTemplate(runSingleTest, printTestInfo, testList) {
             }
         }
 
-        process.stdout.write("Running tests...\n");
+        process.stdout.write("Running " + chalk.bold(name) + " tests...\n");
         setImmediate(runSingleTestCB);
     };
 }

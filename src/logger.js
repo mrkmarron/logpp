@@ -1913,7 +1913,7 @@ const s_enabledSubLoggerNames = new Map();
 const s_loggerMap = new Map();
 
 function processSimpleOption(options, realOptions, name, typestr, pred, defaultvalue) {
-    realOptions[name] = (options.hasOwnProperty(name) && typeof (options[name]) === typestr && pred(options[name])) ? options[name] : defaultvalue;
+    realOptions[name] = (options.hasOwnProperty(name) && (typestr === "any" || typeof (options[name]) === typestr) && pred(options[name])) ? options[name] : defaultvalue;
 }
 
 function processSimpleOptionTransform(options, realOptions, name, typestr, pred, defaultvalue, transform) {
@@ -1998,9 +1998,9 @@ module.exports = function (name, options) {
     processSimpleOption(options, ropts, "bufferSizeLimit", "number", (optv) => optv >= 0, 4096);
     processSimpleOption(options, ropts, "bufferTimeLimit", "number", (optv) => optv >= 0, 500);
 
-    processSimpleOption(options, ropts, "formats", undefined, (optv) => (typeof (optv) === "string" || typeof (optv) === "object"), undefined);
-    processSimpleOption(options, ropts, "categories", undefined, (optv) => (typeof (optv) === "string" || typeof (optv) === "object"), undefined);
-    processSimpleOption(options, ropts, "subloggers", undefined, (optv) => (typeof (optv) === "string" || typeof (optv) === "object"), undefined);
+    processSimpleOption(options, ropts, "formats", "any", (optv) => (typeof (optv) === "string" || typeof (optv) === "object"), undefined);
+    processSimpleOption(options, ropts, "categories", "any", (optv) => (typeof (optv) === "string" || typeof (optv) === "object"), undefined);
+    processSimpleOption(options, ropts, "subloggers", "any", (optv) => (typeof (optv) === "string" || typeof (optv) === "object"), undefined);
 
     //special diagnostics flags
     processSimpleOption(options, ropts, "enableDiagnosticLog", "boolean", (optv) => true, false);

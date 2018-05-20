@@ -39,7 +39,7 @@ const loadtests = [
     { name: "log2.doit", action: () => { log2.doit(); }, oktest: (res) => res === "Ok Log2!!!" }
 ];
 
-const loadRunner = runner.generalSyncRunner(runSingleTest, printTestInfo, loadtests);
+const loadRunner = runner.generalSyncRunner(runSingleTest, printTestInfo, loadtests, "bulk load");
 loadRunner(() => {
     process.stdout.write("\n");
 });

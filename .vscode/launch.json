@@ -9,7 +9,7 @@
             "request": "launch",
             "name": "Launch Program",
             "cwd": "${workspaceFolder}",
-            "program": "${workspaceFolder}\\test\\bulk_load.js"
+            "program": "${workspaceFolder}\\test\\options.js"
         }
     ]
 }

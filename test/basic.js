@@ -127,7 +127,7 @@ const basictests = [
 
 ///////////////////////////
 
-const basicRunner = runner.generalSyncRunner(runSingleTest, printTestInfo, basictests);
+const basicRunner = runner.generalSyncRunner(runSingleTest, printTestInfo, basictests, "basic");
 basicRunner(() => {
     process.stdout.write("\n");
 });

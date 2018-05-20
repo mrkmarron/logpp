@@ -24,7 +24,7 @@ const prefixtests = [
     { name: "prefix.child", action: () => { const childlog = logpp.childLogger({ cl: true }); childlog.info(childlog.$Hello); }, oktest: (msg) => msg.startsWith("INFO#$default @ ") && msg.endsWith(os.hostname() + "::prefix.child | Hello World!!!") }
 ];
 
-const prefixRunner = runner.generalSyncRunner(runSingleTest, printTestInfo, prefixtests);
+const prefixRunner = runner.generalSyncRunner(runSingleTest, printTestInfo, prefixtests, "prefix");
 prefixRunner(() => {
     process.stdout.write("\n");
 });
