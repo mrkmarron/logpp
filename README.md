@@ -1,16 +1,28 @@
 # Log++ -- A Logging Framework for Modern Development
 
-Log++ is a logging framework designed to support modern development needs. The goal is to provide:
-1. Very low main-thead cost to log a message (under 1&#x00B5;s per message) with high cost formatting operations done as a background tasking using Napi.
-2. Simultaneous support for high fidelity diagnostics logging and lower frequency informational logging.
-   * High detail debug messages are stored in a high performance in memory buffer and can be emitted on errors 
-     for detailed debugging.
-   * Informational messages are written out to the stable storage channel for analytics and monitoring applications.
-3. Structured and machine parsable log output for easy analytics.
-4. Unified control of logging levels & output across modules.
+Log++ is a logging framework designed to support modern development needs. The 
+goal is to provide:
+1. Very low main-thead cost to log a message (under 1&#x00B5;s per message) 
+with high cost formatting operations done as a background tasking using N-API 
+module.
+2. Simultaneous support for high fidelity diagnostics/debugging logging and 
+lower frequency informational logging. All message data is initially stored in 
+a high performance in-memory buffer and, later, a filtered set of messages 
+identified as useful are written to stable storage.
+   * Detailed logging data is processed chaply into the high performance 
+     in-memory buffer and can be emitted on errors for detailed debugging.
+   * Informational messages are saved out to a stable storage channel for 
+     analytics and monitoring applications.
+3. The logging output provides structured and machine parsable formats (even 
+with `printf` style logging). These formats can be explicitly provided/managed 
+via external JSON specifications. Common prefix data and macros for embedding 
+useful system information are also available.
+4. Unified control of logging levels & output across modules is possible by a 
+support for both `child` loggers and logic for controlling the output from 
+`subloggers` created by other modules that your application uses.
 
 ## Basic Usage
-Log++ is designed to be simple to use and provides a nearly drop in replacement for existing logging.
+Log++ is designed to be simple to use and provides a nearly drop in replacement for existing logging frameworks.
 ```
 //Import the logpp module and create a logger for your app  
 const log = require("logpp")("myapp");
@@ -21,9 +33,41 @@ log.addFormat("Hello", "Hello World!!!");
 //Emit the message specified by the format -- "Hello World!!!"
 log.info(log.$Hello);
 
-//Write the message given by the printf style formatter -- "Hello printf!!!"
+//Or emit message given by a printf style format -- "Hello printf!!!"
 log.info("Hello printf!!!");
 ```
+
+## Performance
+Log++ is designed to minimize logging overhead on your application so you can 
+use it to provide rich/useful information about your application without 
+impacting your users. As a very rough benchmark we have a comparison with 
+three other popular loggers -- [Bunyan](https://github.com/trentm/node-bunyan), 
+[Debug](https://github.com/visionmedia/debug), and 
+[Pino (Extreme)](https://github.com/pinojs/pino). The first 3 benchmarks are 
+taken from [Pino](https://github.com/pinojs/pino) and the last one is from us. 
+Each message is written 100k times and these timings are from an Intel 
+Core i7-5600 running Node-V8 10.0.
+
+* Basic: `info('hello world -- logger')`
+* String: `info('hello %s', 'world')`
+* Multi: `info('hello %s %j %d', 'world', { obj: true }, 4)`
+* Complex: `info('hello at %j from %s with %j %n -- %s', new Date(), app, ['iter', { f: i, g: i.toString() }], i - 5, (i % 2 === 0 ? 'ok' : 'skip'))`
+
+The results in the table below show a representative timing taken for each 
+logger framework on each benchmark and the speedup of Log++ over the next 
+best performing framework.
+
+ | Logger  | Basic  | String | Multi   | Complex |
+ | ------  | ------ | ------ | ------  | ------  |
+ | Bunyan  | 690 ms | 779 ms | 1106 ms | 1578 ms |
+ | Debug   | 266 ms | 385 ms | 515 ms  | 842 ms  |
+ | Pino    | 141 ms | 211 ms | 378 ms  | 887 ms  |
+ | Log++   | 71 ms  | 109 ms | 253 ms  | 438 ms  |
+ | Speedup | 1.98x  | 1.93x  | 1.49x   | 1.92x   |
+
+As seen in our results Log++ is consistently the lowest overhead logger, in 
+most cases spending nearly 2x less time blocking the main event thread, than 
+any of the others.
 
 ## Logging Levels and Categories
 Log++ supports 8 logging levels. At each level only messages at the given level 
