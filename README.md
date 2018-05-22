@@ -308,12 +308,30 @@ log.addFormat("Json", {kind: "start", time: "#wallclock", value: "%j"});
 log.info(log.$Json, [1, 2]); // {"kind": "start", "time": "2018-05-08T05:29:55.0512Z", "value": [1, 2]}
 ```
 
+**Standard Prefixs:**
+To simplify logging Log++ provides a simple standard `prefix` option that is 
+prepended to every message during formatting of the following form:
+
+`LEVEL#CATEGORY @ TIME from HOST::LOGGER_NAME | ` 
+
+This metadata is frequently useful, can be efficiently provided automatically, 
+and the builtin support simplifies the job of the logging format specification.
+
 **Format registration:**
-//registering formats -- single and json
+Formats can be registered in a number of ways:
+* Single programatic registration using the `addFormat` method.
+* Bulk registration using the `addFormats` method which takes a JSON object where each property is a format name and value is a format specifier or a string which refers to a JSON file to load the format object from.
+* As the `formats` configuration option -- provided as a JSON object or file name to load from. 
 
 ### Emit Formats
-//JSON
-//Binary
+A common representation for logging data is JSON or newline separated messages. 
+By default Log++ uses newline separated UTF8 text with and optional prefix 
+followed by the payload contents as specified by the formatter.
+
+[In Progress] Log++ also supports an efficient and compact binary format which 
+is faster to process and more space efficient to transport/store. This format 
+can be post-processed into human readable text using via the provided command 
+line utility `--humanify`.
 
 ## Managing Loggers
 A key challenge in logging in an ecosystem such as Node.js is the heavy use of 
@@ -322,9 +340,10 @@ coordinate the levels of active logging, the sink of these logs, and merging
 the message streams. Additionally, the "master" application should be able to 
 disable or reduce rates of logging from submodules that are not of interest. 
 To support this we introduce the concept of a _root logger_ which is able to 
-control all the sublogger actions (and subloggers cannot override these 
-settings).
+control all the _sublogger_ actions (and subloggers cannot override these 
+settings). Log++ also supports_ the frequently useful _child logger_ scenario.
 
+### Root Logger and SubLoggers
 The _root logger_ is the logger created by the `require.main.file` (first 
 loaded file). Each logger is created with a _module name_ and all loggers 
 created with the same name share the same logger. The _root logger_ can set 
@@ -332,6 +351,11 @@ the emit level, sink, etc. and enable/disable or set levels of subloggers
 explicitly. If not explicitly set subloggers are restricted to emitting at 
 the `WARN` level. All messages are merged and managed automatically according 
 to the settings of the _root logger_.
+
+asdf // more here 
+
+### Child Loggers
+asdf
 
 ## API Specification
 
@@ -393,3 +417,11 @@ The other args are the same as for the unconditional log method.
 `this.emitLogSync(FULL, DETAIL)` \
 _FULL_ - \
 _DETAIL_ - \
+
+`this.setSubLoggerLevel(SUBLOGGER_NAME, LEVEL)`
+
+`this.disableSubLogger(SUBLOGGER_NAME)`
+
+`this.configureSubloggers(ARG)`
+
+`this.childLogger(PREFIX_DATA)`
