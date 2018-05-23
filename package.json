@@ -6,6 +6,14 @@
     },
     "license": "MIT",
     "version": "0.0.1",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/mrkmarron/logpp"
+    },
+    "bugs": {
+        "url": "https://github.com/mrkmarron/logpp/issues"
+    },
+    "homepage": "https://github.com/mrkmarron/logpp",
     "dependencies": {
         "bindings": "~1.3.0",
         "node-addon-api": "1.1.0"
@@ -21,8 +29,17 @@
         "debug": "*"
     },
     "scripts": {
+        "install": "node-gyp rebuild",
         "test": "node test/basic.js && node test/sync_flush.js && node test/msg_enable.js && node test/sublogger.js && node test/prefix.js && node test/bulk_load.js && node test/options.js",
         "benchmark": "node benchmark/basicbench.js && node benchmark/interpolatebench.js && node benchmark/multibench.js && node benchmark/moremultibench.js"
     },
-    "main": "logger.js"
+    "files": [
+        "src/*",
+        "nsrc/*",
+        "binding.gyp"
+    ],
+    "main": "logger.js",
+    "engines" : { 
+        "node" : ">=10.0" 
+    }
 }
