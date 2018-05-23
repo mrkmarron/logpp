@@ -35,6 +35,7 @@ function generalRunnerTemplate(runSingleTest, printTestInfo, testList, name) {
                 process.stdout.write("----\n");
                 if (testsFailed !== 0) {
                     process.stdout.write(chalk.red.bold(`${testsFailed} failures out of ${testsRun} tests!!!\n`));
+                    process.exit(1);
                 }
                 else {
                     process.stdout.write(chalk.green.bold(`All ${testsRun} tests passed!\n`));

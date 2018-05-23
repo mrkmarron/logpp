@@ -2,7 +2,6 @@
 
 const os = require("os");
 
-//const nlogger = require("C:\\Chakra\\logpp\\build\\Debug\\nlogger.node");
 const nlogger = require("bindings")("nlogger.node");
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1163,10 +1162,10 @@ function syncFlushAction() {
 
         s_inMemoryLog.resetWriteCount();
 
-        this.processMessagesForWrite();
+        s_inMemoryLog.processMessagesForWrite();
 
         diaglog("syncFlushAction.formatMsgsSync");
-        const output = nlogger.formatMsgsSync();
+        const output = nlogger.formatMsgsSync(s_environment.doPrefix);
 
         diaglog("syncFlushAction.output", { target: s_environment.flushTarget });
         if (s_environment.flushTarget === "console") {
@@ -1636,7 +1635,7 @@ function Logger(loggerName, options) {
         try {
             if (s_rootLogger === this) {
                 diaglog("setMsgSpaceLimit.update");
-                nlogger.SetMsgSpaceLimit(spaceLimit);
+                nlogger.setMsgSlotLimit(spaceLimit);
             }
         }
         catch (ex) {
@@ -1709,9 +1708,14 @@ function Logger(loggerName, options) {
         }
     }
 
+    const LogFunctionMemoizer = [];
     function getMsgLogGenerator(desiredLevel) {
+        if (LogFunctionMemoizer[desiredLevel] !== undefined) {
+            return LogFunctionMemoizer[desiredLevel];
+        }
+
         const fixedLevel = desiredLevel;
-        return function (fmtorctgry, ...args) {
+        const logf = function (fmtorctgry, ...args) {
             try {
                 const tsw = typeof (fmtorctgry);
                 if (tsw === "number") {
@@ -1733,11 +1737,19 @@ function Logger(loggerName, options) {
                 internalLogFailure("Hard failure in logging", ex);
             }
         };
+
+        LogFunctionMemoizer[desiredLevel] = logf;
+        return logf;
     }
 
+    const ConditionLogFunctionMemoizer = [];
     function getConditionalMsgLogGenerator(desiredLevel) {
+        if (ConditionLogFunctionMemoizer[desiredLevel] !== undefined) {
+            return ConditionLogFunctionMemoizer[desiredLevel];
+        }
+
         const fixedLevel = desiredLevel;
-        return function (cond, fmtorctgry, ...args) {
+        const logf = function (cond, fmtorctgry, ...args) {
             if (!cond) {
                 return;
             }
@@ -1763,6 +1775,9 @@ function Logger(loggerName, options) {
                 internalLogFailure("Hard failure in logging", ex);
             }
         };
+
+        ConditionLogFunctionMemoizer[desiredLevel] = logf;
+        return logf;
     }
 
     function updateLoggingFunctions(logger, logLevel) {

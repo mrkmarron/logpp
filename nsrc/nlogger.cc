@@ -109,7 +109,7 @@ Napi::Value SetMsgTimeLimit(const Napi::CallbackInfo& info)
         return env.Undefined();
     }
 
-    s_environment.SetMsgSlotsLimit(info[0].As<Napi::Number>().Int64Value());
+    s_environment.SetMsgTimeLimit(info[0].As<Napi::Number>().Int64Value());
     return env.Undefined();
 }
 

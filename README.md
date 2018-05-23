@@ -28,13 +28,13 @@ Log++ is designed to be simple to use and provides a nearly drop in replacement 
 const log = require("logpp")("myapp");
 
 //Add a format for better structured log output and provide it on the logger (prefixed with a "$")
-log.addFormat("Hello", "Hello World!!!");
+log.addFormat("Hello", "Hello %s!!!");
 
-//Emit the message specified by the format -- "Hello World!!!"
-log.info(log.$Hello);
+//Emit the message specified by the format -- Hello "World"!!!
+log.info(log.$Hello, "World");
 
-//Or emit message given by a printf style format -- "Hello printf!!!"
-log.info("Hello printf!!!");
+//Or emit message given by a printf style format -- Hello "printf"!!!
+log.info("Hello %s!!!", "printf");
 ```
 
 ## Performance

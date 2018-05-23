@@ -103,7 +103,6 @@ rules:
   eol-last: error
   func-call-spacing: error
   func-name-matching: error
-  func-style: [error, declaration, {allowArrowFunctions: true}]
   indent: [error, 4, {ArrayExpression: first,
                       CallExpression: {arguments: first},
                       FunctionDeclaration: {parameters: first},

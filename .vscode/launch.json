@@ -9,7 +9,7 @@
             "request": "launch",
             "name": "Launch Program",
             "cwd": "${workspaceFolder}",
-            "program": "${workspaceFolder}\\test\\sublogger.js"
+            "program": "${workspaceFolder}\\test\\sync_flush.js"
         }
     ]
 }
