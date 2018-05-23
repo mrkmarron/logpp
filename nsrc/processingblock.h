@@ -191,14 +191,17 @@ public:
             this->advancePos();
         }
 
-        if (this->getCurrentTag() == LogEntryTag::MSGChildInfo) {
-            formatter->emitLiteralString(" -- ");
-            formatter->emitLiteralString(this->getCurrentDataAsString());
-        }
-
         if (dosep)
         {
             formatter->emitLiteralString(" | ");
+        }
+
+        if (this->getCurrentTag() == LogEntryTag::MSGChildInfo)
+        {
+            formatter->emitLiteralString(this->getCurrentDataAsString());
+            this->advancePos();
+
+            formatter->emitLiteralString(" -- ");
         }
 
         formatter->emitLiteralString(fmt->GetInitialFormatStringSegment());

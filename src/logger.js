@@ -2,7 +2,7 @@
 
 const os = require("os");
 
-//const nlogger = require("C:\\Code\\logpp\\build\\Release\\nlogger.node");
+//const nlogger = require("C:\\Chakra\\logpp\\build\\Debug\\nlogger.node");
 const nlogger = require("bindings")("nlogger.node");
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1410,7 +1410,8 @@ function Logger(loggerName, options) {
     this.logger_env = {
         globalEnv: s_globalenv,
         logger_path: __filename,
-        LOGGER: loggerName
+        LOGGER: loggerName,
+        isChild: false
     };
     this.isChild = false;
 
@@ -1420,6 +1421,7 @@ function Logger(loggerName, options) {
             cenv[p] = this.logger_env[p];
         });
         cenv.LOGGER = this.logger_env.LOGGER + ".child";
+        cenv.isChild = true;
 
         cenv.childPrefix = {};
         if (this.childPrefix) {
@@ -1995,7 +1997,7 @@ module.exports = function (name, options) {
 
     processSimpleOption(options, ropts, "prefix", "boolean", (optv) => true, true);
 
-    processSimpleOption(options, ropts, "bufferSizeLimit", "number", (optv) => optv >= 0, 4096);
+    processSimpleOption(options, ropts, "bufferSizeLimit", "number", (optv) => optv >= 0, 1024);
     processSimpleOption(options, ropts, "bufferTimeLimit", "number", (optv) => optv >= 0, 500);
 
     processSimpleOption(options, ropts, "formats", "any", (optv) => (typeof (optv) === "string" || typeof (optv) === "object"), undefined);

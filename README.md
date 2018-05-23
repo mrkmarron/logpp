@@ -23,7 +23,7 @@ support for both `child` loggers and logic for controlling the output from
 
 ## Basic Usage
 Log++ is designed to be simple to use and provides a nearly drop in replacement for existing logging frameworks.
-```
+```js
 //Import the logpp module and create a logger (named "myapp") 
 const log = require("logpp")("myapp");
 
@@ -93,7 +93,7 @@ enable/disable them at a fine grain level. Categories can be defined using any
 name desired and enabled/disabled on a per logger basis.
 
 Setting up and using a logging category can be done as follows:
-```
+```js
 //Define and enable the "performance" category
 log.enableCategory("Performance", true);
 
@@ -113,7 +113,7 @@ execution.
 Log++ also provides simple conditional logging with `If` versions of all 
 the unconditional logging functions. These functions take a boolean as the 
 first argument and only perform the logging work if the value is true.
-```
+```js
 log.info(log.$Hello); //"Hello World!!!"
 
 let x = 1;
@@ -277,7 +277,7 @@ in the output. For variables that are not naturally formattable are printed as
 `"<OpaqueValue>"`. 
 
 Some example uses of these in format messages include:
-```
+```js
 log.addFormat("Number", "A number %n");
 log.addFormat("DateLocal", "A date %dl");
 log.addFormat("Object", "An object %j");
@@ -291,7 +291,7 @@ log.info(log.$ObjectWDepth, {f: 3, g: [1, 2]}); // A shallow object {"f": 3, "g"
 
 The general (`j`) format is a catchall that will format a value using the 
 default options for whatever the type of the value is.
-```
+```js
 log.addFormat("General", "Value is %j");
 
 log.info(log.$General, 2); // Value is 2
@@ -299,11 +299,11 @@ log.info(log.$General, "ok"); // Value is "ok"
 log.info(log.$General, {f: 3}); // Value is {"f": 3}
 ```
 
-**JSON Messgae Formats:** 
+**JSON Message Formats:** 
 In addition to classic printf style formats Log++ also supports hybrid JSON 
 message formats. In these formats you can place a format specifier in any 
 value position. For example:
-```
+```js
 log.addFormat("Json", {kind: "start", time: "#wallclock", value: "%j"});
 log.info(log.$Json, [1, 2]); // {"kind": "start", "time": "2018-05-08T05:29:55.0512Z", "value": [1, 2]}
 ```
@@ -341,87 +341,189 @@ the message streams. Additionally, the "master" application should be able to
 disable or reduce rates of logging from submodules that are not of interest. 
 To support this we introduce the concept of a _root logger_ which is able to 
 control all the _sublogger_ actions (and subloggers cannot override these 
-settings). Log++ also supports_ the frequently useful _child logger_ scenario.
+settings). Log++ also supports the frequently useful _child logger_ scenario.
 
 ### Root Logger and SubLoggers
-The _root logger_ is the logger created by the `require.main.file` (first 
-loaded file). Each logger is created with a _module name_ and all loggers 
-created with the same name share the same logger. The _root logger_ can set 
-the emit level, sink, etc. and enable/disable or set levels of subloggers 
-explicitly. If not explicitly set subloggers are restricted to emitting at 
-the `WARN` level. All messages are merged and managed automatically according 
-to the settings of the _root logger_.
+The _root logger_ is the logger created in the `require.main.file` module 
+(i.e., the first loaded file). Each logger is created with a _module name_ and 
+all loggers created with the same name share the same logger. The _root logger_ 
+can set the emit level, sink, etc. and enable/disable or set levels of 
+subloggers explicitly. If not explicitly set subloggers are restricted to 
+emitting at the `WARN` level. All messages are merged and managed automatically 
+according to the settings of the _root logger_. Consider the following example:
+```js
+/*app.js*/
+const log = require("logpp")("main");
+log.addFormat("Hello", "Hello World!!!");
 
-asdf // more here 
+const helper = require("./helper");
+helper.doit(); //Emit "Msg2" from sublogger
+
+log.info(log.$Hello); //Emit "Hello World!!!" since we are root logger
+```
+
+```js
+/*helper.js*/
+const log = require("logpp")("sub");
+
+log.addFormat("Msg1", "Msg1");
+log.addFormat("Msg2", "Msg2");
+
+function doit() {
+    log.setLoggingLevel(log.Levels.DETAIL); //NOP -- not root logger
+    log.info(log.$Msg1); //NOP -- subloggers are set to WARN level by default
+
+    log.warn(log.$Msg2); //Processed
+}
+
+module.exports.doit = doit;
+```
+
+In general the default, of allowing subloggers to emit WARN or higher, 
+provides a balance where critical information is logged but (likely) 
+irrelevant logging output is suppressed. However, in cases where the logging 
+output from a module is of interest, you can explicitly set a sublogger 
+configuration from the root logger using the `setSubLoggerLevel` API:
+```js
+/*app2.js*/
+const log = require("logpp")("main");
+log.setSubLoggerLevel("sub", log.Levels.INFO); //configure sublogger
+
+const helper = require("./helper");
+helper.doit(); //Emit "Msg1" and "Msg2" from sublogger
+```
+
+In cases where there is a module with a sublogger that is completely 
+uninteresting or that is very noisy you can completely diable the sublogger 
+using the `disableSubLogger` API as well.
 
 ### Child Loggers
-asdf
+Child loggers provide a simple way to specialize a logger for a particular section 
+of an application with a default block of information that is output with each 
+log message. For exmaple:
+```js
+const log = require("logpp")("main");
+log.addFormat("Hello", "Hello %s!!!");
+
+function doit(v) {
+  const childlog = log.childLogger({arg: v});
+  childlog.info(childlog.$Hello, v);
+}
+
+doit("Ok"); //Emit {arg:"Ok"} -- "Hello Ok!!!" from child logger 
+```
+
+Finally, child loggers can stack -- a child logger may create another child logger. 
+In this case we will extend the child logger value with the newly provided info.
 
 ## API Specification
 
-`require("logpp")(NAME, [OPTIONS])`  
+### `require("logpp")(NAME, [OPTIONS])`  
   _NAME_ - string that is the name of the logger. If the same name is used in multiple invocations the same logger will be returned. \
   _OPTIONS_ - an object where each property is a configuration option for the created logger.
   * `memoryLevel` - string name of enabled level for in-memory buffer (default `"DETAIL"`).
   * `emitLevel` - string name of enabled level for formatting and emitting (default `"INFO"`).
   * `defaultSubloggerLevel` - string name of level that loggers in submodules memoryLevels are forced to (default `"WARN"`).
-  * `flushCount`
-  * `flushTarget`
-  * `flushMode`
+  * `flushCount` - number of log messages are added to the in-memory log before attempting to process them (default 64).
+  * `flushTarget` - the target output of the processed emit log data `"console"`|`"stream"` (default `"console"`).
+  * `flushMode` - how messages are processed for emit `"SYNC"`|`"ASYNC"`|`"NOP"` (default `"ASYNC"`).
   * `flushCallback` - NOT SUPPORTED YET
-  * `prefix`
-  * `bufferSizeLimit`
-  * `bufferTimeLimit`
-  * `formats`
-  * `categories`
-  * `subloggers`
+  * `prefix` - boolean specifying if default prefix is included in all emitted messages (default `true`).
+  * `bufferSizeLimit` -- in-memory buffer _size_ threshold for processing, messages may not be flushed if under this limit (default 1024 ~ 16kb).
+  * `bufferTimeLimit` -- in-memory _age_ threshold for processing, messages may not be flushed if younger than this limit (default 500ms).
+  * `formats` -- JSON object or file name to load formats from (default empty).
+  * `categories` -- provided as a JSON object or file name to load category definitions from (default empty).
+  * `subloggers` -- provided as a JSON object or file name to load sublogger configurations from (default empty).
 
-  Root logger
-  Debug override
+The first logger created in the file that matches `require.main.filename` will 
+be the _root logger_. Loggers created in modules before the root logger is 
+defined are _OFF_ and will be set to their defaults if/when the root logger is 
+defined. Loggers created after the root logger is defined will have their 
+levels/behavior set according to the root logger configurations and/or defaults.
 
-`this.setLoggingLevel(LEVEL)`
-  _LEVEL_ - the desired level to set for in-memory processing. Each logger has these values accessible on `this.Levels.LEVEL` (e.g., `log.Levels.INFO`).
+As buffered/delayed logging output can be confusing during interactive debugging Log++ checks for 
+launch with `--inspect` and if detected sets the default `flushCount = 0` and `flushMode = "SYNC"` 
+so that all log messages are immediately processed and output.
+
+### `this.setLoggingLevel(LEVEL)`
+  _LEVEL_ - the desired level to set for in-memory processing. 
+  
+Each logger has these values accessible on `this.Levels.LEVEL` (e.g., `log.Levels.INFO`).
 
 `this.setEmitLevel(LEVEL)`
-  _LEVEL_ - the desired level to set for formatting and emit. Each logger has these values accessible on `this.Levels.LEVEL` (e.g., `log.Levels.INFO`).
+  _LEVEL_ - the desired level to set for formatting and emit. 
+  
+Each logger has these values accessible on `this.Levels.LEVEL` (e.g., `log.Levels.INFO`).
 
-`this.enableCategory(NAME, ENABLED)`
+### `this.enableCategory(NAME, ENABLED)`
+ _NAME_ - the string name of the category to configure.
+ _ENABLED_ - the boolean enabled value for the category.
 
-`this.enableCategories(ARG)`
+Each logger has these values accessible on `this.$$NAME` (e.g., `log.$$Performance`).
 
-`this.addFormat(NAME, FORMAT)`
+### `this.enableCategories(ARG)`
+_ARG_ a JSON object or string filename with JSON object where each property is a category name 
+and each value is the enabled value. 
 
-`this.addFormats(ARG)`
+### `this.addFormat(NAME, FORMAT)`
+_NAME_ the string name of the format.
+_FORMAT_ string sprintf format or JSON Object/Array format object.
 
-`this.setMsgTimeLimit(limit)`
+Each logger has the formats accessible on `this.$NAME` (e.g., `log.$Hello`).
 
-`this.setMsgSpaceLimit(limit)`
+### `this.addFormats(ARG)`
+_ARG_ a JSON object or string filename with JSON object where each property is a format name 
+and each value is the format value. 
 
-`LOG_FUNCTION(FORMAT, ...ARGS)` \
-`LOG_FUNCTION(CATEGORY, FORMAT, ...ARGS)` \
+### `this.setMsgTimeLimit(LIMIT)`
+_LIMIT_ the age limit in _ms_ that governs when messages are removed from, and processed if needed, 
+the in-memory log.
+
+### `this.setMsgSpaceLimit(LIMIT)`
+_LIMIT_ the space limit in slots (1 slot ~16bytes) that governs when messages are removed from, 
+and processed if needed, the in-memory log.
+
+### `LOG_FUNCTION(FORMAT, ...ARGS)` and `LOG_FUNCTION(CATEGORY, FORMAT, ...ARGS)`
 _LOG_FUNCTION_ - a log level function `fatal` | `error` | `warn` | `info` | `detail` | `debug` | `trace` \
 _CATEGORY_ - (optional) the desired category to process this log call with. Each logger has these values accessible as names prefixed with `$$` (e.g., `log.$$CATEGORY`). \
 _FORMAT_ - the format to use in generating this message. Multiple format specifications are possible:
-* Pre-Defined: asdf
-* Explicit String: asdf
-* Explicit Object or Array: asdf
+
+* Pre-Defined: Using a format name added previously -- e.g. `log.info(log.$Hello, "World")`
+* Explicit String: Creating and using an ad-hoc format string -- e.g. `log.info("Hello %s", "World")`
+* Explicit Object or Array: Simple JSON formatting of an _Object_ or _Array_ (other values not supported) -- 
+e.g. `log.info({f: 3, ok: true})`
 
 _ARGS_ - the rest of the arguments that are needed by the format specifier.
 
-`LOG_FUNCTION_COND(COND, FORMAT, ...ARGS)` \
-`LOG_FUNCTION_COND(COND, CATEGORY, FORMAT, ...ARGS)` \
+### `LOG_FUNCTION_COND(COND, FORMAT, ...ARGS)` and `LOG_FUNCTION_COND(COND, CATEGORY, FORMAT, ...ARGS)`
 _LOG_FUNCTION_COND_ - a conditional log level function `fatalIf` | `errorIf` | `warnIf` | `infoIf` | `detailIf` | `debugIf` | `traceIf` \
 _COND_ a boolean that, if `true`, the message will be processed and, if `false`, is a nop. \
+
 The other args are the same as for the unconditional log method.
 
-`this.emitLogSync(FULL, DETAIL)` \
-_FULL_ - \
-_DETAIL_ - \
+### `this.emitLogSync(FULL, DETAIL)`
+_FULL_ - true if all messages should be flushed and false if only those over the age/size 
+limit are eligible for processing \
+_DETAIL_ - true if all messages should be processed regardless of level and false if filtering 
+should be applied as usual.
 
-`this.setSubLoggerLevel(SUBLOGGER_NAME, LEVEL)`
+COmmon uses include:
+`this.emitLogSync(true, true)` all messages are flushed -- good for panic output
+`this.emitLogSync(true, false)` all messages are flushed but filtered -- good for action completed want to drain log
+`this.emitLogSync(true, true)` partial flush with filter -- maybe useful to keep memory use down from buffering?
 
-`this.disableSubLogger(SUBLOGGER_NAME)`
+### `this.setSubLoggerLevel(SUBLOGGER_NAME, LEVEL)`
+_SUBLOGGER_NAME_ string name of the sublogger to change the emit level on.
+_LEVEL_ the new emit level for the sublogger.
 
-`this.configureSubloggers(ARG)`
+### `this.disableSubLogger(SUBLOGGER_NAME)`
+_SUBLOGGER_NAME_ string name of the sublogger to disable -- no output will be generated.
+
+### `this.configureSubloggers(ARG)`
+_ARG_ a JSON object or string filename with JSON object with 2 properties -- `enabled` which is a 
+JSON object where each property is a sublogger name and each value is the enabled value _and_ 
+`disabled` which is a JSON array of names of diabled subloggers. 
 
 `this.childLogger(PREFIX_DATA)`
+_PREFIX_DATA_ a JSON Object that is the prefix data to be associated with all messages emitted 
+from the child logger. If there was a previous prefix value this extends it.

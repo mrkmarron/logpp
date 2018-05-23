@@ -31,7 +31,7 @@ const subtests = [
     { name: "emit.change.up", action: () => { logpp.setEmitLevel(logpp.Levels.INFO); log2.doit(); logpp.info(logpp.$Hello); }, oktest: (msg) => msg === "Ok Log2!!!\nHello World!!!" },
 
     { name: "childlog", action: () => { childlog = logpp.childLogger({ cl: true }); }, oktest: (msg) => msg === "" },
-    { name: "childlog.default", action: () => { childlog.info(childlog.$LName); }, oktest: (msg) => msg === "\"sublogger.child\"" },
+    { name: "childlog.default", action: () => { childlog.info(childlog.$LName); }, oktest: (msg) => msg === "{\"cl\":true} -- \"sublogger.child\"" },
     { name: "childlog.up", action: () => { childlog.setLoggingLevel(childlog.Levels.DETAIL); childlog.detail(childlog.$LName); }, oktest: (msg) => msg === "" },
 ];
 
