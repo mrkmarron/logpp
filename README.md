@@ -3,8 +3,8 @@
 Log++ is a logging framework designed to support modern development needs. The 
 goal is to provide:
 1. Very low main-thead cost to log a message (under 1&#x00B5;s per message) 
-with high cost formatting operations done as a background tasking using N-API 
-module.
+with high cost formatting operations done as a background tasking using a 
+[N-API](https://nodejs.org/api/n-api.html) module.
 2. Simultaneous support for high fidelity diagnostics/debugging logging and 
 lower frequency informational logging. All message data is initially stored in 
 a high performance in-memory buffer and, later, a filtered set of messages 
@@ -450,7 +450,7 @@ so that all log messages are immediately processed and output.
   
 Each logger has these values accessible on `this.Levels.LEVEL` (e.g., `log.Levels.INFO`).
 
-`this.setEmitLevel(LEVEL)`
+### `this.setEmitLevel(LEVEL)`
   _LEVEL_ - the desired level to set for formatting and emit. 
   
 Each logger has these values accessible on `this.Levels.LEVEL` (e.g., `log.Levels.INFO`).
@@ -507,10 +507,10 @@ limit are eligible for processing \
 _DETAIL_ - true if all messages should be processed regardless of level and false if filtering 
 should be applied as usual.
 
-COmmon uses include:
-`this.emitLogSync(true, true)` all messages are flushed -- good for panic output
-`this.emitLogSync(true, false)` all messages are flushed but filtered -- good for action completed want to drain log
-`this.emitLogSync(true, true)` partial flush with filter -- maybe useful to keep memory use down from buffering?
+Common uses include:
+* `this.emitLogSync(true, true)` all messages are flushed -- good for panic output
+* `this.emitLogSync(true, false)` all messages are flushed but filtered -- good for action completed want to drain log
+* `this.emitLogSync(true, true)` partial flush with filter -- maybe useful to keep memory use down from buffering?
 
 ### `this.setSubLoggerLevel(SUBLOGGER_NAME, LEVEL)`
 _SUBLOGGER_NAME_ string name of the sublogger to change the emit level on.
@@ -524,6 +524,6 @@ _ARG_ a JSON object or string filename with JSON object with 2 properties -- `en
 JSON object where each property is a sublogger name and each value is the enabled value _and_ 
 `disabled` which is a JSON array of names of diabled subloggers. 
 
-`this.childLogger(PREFIX_DATA)`
+### `this.childLogger(PREFIX_DATA)`
 _PREFIX_DATA_ a JSON Object that is the prefix data to be associated with all messages emitted 
 from the child logger. If there was a previous prefix value this extends it.
