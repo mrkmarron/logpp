@@ -1,24 +1,15 @@
 # Log++ -- A Logging Framework for Modern Development
 
-Log++ is a logging framework designed to support modern development needs. The 
-goal is to provide:
-1. Very low main-thead cost to log a message (under 1&#x00B5;s per message) 
-with high cost formatting operations done as a background tasking using a 
+Log++ is a logging framework designed to support modern development needs.
+* Log++ is **fast**! **4-7 times** faster than bunyan and **2 times** faster than pino. Log++ can process a log statement in under 1&#x00B5;s of blocking time, 
+with the high cost formatting operations done as a background tasking using a 
 [N-API](https://nodejs.org/api/n-api.html) module.
-2. Simultaneous support for high fidelity diagnostics/debugging logging and 
-lower frequency informational logging. All message data is initially stored in 
-a high performance in-memory buffer and, later, a filtered set of messages 
-identified as useful are written to stable storage.
-   * Detailed logging data is processed chaply into the high performance 
-     in-memory buffer and can be emitted on errors for detailed debugging.
-   * Informational messages are saved out to a stable storage channel for 
-     analytics and monitoring applications.
-3. The logging output provides structured and machine parsable formats (even 
+* Log++ helps **banish log spew** with novel multi-level logging support. All (verbose) log messages are initially stored in an in-memory buffer for high performance and if they are needed for core dumps. However, these can be filitered out when writting so they don't pollute the saved logs with overly detailed information. 
+* Log++ logs are **machine parsable**. The logging output provides structured and machine parsable formats (even 
 with `printf` style logging). These formats can be explicitly provided/managed 
 via external JSON specifications. Common prefix data and macros for embedding 
 useful system information are also available.
-4. Unified control of logging levels & output across modules is possible by a 
-support for both `child` loggers and logic for controlling the output from 
+* Log++ provides **modular flexible logging** with unified control of logging levels, categories, and output across modules. Log++ supports both `child` loggers and logic for controlling the output from 
 `subloggers` created by other modules that your application uses.
 
 ## Basic Usage
