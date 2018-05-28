@@ -5,7 +5,7 @@
         "name": "Mark Marron <marron@microsoft.com>"
     },
     "license": "MIT",
-    "version": "0.0.1",
+    "version": "0.0.3",
     "repository": {
         "type": "git",
         "url": "https://github.com/mrkmarron/logpp"
@@ -38,7 +38,7 @@
         "nsrc/*",
         "binding.gyp"
     ],
-    "main": "logger.js",
+    "main": "src/logger.js",
     "engines" : { 
         "node" : ">=10.0" 
     }
