@@ -2,7 +2,7 @@
     "name": "logpp",
     "description": "A next generation logging framework for JavaScript.",
     "author": {
-        "name": "Mark Marron"
+        "name": "Mark Marron <marron@microsoft.com>"
     },
     "license": "MIT",
     "version": "0.0.1",
