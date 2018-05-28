@@ -41,5 +41,11 @@
     "main": "src/logger.js",
     "engines" : { 
         "node" : ">=10.0" 
-    }
+    },
+    "keywords": [
+        "log",
+        "logger",
+        "logging",
+        "debug"
+    ]
 }
