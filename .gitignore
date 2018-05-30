@@ -7,7 +7,7 @@ yarn-error.log*
 benchmark/performanceout.txt
 
 # Tex temp files
-papers/languageLevelLogging/*.pdf
+papers/logpp/*.pdf
 papers/**/*.synctex.gz
 papers/**/*.aux
 papers/**/*.bbl
