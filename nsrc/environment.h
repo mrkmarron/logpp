@@ -32,8 +32,8 @@ public:
     LoggingEnvironment(const LoggingLevel level, const std::string& hostName, const std::string& appName) :
         m_enabledLoggingLevel(level), m_loggingLevelToNames(), m_categoryNames(),
         m_hostName(hostName), m_appName(appName),
-        m_formats(),
         m_msgTimeLimit(DEFAULT_LOG_TIMELIMIT), m_msgCountLimit(DEFAULT_LOG_SLOTSUSED),
+		m_formats(),
         m_processing(), m_processingMode('n'),
         m_formatWorker(nullptr)
     {
@@ -60,7 +60,7 @@ public:
 
     void AddFormat(int64_t fmtId, std::shared_ptr<MsgFormat> fmt)
     {
-        if (fmtId == this->m_formats.size())
+        if (fmtId == static_cast<int64_t>(this->m_formats.size()))
         {
             this->m_formats.push_back(fmt);
         }

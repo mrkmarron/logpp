@@ -56,7 +56,7 @@ public:
     void emitLiteralString(const char(&str)[N])
     {
         this->ensure(N);
-        memcpy_s(this->m_buff + this->m_curr, N, &str, N);
+        memcpy(this->m_buff + this->m_curr, &str, N);
 
         this->m_curr += N - 1;
     }
@@ -64,7 +64,7 @@ public:
     void emitLiteralString(const std::string& str)
     {
         this->ensure(str.length());
-        memcpy_s(this->m_buff + this->m_curr, str.length(), str.c_str(), str.length());
+        memcpy(this->m_buff + this->m_curr, str.c_str(), str.length());
 
         this->m_curr += str.length();
     }
@@ -131,12 +131,12 @@ public:
     void emitJsInt(int64_t val)
     {
         this->ensure(32);
-        this->m_curr += sprintf_s(this->m_buff + this->m_curr, 32, "%I64i", val);
+        this->m_curr += snprintf(this->m_buff + this->m_curr, 32, "%I64i", val);
     }
 
     void emitJsNumber(double val)
     {
-        if (std::isnan(val))
+        if (isnan(val))
         {
             this->emitLiteralString("null");
         }
@@ -151,12 +151,12 @@ public:
         else if (floor(val) == val)
         {
             this->ensure(32);
-            this->m_curr += sprintf_s(this->m_buff + this->m_curr, 32, "%I64i", static_cast<int64_t>(val));
+            this->m_curr += snprintf(this->m_buff + this->m_curr, 32, "%I64i", static_cast<int64_t>(val));
         }
         else
         {
             this->ensure(32);
-            this->m_curr += sprintf_s(this->m_buff + this->m_curr, 32, "%f", val);
+            this->m_curr += snprintf(this->m_buff + this->m_curr, 32, "%f", val);
             while (this->m_buff[this->m_curr - 1] == '0')
             {
                 this->m_curr--;
@@ -185,7 +185,7 @@ public:
             //ISO
             auto utctime = std::gmtime(&tval);
             this->m_curr += strftime(this->m_buff + this->m_curr, 96, "%Y-%m-%dT%H:%M:%S", utctime);
-            this->m_curr += sprintf_s(this->m_buff + this->m_curr, 32, ".%03dZ", msval);
+            this->m_curr += snprintf(this->m_buff + this->m_curr, 32, ".%03dZ", msval);
         }
 
         if (quotes)
