@@ -37,7 +37,7 @@ three other popular loggers -- [Bunyan](https://github.com/trentm/node-bunyan),
 [Pino (Extreme)](https://github.com/pinojs/pino). The first 3 benchmarks are 
 taken from [Pino](https://github.com/pinojs/pino) and the last one is from us. 
 Each message is written 100k times and these timings are from an Intel 
-Core i7-5600 running Node-V8 10.0.
+Core i7-5600 running Node-V8 10.0 on Windows 10.
 
 * Basic: `info('hello world -- logger')`
 * String: `info('hello %s', 'world')`

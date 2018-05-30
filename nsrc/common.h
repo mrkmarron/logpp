@@ -5,7 +5,7 @@
 #include <cstdint>
 
 #include <time.h>
-#include <math.h>
+#include <cmath>
 #include <numeric>
 
 #include <sstream>

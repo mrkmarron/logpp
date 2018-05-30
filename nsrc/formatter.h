@@ -106,22 +106,10 @@ public:
                 this->m_buff[this->m_curr++] = 't';
                 break;
             default:
-                if (*c <= 127)
-                {
-                    this->m_buff[this->m_curr++] = *c;
-                }
-                else
-                {
-                    //
-                    //TODO: this encoding
-                    //
-                    this->m_buff[this->m_curr++] = '\\';
-                    this->m_buff[this->m_curr++] = 'u';
-                    this->m_buff[this->m_curr++] = '0';
-                    this->m_buff[this->m_curr++] = '0';
-                    this->m_buff[this->m_curr++] = '0';
-                    this->m_buff[this->m_curr++] = '0';
-                }
+				//
+				//TODO: handle real UTF8 with a check and \\uxxxx encode
+				//
+                this->m_buff[this->m_curr++] = *c;
             }
         }
 
@@ -131,12 +119,12 @@ public:
     void emitJsInt(int64_t val)
     {
         this->ensure(32);
-        this->m_curr += snprintf(this->m_buff + this->m_curr, 32, "%I64i", val);
+        this->m_curr += snprintf(this->m_buff + this->m_curr, 32, "%lli", static_cast<long long int>(val));
     }
 
     void emitJsNumber(double val)
     {
-        if (isnan(val))
+        if (std::isnan(val))
         {
             this->emitLiteralString("null");
         }
@@ -151,7 +139,7 @@ public:
         else if (floor(val) == val)
         {
             this->ensure(32);
-            this->m_curr += snprintf(this->m_buff + this->m_curr, 32, "%I64i", static_cast<int64_t>(val));
+            this->m_curr += snprintf(this->m_buff + this->m_curr, 32, "%lli", static_cast<long long int>(val));
         }
         else
         {
