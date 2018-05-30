@@ -59,7 +59,7 @@ xleftmargin=0.5cm
 % doing so eliminates compiler warnings.
 \usepackage[bookmarks, colorlinks]{hyperref}
 
-\newcommand{\projn}{\textsc{TurboLog}\xspace}
+\newcommand{\projn}{\textsc{Log++}\xspace}
 \newcommand{\ourtitle}{Langauge, Runtime, and Compiler Aware Logging} 
 
 \newcommand{\todo}[1]{{\color{red}#1}}
@@ -129,18 +129,18 @@ Mark Marron\\
 \maketitle
 
 \begin{abstract} 
-Logging is a fundamental part of the software development, deployment, and
-monitoring lifecycle but logging support is often provided as an afterthought or
-via a library API in a languages core runtime. We argue that given the critical
+Logging is a fundamental part of the software development and
+monitoring lifecycle but logging support is often provided as an afterthought 
+via limited library APIs or third-party modules. We argue that given the critical
 nature of logging in modern development, the unique needs of the APIs involved,
-and the opportunities for optimizing it using semantic knowledge, logging should
+and the opportunities for optimization using semantic knowledge, logging should
 be included as a central part of the language and runtime designs. This paper
-presents a \emph{language level logging} design which includes support for
+presents \projn which includes support for
 logging functionality at all levels of a programming language including, syntax,
 runtime support, and hooks for DevOps integration.
 
 Using this integrated approach we build a logging system that supports near
-zero-costs for disabled log statements, low cost lazy-copying for enabled log
+zero-cost for disabled log statements, low cost lazy-copying for enabled log
 statements, selective persistence of logging output, unified control of logging
 output across different libraries, and DevOps integration for use with modern
 cloud-based deployments. To evaluate these concepts we provide two
@@ -177,20 +177,64 @@ rich logging data an integral part of an applications development.
 Existing logging library implementations, as provided via core or third party
 libraries, are unable to satisfactorily meet the demands of logging in modern
 applications. As a result developers must use existing libraries with care to
-limit undesirable logging related performance impacts, work to direct logging
-output from core or third-party modules to the appropriate channels, and figure
+limit undesirable logging related performance impacts and \emph{log spew}, work 
+to control logging output from other modules to the appropriate channels, and figure
 out how to effectively parse the data that is written from various sources.
-Consider the following sample JavaScript code which illustrates a number of
-concrete issues encountered by Node.js~\cite{Node} developers today.
+Consider the following sample JavaScript code in~\autoref{fig:introExample} 
+which illustrates concrete issues encountered by Node.js~\cite{Node} developers today.
 
 \begin{figure*}[t]
 \lstinputlisting[language=JavaScript,basicstyle=\small]{introExample.js}
-\label{sec:introExample}
 \caption{Example logging usage in JavaScript.}
+\label{fig:introExample}
 \end{figure*}
 
-The first is the challenge of different loggers being used in various parts of
-the code in this case \texttt{console.log} writing to the \texttt{stdout} and a
+A major issue with logging is the potential for the accidental introduction 
+of serious performance problems though seemingly benign activities. In 
+existing logging framework even if a given logging level is disabled, 
+as \texttt{debug} and \texttt{trace} levels usually are, the code to generate 
+and format the log message is still executed. This can either be due to eager 
+evaluation semantics of the source language or due to limitations in compiler 
+optimizations for dead-code elemination in languages with workarounds such as 
+macros. This results in code that looks like it will not be executed but that in 
+reality incurs large parasitic costs and can be seen in the \texttt{logger.debug} 
+statement in the example, which at the default level does not print to the log, but will
+still result in the creation of the literal object and generation of a format
+string on every execution of the loop. This cost leads developers to defensively
+remove these statements from code instead of depending on the runtime to
+eliminate their costs when deploying the application.
+
+Next is the issue of \emph{log spew} where logging at a detailed level, which 
+may be desireable for debugging when an issue occours, fills the log with 
+large quantities of uninteresting noise output. An example of this is the 
+\texttt{logger.info} message about the args and result of the \texttt{check} 
+call. In the case of a successful execution the content of this log statement 
+is not interesting and the cost of producing this plus the increased noise in 
+the logfile is pure overhead. However, if the \texttt{check} statement fails 
+then having this information about what events led up to the failure may be 
+critical in diagnosing/fixing the issue. In current logging frameworks this is 
+an unavoidable conundrum and, in any case where the trace history is needed, 
+the logging statements must be added and the cost/noise accepted as a cost.
+
+The combination of verbose logging and the trend towards including critical, but 
+extensive, metadata such as timestamps and host information in log messages further 
+drives concerns about the performance of logging. Computing a timestamp or a 
+hostname string is inexpensive but the cost of formatting them into a message is 
+non-trivial can can add up over thousands or millions of log messages resulting 
+in unexpected performance degradations. 
+
+Modern developer practices around logging frequently involve post processing 
+of log data into analysis framework like Kusto~\cite{} or SPLUNK~\cite{}. 
+However, free form specification of message formats, as seen in \emph{printf} or 
+concatenated value styles, are not ammenable to machine parsing. Modern logging 
+frameworks, log4j~\cite{log4j}, Winston~\cite{Winston}, Bunyan~\cite{Bunyan}, etc. 
+provide some support for consistently formatting ans structuring output but
+fundamentally this problem is left as a problem development teams need to solve
+via coding conventions and reviews.
+
+The final issue we consider is the growing pain of integrating multiple software 
+modules, each of which may use a different form of logging. In our running example 
+we have \texttt{console.log} writing to the \texttt{stdout} and a
 popular framework called \texttt{Winston} which has been configured to write to
 a file. As a result some log output will appear on the console while other
 output will end up in a file. Further, if a developer changes the logging output
@@ -200,47 +244,11 @@ around this to some degree by enforcing the use of a single logging framework
 for their code but they will not always be able to control the frameworks used
 by external libraries.
 
-The next challenge comes from the ad-hoc nature of log message formatting. In
-most cases the logging API's provided for developers are setup to take a format
-string and some formattable arguments. This is great for quick and easy outputs
-but quickly leads to a plethora of ad-hoc formats that cannot be easily parsed
-and loaded into dashboard or analytics tooling. Modern logging frameworks,
-log4j~\cite{log4j}, Winston~\cite{Winston}, Bunyan~\cite{Bunyan}, etc. provide
-some support for consistently formatting ans structuring output but
-fundamentally this problem is left as a problem development teams need to solve
-via coding conventions and reviews.
-
-In addition to these functionality issues there are also performance problems
-that plague existing logging solutions. One concern is that even if a given
-logging level is disabled, as \texttt{debug} and \texttt{trace} levels usually
-are, the code to generate and format the log message is still executed. This can
-lead to code that looks like it will not be executed but that in reality incurs
-large parasitic costs. This can be seen in the \texttt{logger.debug} statement
-in the example, which at the default level does not print to the log, but will
-still result in the creation of the literal object and generation of a format
-string on every execution of the loop. This cost leads developers to defensively
-remove these statements from code instead of depending on the runtime to
-eliminate their costs when deploying the application.
-
-Finally, there is the odd issue that, in many cases a developer only cares about
-much of the data in the log if/when there is actually an issue that needs to be
-investigated. In other cases this information represents pure execution overhead
-for the application. An example of this is the \texttt{logger.info} message
-about the args and result of the \texttt{check} call. In the case of a
-successful execution the content of this log statement is not useful and the
-cost of producing this plus the increased log footprint is pure overhead.
-However, if the \texttt{check} statement fails then having this information
-about what events led up to the failure may be critical in diagnosing/fixing the
-issue. In current logging frameworks this is an unavoidable conundrum and, in
-any case where the trace history is needed, the logging statements must be
-added.
-
-To address these issues we propose a new approach, \emph{language level
-logging}, in which logging is viewed as a first class feature in the
-design/implementation of a programming language and runtime instead of simply
-another library to be included. Taking this view enables us to leverage language
-semantics, focused compiler optimizations, and semantic knowledge in the runtime
-to provide a uniform and high performance logging API.
+To address these issues we propose an approach where logging is viewed as a first 
+class feature in the design/implementation of a programming language and runtime 
+instead of simply another library to be included. Taking this view enables us to 
+leverage language semantics, focused compiler optimizations, and semantic knowledge 
+in the runtime to provide a uniform and high performance logging API.
 
 \noindent
 The contributions of this paper include:
@@ -256,8 +264,9 @@ programming language to enable ultra-low cost logging which is
 programmer to log execution data eagerly but only pay the cost of writting it to
 the log if it turns out to be interesting/relevant.
 
-\item Implementation of this technique in a new programming language,
-\emph{fluentpl}, which fully realizes the logging ideas in this paper. 
+\item A suite of innovative log format and log level management techniques that 
+provide a consistent and unified log output that is easy to manage and feed into 
+other tooling.
 
 \item An implementation in Node.js with the ChakraCore~\cite{NodeChakraCore} 
 JavaScript engine to demonstrate that key ideas can be applied to existing

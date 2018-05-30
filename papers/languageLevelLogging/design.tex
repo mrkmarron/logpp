@@ -7,57 +7,91 @@ these into two classes -- performance oriented and functionality oriented.
 \label{subsec:performancedesign}
 
 \begin{design}
-The cost of a \textbf{disabled logging} statement, one that is at a logging level that is disabled, 
-should have \textbf{zero-cost} at runtime. This includes both the direct cost of the logging action 
+The cost of a disabled logging statement, one that is at a logging level that is disabled, 
+should have zero-cost at runtime. This includes both the direct cost of the logging action 
 and the indirect cost of of building a format string and processing any arguments. 
 \end{design}
-For logging frameworks that are included as libraries the compiler/JIT does not, in general, have 
-any deep understanding of the enabled/disabled semantics of the logger. As a result it will not be 
-able to fully eliminate dead-code associated with disabled logging statements and will pay an, 
-individually small but widespread, parasitic cost for these disabled logging statements. These 
-costs can be very difficult to diagnose, as they are widely dispersed and individually small, but can 
-add up to several percentage points of application runtime.
 
-To avoid these parasitic costs we propose including logging as a set of intrinsics included in the 
-specification of the programming language or, if that is not possible, adding compiler/JIT specializations. 
-Languages with macros provide a simple limited form of this support by allowing for a compile time flag 
-to completely eliminate disabled logging code. However, this solution is limited to code that is explicitly 
-contained in the macro and the enabled/disabled levels cannot be changed at runtime. 
+When logging frameworks are included as libraries the compiler/JIT does not, 
+in general, have any deep understanding of the enabled/disabled semantics of 
+the logger. As a result the compiler/JIT will not be able to fully eliminate 
+dead-code associated with disabled logging statements and will pay, individually 
+small but widespread, parasitic costs for these disabled logging statements. 
+These costs can be very difficult to diagnose, as they are widely dispersed and 
+individually small, but can add up to several percentage points of application 
+runtime.To avoid these parasitic costs we propose including logging primitives 
+in the core specification of the programming language or, if that is not possible, 
+adding compiler/JIT specializations to support them. 
 
-Finally, we observe as an additional advantage of lifting log semantics to the language specification level 
-allows us to statically verify logging uses. Common errors include format specifier violations~\cite{tyepcheckprintf} 
-and accidental state modification in the logging message computation. If the language semantics specify 
-logging API's then both of these error classes can be statically checked to avoid runtime errors or hisenbugs 
-that appear/disappear when logging levels are changed.
+An additional advantage of lifting log semantics to the language specification 
+level is the ability to statically verify logging uses. Common errors include 
+format specifier violations~\cite{tyepcheckprintf} and accidental state 
+modification in the logging message computation. If the language semantics 
+specify logging API's then both of these error classes can be statically 
+checked to avoid runtime errors or hisenbugs that appear/disappear when logging 
+levels are changed.
 
 \begin{design}
-The cost of an enabled logging statement has two components -- (1) the cost to compute the set of 
-arguments to the log statement and (2) the cost to write this data into the log. The cost of computing 
-the argument values is, in general unavoidable, and must be done on the hot path of execution. However, 
+The cost of an enabled logging statement has two components -- (1) the cost to 
+compute the set of arguments to the log statement and (2) the cost to format and 
+write this data into the log. The cost of computing the argument values is, in 
+general unavoidable, and must be done on the hot path of execution. However, 
 the cost of (2) should be reduced and/or moved off hot path as much as possible.
 \end{design}
-Async-logging and immutability based tools asdf...
 
-
-
-
-
-The major issues this proposal is intended to address are:
-
-\noindent
-Lack of high performance logging primitives and fundamental logging challenges.
-\begin{enumerate}
- \item Cost of writing data to the log -- particularly with data formatted via 
-    `util.inspect` and info such as timestamps.
- \item Ongoing tension between log detail when triaging issues and cost of logging 
-    large amounts of 'uninteresting' data.
-\item Parasitic costs of disabled logging statements which still execute code to 
-    generate dead logging data (e.g., constructing unused strings).
-\item Compiler optimizations of both enabled and disabled logging statements.
-\end{enumerate}
+To minimize the cost of computing arguments to the log statement and speed their 
+processing we propose a novel log format specification mechanism using 
+\emph{preprocessed} and stored log formats along with a set of \emph{log expandos} 
+which can be used a shorthand in a log to specify common, but expensive/complicated, 
+value to compute. The use of preprocessed format messages allows us to save time, 
+the type checking and processing of each argument does not require parsing the 
+format string, and instead of eagerly stringifying each parameter we can do a quick 
+immutable copy to be formatted later if needed. Expandos provide convinient 
+ways to add data into the log, such as the current date/time, the host IP, or a 
+current request ID, that would either be more expensive or more awkward to compute 
+explicitly on a regular basis.
 
 \subsection{Logging Functionality}
 \label{subsec:functionalitydesign}
+\begin{design}
+Logging serves two related, but slightly conflicting roles, in modern systems 
+a logger should support both of them simultaniously without comprimising the 
+effectiveness of either one. The first role is to provide detailed information 
+on the sequence of events preceeding a bug to aid the developer in tiraging and 
+reproducing the issue. The second role is to provide general telemetry 
+information and visibility into the overall behavior of the application. 
+\end{design}
+
+To support these dual roles we propose a dual-level logging approach. In the 
+first level all messages are initially stored, as a format + immutable 
+arguments, into an in-memory buffer. This operation is high performance and 
+suitable for high frequency writes of detailed logging information needed for 
+debugging. Further, in event an error is encountered the full contents of 
+detailed logging can be flushed to aid in debugging. In the second level these 
+detailed messages can be filtered out and only the high-level telemetry focused 
+messages can be saved, formatted, and written into the stable log. This filtering 
+avoids the pollution the saved logs with overly detailed information while 
+preserving the needed data for monitoring the overall status of the application. 
+
+\begin{design}
+Logging code should not obscure the logic of the application that it is 
+supporting. Thus, a logger should provide specialized logging primitives 
+that cover common cases, such as conditional logging, that would otherwise 
+require a developer to add new logic flow into their application specifically 
+for the logger.
+\end{design}
+
+Common scenarios that often involve additional control or data flow logic 
+include \emph{conditional logging} where a message is only written when a 
+specific condition is satisfied, \emph{child loggers} which handle a specific 
+subtask and often developers want to include additional information in all 
+log messages from this subtask, and \emph{bracketing entries} where 
+developers want to mark the start/end of something and include correlated 
+timing (and other) information in the bracketing. All of these scenarios 
+involve the developer adding additional, error-prone, control and data flow 
+to the program which obscures the core algorithmic code. Thus, we propose 
+adding primitive methods for supporting all of these scenarios without requiring 
+additional developer implemented logic.
 
 \noindent
 Challenges integrating log data from different sources and difficulty in post processing.
@@ -66,8 +100,5 @@ Challenges integrating log data from different sources and difficulty in post pr
     multiple packages -- and quite possibly multiple logging frameworks.
 \item Difficulty in ensuring all logging data is written to a consistent location 
     across multiple packages -- and quite possibly multiple logging frameworks.
-\item Correlating fundamental information such as  
-    transaction ids, such as async context and HTTP requests, and to log relevant 
-    events in the core libraries with user logging data -- same for performance info.
 \end{enumerate}
 
