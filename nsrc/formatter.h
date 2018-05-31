@@ -74,7 +74,7 @@ public:
         this->emitLiteralChar('"');
 
         for (auto c = str.cbegin(); c != str.cend(); c++) {
-            this->ensure_fixed<6>();
+            this->ensure_fixed<8>(); //extra in case we do \uxxxx\0
 
             switch (*c) {
             case '"':
@@ -106,10 +106,37 @@ public:
                 this->m_buff[this->m_curr++] = 't';
                 break;
             default:
-				//
-				//TODO: handle real UTF8 with a check and \\uxxxx encode
-				//
-                this->m_buff[this->m_curr++] = *c;
+				if (*c <= 0x7F)
+				{
+					this->m_buff[this->m_curr++] = *c;
+				}
+				else
+				{
+					this->m_buff[this->m_curr++] = '\\';
+					this->m_buff[this->m_curr++] = 'u';
+
+					uint32_t cvalue = 0;
+					if ((*c & 0xE0) == 0xC0)
+					{
+						cvalue = ((*c & 0x1F) << 6) | (*(c + 1) & 0x3F);
+						c += 1; //last increment happens in loop
+					}
+					else if((*c & 0xF0) == 0xE0)
+					{
+						cvalue = ((*c & 0xF) << 12) | ((*(c + 1) & 0x3F) << 6) | (*(c + 2) & 0x3F);
+						c += 2; //last increment happens in loop
+					}
+					else
+					{
+						cvalue = 0xFFFD;
+						while ((*c & 0x80) != 0 && (c + 1 != str.cend()))
+						{
+							c++;
+						}
+					}
+					
+					this->m_curr += snprintf(this->m_buff, 6, "%04x", cvalue);
+				}
             }
         }
 

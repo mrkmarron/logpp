@@ -122,7 +122,12 @@ const basictests = [
     { fmt: "$Compound_Hello", arg: ["Hello", "World"], oktest: (msg) => msg === "\"Hello\" \"World\"!" },
     { fmt: "$Compound_Hello_APP", arg: ["World"], oktest: (msg) => msg === "\"World\" from \"basic\"!" },
     { fmt: "$Compound_Object", arg: ["Bob", true], oktest: (msg) => msg === "{ \"name\": \"Bob\", \"msg\": \"Hello\", \"args\": [ \"basic\", 4, true, true ] }" },
-    { fmt: "$Compound_Object_Object", arg: ["Bob", [3, 4]], oktest: (msg) => msg === "{ \"name\": \"Bob\", \"msg\": \"Hello\", \"args\": [ 4, [3, 4], true ] }" }
+    { fmt: "$Compound_Object_Object", arg: ["Bob", [3, 4]], oktest: (msg) => msg === "{ \"name\": \"Bob\", \"msg\": \"Hello\", \"args\": [ 4, [3, 4], true ] }" },
+
+    { fmt: "$Basic_String", arg: ["\u00A2"], oktest: (res) => res === "\"\u00A2\"" },
+    { fmt: "$Basic_String", arg: ["\u03A9"], oktest: (res) => res === "\"\u03A9\"" },
+    { fmt: "$Basic_String", arg: ["\u20AC"], oktest: (res) => res === "\"\u20AC\"" },
+    { fmt: "$Compound_Hello", arg: ["\u03A9 stuff", "\u00A2\u00A2"], oktest: (res) => res === "\"\u03A9 stuff\" \"\u00A2\u00A2\"!" },
 ];
 
 ///////////////////////////
