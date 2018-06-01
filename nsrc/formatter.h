@@ -106,15 +106,12 @@ public:
                 this->m_buff[this->m_curr++] = 't';
                 break;
             default:
-				if (*c <= 0x7F)
+				if ((*c & 0x80) == 0)
 				{
 					this->m_buff[this->m_curr++] = *c;
 				}
 				else
 				{
-					this->m_buff[this->m_curr++] = '\\';
-					this->m_buff[this->m_curr++] = 'u';
-
 					uint32_t cvalue = 0;
 					if ((*c & 0xE0) == 0xC0)
 					{
@@ -135,7 +132,7 @@ public:
 						}
 					}
 					
-					this->m_curr += snprintf(this->m_buff, 6, "%04x", cvalue);
+					this->m_curr += snprintf(this->m_buff + this->m_curr, 8, "\\u%04x", cvalue);
 				}
             }
         }
