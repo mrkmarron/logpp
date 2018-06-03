@@ -1,0 +1,41 @@
+% !TeX root = Logpp.tex
+Lets break the evaluation down into evlauating the implementation with respect 
+to each of the design goals...
+
+\subsection{Logging Optimizations}
+Lets do some microbencharks on logging and break down the impact of various 
+implementation/design ideas...
+
+enabled full
+
+disabled
+
+multi-level impact
+
+expando impact
+
+\subsection{Logging Performance}
+Lets do some macro benchmarks on a couple of non-micro workloads to see the 
+impact in practice...
+
+\subsection{Information Availability}
+Lets compare our goals in Design Principle 3 with the implementation... 
+
+study of detailed dump on error and bug fix?
+
+study of simplified output log and reduction in storage/transport sizes -- 
+e.g., save XXMB of traffic/storage per day kind of thing.
+
+\subsection{Log Code Clutter}
+Can we do a github search or some similar for if(...) console.log or 
+is there other liturature on how developers use logs that we can 
+quantify simplification benefits?
+
+Do we have any other metrics that would be good to compare?
+
+\subsection{Unified Logging Control}
+ASDF ... we clearly can do this but not sure how to evaluate? 
+Can we do some user study? Look at what happenes when I require a 
+module that uses winston/pino/etc.
+
+

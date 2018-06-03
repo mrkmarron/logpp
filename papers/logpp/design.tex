@@ -1,4 +1,4 @@
-% !TeX root = LanguageLevelLogging.tex
+% !TeX root = Logpp.tex
 This section describes opportunities, using language, runtime, or compiler support, to address 
 general challenges surrounding logging outlined in \autoref{sec:intro}. We can roughly divide 
 these into two classes -- performance oriented and functionality oriented. 
@@ -7,9 +7,11 @@ these into two classes -- performance oriented and functionality oriented.
 \label{subsec:performancedesign}
 
 \begin{design}
-The cost of a disabled logging statement, one that is at a logging level that is disabled, 
-should have zero-cost at runtime. This includes both the direct cost of the logging action 
-and the indirect cost of of building a format string and processing any arguments. 
+The cost of a disabled logging statement, one that is at a logging level that 
+is disabled, should have zero-cost at runtime. This includes both the direct 
+cost of the logging action and the indirect cost of of building a format 
+string and processing any arguments. Further, disabling/enabling a log 
+statement should not change the semantic runtime behavior of the application.
 \end{design}
 
 When logging frameworks are included as libraries the compiler/JIT does not, 
@@ -24,7 +26,8 @@ in the core specification of the programming language or, if that is not possibl
 adding compiler/JIT specializations to support them. 
 
 An additional advantage of lifting log semantics to the language specification 
-level is the ability to statically verify logging uses. Common errors include 
+level is the ability to statically verify logging uses and handle errors that 
+occour during log expression evaluation. Common errors include 
 format specifier violations~\cite{tyepcheckprintf} and accidental state 
 modification in the logging message computation. If the language semantics 
 specify logging API's then both of these error classes can be statically 
@@ -54,7 +57,7 @@ explicitly on a regular basis.
 \subsection{Logging Functionality}
 \label{subsec:functionalitydesign}
 \begin{design}
-Logging serves two related, but slightly conflicting roles, in modern systems 
+Logging serves two related, but somewhat conflicting roles, in modern systems 
 a logger should support both of them simultaniously without comprimising the 
 effectiveness of either one. The first role is to provide detailed information 
 on the sequence of events preceeding a bug to aid the developer in tiraging and 
@@ -62,7 +65,7 @@ reproducing the issue. The second role is to provide general telemetry
 information and visibility into the overall behavior of the application. 
 \end{design}
 
-To support these dual roles we propose a dual-level logging approach. In the 
+To support these distinct roles we propose a dual-level logging approach. In the 
 first level all messages are initially stored, as a format + immutable 
 arguments, into an in-memory buffer. This operation is high performance and 
 suitable for high frequency writes of detailed logging information needed for 
@@ -93,12 +96,21 @@ to the program which obscures the core algorithmic code. Thus, we propose
 adding primitive methods for supporting all of these scenarios without requiring 
 additional developer implemented logic.
 
-\noindent
-Challenges integrating log data from different sources and difficulty in post processing.
-\begin{enumerate}
-\item Difficulty in specifying uniform and appropriate logging levels across 
-    multiple packages -- and quite possibly multiple logging frameworks.
-\item Difficulty in ensuring all logging data is written to a consistent location 
-    across multiple packages -- and quite possibly multiple logging frameworks.
-\end{enumerate}
+\begin{design}
+Applications are often built leveraging numerous third-party compenents which 
+may include their own logging functionality and try to configure their own 
+output endpoints. This information may either be entirely uninteresting to the 
+hosting application or there may be some parts of this logging output which the 
+host applcaition wants to be aware of and include as part of its log.
+\end{design}
 
+Supporting this workflow requires that the langugage and/or runtime standardize 
+a number of features. The first is the set of logging levels and way to define 
+categories. Without these it is not even possible for the loggers to agree on 
+what is expected to be output. The next is a unified way to aggregate and output 
+messages to a common destination. Finally, since the toplevel application needs 
+to have the final authority over which levels/categories are enabled for which 
+modules and where the data goes, a logger must have the concept of a 
+\emph{root logger} which can modify these values and \emph{child loggers} which 
+are included in the root application but should behave in accordance with the 
+specifications provided by the root logger.
