@@ -8,7 +8,33 @@ runtime support. For these core changes we modify the ChakraCore JavaScript
 engine and core Node implementation directly.
 
 \subsection{Implementation Overview}
-Lets do a high level archnitechture and review of the systems we build here...
+The logging system is split into five major components that (1) manage the 
+global logger states, message formats, and activities (2) the in-memory logger 
+(3) the stage processor (4) the formatter (5) and finally the emitter. These 
+components and the relations between them are shown in~\autoref{fig:xxy} and 
+explained in detail in the rest of the section. We will also use a running 
+example in~\autoref{fig:runningExample} to illustrate various aspects of the 
+system.
+
+TODO: ARCHITECTURE DIAGRAM HERE...
+
+\begin{figure*}[t]
+\centering
+\begin{subfigure}{0.5\textwidth}
+    \lstinputlisting[language=JavaScript,basicstyle=\small]{runningExample.js}
+    \caption{App main.}
+    \label{fig:appmain}
+\end{subfigure}
+\begin{subfigure}{0.5\textwidth}
+    \lstinputlisting[language=JavaScript,basicstyle=\small]{runningExampleSub.js}
+    \caption{App Submodule.}
+    \label{fig:appsub}
+\end{subfigure}
+\caption{Running Example.}
+\label{fig:runningExample}
+\end{figure*}
+
+The first ...
 
 \subsection{Runtime Independent Implementation}
 
