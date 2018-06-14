@@ -11,12 +11,18 @@ engine and core Node implementation directly.
 The logging system is split into five major components that (1) manage the 
 global logger states, message formats, and activities (2) the in-memory logger 
 (3) the stage processor (4) the formatter (5) and finally the emitter. These 
-components and the relations between them are shown in~\autoref{fig:xxy} and 
+components and the relations between them are shown in~\autoref{fig:arch} and 
 explained in detail in the rest of the section. We will also use a running 
 example in~\autoref{fig:runningExample} to illustrate various aspects of the 
 system.
 
-TODO: ARCHITECTURE DIAGRAM HERE...
+\begin{figure}
+    \centering
+    \includegraphics[width=0.5\textwidth,angle=-90]{Figures/ArchDiagram}
+    \caption{Logger Architecture.}
+    \label{fig:arch}
+\end{figure}
+
 
 \begin{figure*}[t]
 \begin{minipage}[b]{0.5\textwidth}
@@ -29,10 +35,41 @@ TODO: ARCHITECTURE DIAGRAM HERE...
     \caption{Submodule code.}
     \label{fig:appsub}
 \end{minipage}
+\caption{Running Example}
+\label{fig:runningExample}
 \end{figure*}
 
-The first ...
+\subsection{JavaScript Implementation}
+\paragraph{Log State Manager}
+\noindent
+The first component we look at in the implementation is the global log state 
+manager. This component is responsible for tracking all of the loggers that 
+have been created, which is the root logger, the enabled logging levels + 
+categories, and the message formats which have been defined. 
 
-\subsection{Runtime Independent Implementation}
+As seen in~\autoref{fig:arch} and the running example may be many loggers 
+created in different parts of the application. One logger is created on line 
+2 of the main application~\autoref{fig:appmain} while a second is created 
+in the module \texttt{foo.js} in~\autoref{fig:appsub} which is included from 
+the main \texttt{app.js} file. ....
 
-\subsection{Core Node Implementation}
+
+root/sub/child loggers
+
+message formats
+
+level/category checks and changes
+
+\subsection{Native C++ Implementation}
+
+Background N-API formatter
+
+Background uploads
+
+\subsection{Custom Runtime Implementation}
+
+Format checking
+
+Mutability checking
+
+Code regen on level changes

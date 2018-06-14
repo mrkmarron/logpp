@@ -1,4 +1,6 @@
-\documentclass[preprint]{sig-alternate-05-2015}
+\documentclass[sigplan,10pt,review]{acmart}
+
+\settopmatter{printfolios=true}
 
 \usepackage{times}
 \usepackage{amsmath}
@@ -51,12 +53,6 @@ captionpos=b,
 xleftmargin=0.5cm
 }
 
-\usepackage[sort&compress]{natbib}
-
-% hyperref redefines a number of macros, so it should be last.  Empirically,
-% doing so eliminates compiler warnings.
-\usepackage[bookmarks, colorlinks]{hyperref}
-
 \newcommand{\projn}{\textsc{Log++}\xspace}
 \newcommand{\ourtitle}{Langauge, Runtime, and Compiler Aware Logging} 
 
@@ -77,52 +73,41 @@ xleftmargin=0.5cm
 
 \newcommand{\console}[1]{\texttt{\small #1}}
 
-%% Document-specific hyperref options
-\hypersetup{
-pdftitle={\ourtitle},
-    plainpages=false,
-    linkcolor=blue, % Overriding these colors to black is somewhat unfortunate 
-    %citecolor=black, % b/c the defaults are useful in color.
-    citecolor=blue, % b/c the defaults are useful in color.
-    filecolor=black,
-    urlcolor=black,
-    pdfpagelabels
-}
 \def\sectionautorefname{Section}
 \def\subsectionautorefname{Section}
 
 \begin{document}
 
-\toappear{Draft Document -- \url{https://github.com/mrkmarron/logpp}}
+%\toappear{Draft Document -- \url{https://github.com/mrkmarron/logpp}}
 
-% Copyright
+%% Conference information
+%% Supplied to authors by publisher for camera-ready submission;
+%% use defaults for review submission.
+\acmConference[DRAFT'18]{Draft Submission}{\url{https://github.com/mrkmarron/logpp}}{}
+\acmYear{2018}
+\acmISBN{} % \acmISBN{978-x-xxxx-xxxx-x/YY/MM}
+\acmDOI{} % \acmDOI{10.1145/nnnnnnn.nnnnnnn}
+\startPage{1}
+
+\setcopyright{none}
 %\setcopyright{acmcopyright}
 %\setcopyright{acmlicensed}
 %\setcopyright{rightsretained}
-%\setcopyright{usgov}
-%\setcopyright{usgovmixed}
-%\setcopyright{cagov}
-%\setcopyright{cagovmixed}
+%\copyrightyear{2018}           %% If different from \acmYear
 
-% DOI
-\doi{yyy}
-
-% ISBN
-\isbn{xxx}
-
-%Conference
-\conferenceinfo{TBD}{'17 TBD}
-\acmPrice{\$15.00}
+%% Bibliography style
+\bibliographystyle{ACM-Reference-Format}
 
 \title{\ourtitle}
 
-\numberofauthors{1}
-\author{
-% 1st. author
-Mark Marron\\
-       \affaddr{Microsoft Research, USA}\\
-       \email{marron@microsoft.com}
+\author{Mark Marron}
+\affiliation{
+  \department{Microsoft Research}              %% \department is recommended
+  \institution{Microsoft}            %% \institution is required
+  \streetaddress{Street1 Address1}
+  \country{USA}                    %% \country is recommended
 }
+\email{marron@microsoft.com}          %% \email is recommended
 
 \maketitle
 
@@ -147,16 +132,6 @@ programming language and a second, which has slightly reduced features and
 performance, but is available as a library for Node.js hosted JavaScript
 applications.
 \end{abstract}
-
-\category{CR-number}{subcategory}{third-level}
-
-% general terms are not compulsory anymore,
-% you may leave them out
-\terms
-term1, term2
-
-\keywords
-keyword1, keyword2
 
 \section{Introduction} 
 \label{sec:intro}
@@ -295,7 +270,6 @@ performance evaluations.
 {
 \raggedright 
 
-\bibliographystyle{abbrv}
 \bibliography{bibfile} 
 }
 
