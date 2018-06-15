@@ -1,6 +1,7 @@
 % !TeX root = Logpp.tex
 Given the design principals outlined in \autoref{sec:implementation} we now 
-present the implementation of \projn, which realizes these goals in a logger 
+present the implementation of \projn\footnote{\projn sources available at 
+\url{https://github.com/mrkmarron/logpp}} which realizes these goals in a logger 
 for the \texttt{Node.js}~\cite{Node} runtime. It is possible to implement many 
 of the features needed to satisfy our design goals as a library or using the 
 native API extension bindings (N-API~\cite{NAPI}) but others require core 
@@ -25,13 +26,13 @@ system.
 
 
 \begin{figure*}[t]
-\begin{minipage}[b]{0.5\textwidth}
-    \lstinputlisting[language=JavaScript,basicstyle=\small]{runningExample.js} 
+\begin{minipage}[b]{0.47\textwidth}
+    \lstinputlisting[language=JavaScript,basicstyle=\scriptsize]{runningExample.js} 
     \caption{Main app code.}
     \label{fig:appmain}
 \end{minipage}
-\begin{minipage}[b]{0.5\textwidth}
-    \lstinputlisting[language=JavaScript,basicstyle=\small]{runningExampleSub.js}
+\begin{minipage}[b]{0.47\textwidth}
+    \lstinputlisting[language=JavaScript,basicstyle=\scriptsize]{runningExampleSub.js}
     \caption{Submodule code.}
     \label{fig:appsub}
 \end{minipage}
@@ -51,14 +52,53 @@ As seen in~\autoref{fig:arch} and the running example may be many loggers
 created in different parts of the application. One logger is created on line 
 2 of the main application~\autoref{fig:appmain} while a second is created 
 in the module \texttt{foo.js} in~\autoref{fig:appsub} which is included from 
-the main \texttt{app.js} file. ....
+the main \texttt{app.js} file. As stated in \emph{design principle 5} we 
+do not want the included sub-module \texttt{foo.js} to be able to, unexpectedly, 
+change the logging level for the main app (the call to \texttt{setOutputLevel} on 
+line 9). We also want to allows the root logger to enable/disable log outputs 
+from these subloggers.
 
+To support these features the \projn logger keeps a list of all created loggers 
+and a special \emph{root logger} which is the first logger created in the main 
+module of the application. When updating logging levels or creating a new logger 
+we check if action is comming from the root logger and, if not, either convert 
+the call to a \texttt{nop} or look at the root logger configuration to see if 
+we need to override any parameters.
 
-root/sub/child loggers
+In our running example the state manager will intercept the creation of the logger 
+on line 2 in \texttt{foo.js}. Since the logger created here is not the root logger
+the state manager will intercept this construction, set the in-memory log level to 
+the overridden \texttt{WARN} level instead of the default value of \texttt{DETAIL}, 
+prevent the modification of the \emph{emit-level} or the output sink, and will 
+store the newly created logger in a list of sub-loggers. 
 
-message formats
+Tracking the list of all created sub-loggers also allows a developer to share a 
+single logger between several files in the same module. The name parameter in the 
+logger constructor is keyed with the logger and, if the same key is used in multiple 
+places, the same logger object will be returned.
 
-level/category checks and changes
+Finally, the state manager is responsible for maintaining information on the current 
+\emph{emit level}, the enabled/disabled categories, and the sublogger override information. 
+Each logger has an independent level at which it can write into the in-memory log but 
+the state manager maintains a global set of enabled/disabled categories which each logger 
+uses and a global logging level for eventual emit processing. Only the root logger is 
+allowed to update the categories and emit levels. 
+
+In our running example the main application has a log statement on lines $12$ and $14$ 
+that are in the \texttt{Perf} category and will put a message with the current walltime 
+in the log. As the first log statement happens before the \texttt{Perf} category has 
+been enabled it will not be processed. However, after enabling the \texttt{Perf} category 
+on line $13$ the log operation on line $14$ will be processed and result in a message 
+being saved to the in-mmeory log.
+
+\paragraph{Message Formats}
+\noindent
+
+structured formatting
+
+format macros
+
+JSON, printf, and ad-hoc
 
 \subsection{Native C++ Implementation}
 
