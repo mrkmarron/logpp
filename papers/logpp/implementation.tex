@@ -89,16 +89,86 @@ that are in the \texttt{Perf} category and will put a message with the current w
 in the log. As the first log statement happens before the \texttt{Perf} category has 
 been enabled it will not be processed. However, after enabling the \texttt{Perf} category 
 on line $13$ the log operation on line $14$ will be processed and result in a message 
-being saved to the in-mmeory log.
+being saved to the in-memory log.
 
 \paragraph{Message Formats}
 \noindent
+To improve performance and enable the log output to be easily machine parsed we 
+adopt a \emph{semantic logging} approach where the log call copies the format 
+information and message arguments to a secondary location instead of formatting them 
+immediately. Since the copy operation is very low cost this minimizes the 
+performance impact on the main thread and allows the formatter to build up a 
+parser for all the messages it emits which can be later used to parse the log. 
+Modern software development also favors the use of consistent styles and data 
+values in the log. Thus, \projn encourages developers to split the logging 
+action into two components:
+\begin{itemize}
+\item Format definition using the \texttt{addFormat} method which takes a format 
+string or JSON format object, processes it into an optimized representation, 
+and then saves it for later use.
+\item Format use in a log statment which takes a format identifier and a list of 
+arguments, and then, processes them.
+\end{itemize}
 
-structured formatting
+In addition to programtically processing single log formats, as shown on line 3 
+in~\autoref{fig:appmain}, we also allow the programmer to load formats in bulk 
+from a JSON formatted file. This allows a team to have a unified set of logging 
+messages that can be loaded/processed quickly on startup and then used repeatedly 
+throughout the applications execution. 
 
-format macros
+The format for a logger message is:
+\begin{lstlisting}[language=JavaScript,basicstyle=\small]
+    {
+        formatName: string, //name of the format
+        formatString: string, //raw format string
+        formatterEntries: {
+            kind: number, //tag indicating the entry kind
+            argPosition?: number, //optional position of argument in list
+            expandDepth?: number, //optional depth to expand JSON structures
+            expandLength?: number //optional length to expand JSON structures
+        }[]
+    }
+\end{lstlisting}
 
-JSON, printf, and ad-hoc
+This representation allows us to quickly scan an process the arguments as 
+described in the \emph{Message In-Memory Processing} section. The kind 
+information is used for both identifying what type of value is expected 
+when formatting an argument, e.g. \texttt{number}, \texttt{string}, etc., 
+but we also use it to support \emph{format macros}.
+
+To support the easy/efficient logging on a number of common values that 
+are not easily (or cheaply) computable we provide \emph{format macros}. 
+Classic examples include adding the current walltime or the hostname as 
+part of a log message. In JavaScript these require explicitly calling 
+expensive compund API sequences \texttt{new Date().toISOString()} or 
+\texttt{require('os').hostname()}. Instead we allow a developer to use 
+special macros \texttt{\#walltime} or \texttt{\#host} in their format 
+strings and then the logger has optimized internal paths to get the needed 
+values. In these cases the \texttt{kind} field is set to the enumeration 
+for the macro and the \texttt{argPosition} is undefined.
+
+A common logging practice is to include raw objects, formatted as JSON, into the 
+message. This is a convinient way to include rich data into a message but can 
+lead to unexpectedly large logging loads when, what the developer expected to 
+be a small object, turns out to be quite large. To prevent this we have a specialized 
+JSON-style processor that will bound the depth/length of object expansion during 
+formatting. The \texttt{expandDepth} and \texttt{expandLength} arguments provide 
+control over this depth/length and can be adjusted in the format string when a 
+developer want to capture more (or less) information than what is provided by the 
+defaults.
+
+\paragraph{Message In-Memory Processing}
+\noindent
+
+The key invariant that needs to be preserved is that the values of each argument 
+must not be changed between the time when the log call happens and when the 
+argument is processed for formatting. Certain values including booleans, numbers, 
+and strings, are immutable according to the language semantics so we can just 
+copy the references directly into our in-memory array. However, our 
+
+
+\paragraph{Message Staging and Emit}
+\noindent
 
 \subsection{Native C++ Implementation}
 
