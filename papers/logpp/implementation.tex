@@ -20,23 +20,22 @@ system.
 \begin{figure}
     \centering
     \includegraphics[width=0.5\textwidth,angle=-90]{Figures/ArchDiagram}
-    \caption{Logger Architecture.}
+    \caption{Logger architecture}
     \label{fig:arch}
 \end{figure}
 
-
 \begin{figure*}[t]
 \begin{minipage}[b]{0.47\textwidth}
-    \lstinputlisting[language=JavaScript,basicstyle=\scriptsize]{runningExample.js} 
-    \caption{Main app code.}
+    \lstinputlisting[language=JavaScript,basicstyle=\scriptsize]{Code/runningExample.js} 
+    \caption{Main app code}
     \label{fig:appmain}
 \end{minipage}
 \begin{minipage}[b]{0.47\textwidth}
-    \lstinputlisting[language=JavaScript,basicstyle=\scriptsize]{runningExampleSub.js}
-    \caption{Submodule code.}
+    \lstinputlisting[language=JavaScript,basicstyle=\scriptsize]{Code/runningExampleSub.js}
+    \caption{Submodule code}
     \label{fig:appsub}
 \end{minipage}
-\caption{Running Example}
+\caption{Running example}
 \label{fig:runningExample}
 \end{figure*}
 
@@ -114,20 +113,22 @@ In addition to programtically processing single log formats, as shown on line 3
 in~\autoref{fig:appmain}, we also allow the programmer to load formats in bulk 
 from a JSON formatted file. This allows a team to have a unified set of logging 
 messages that can be loaded/processed quickly on startup and then used repeatedly 
-throughout the applications execution. 
+throughout the applications execution. Once loaded all format objects are saved 
+in the \emph{formats} component in~\autoref{fig:arch} where they can be loaded 
+as needed for processing a log statement.
 
 The format for a logger message is:
-\begin{lstlisting}[language=JavaScript,basicstyle=\small]
-    {
-        formatName: string, //name of the format
-        formatString: string, //raw format string
-        formatterEntries: {
-            kind: number, //tag indicating the entry kind
-            argPosition?: number, //optional position of argument in list
-            expandDepth?: number, //optional depth to expand JSON structures
-            expandLength?: number //optional length to expand JSON structures
-        }[]
-    }
+\begin{lstlisting}[language=JavaScript,basicstyle=\scriptsize]
+{
+  formatName: string, //name of the format
+  formatString: string, //raw format string
+  formatterEntries: {
+    kind: number, //tag indicating the entry kind
+    argPosition?: number, //position in argument list
+    expandDepth?: number, //JSON expand depth
+    expandLength?: number //JSON expand length
+  }[]
+}
 \end{lstlisting}
 
 This representation allows us to quickly scan an process the arguments as 
@@ -142,7 +143,8 @@ Classic examples include adding the current walltime or the hostname as
 part of a log message. In JavaScript these require explicitly calling 
 expensive compund API sequences \texttt{new Date().toISOString()} or 
 \texttt{require('os').hostname()}. Instead we allow a developer to use 
-special macros \texttt{\#walltime} or \texttt{\#host} in their format 
+special macros \texttt{\#walltime}, as seen on line 11 in~\autoref{fig:appmain}, 
+or \texttt{\#host} in their format 
 strings and then the logger has optimized internal paths to get the needed 
 values. In these cases the \texttt{kind} field is set to the enumeration 
 for the macro and the \texttt{argPosition} is undefined.
@@ -159,15 +161,102 @@ defaults.
 
 \paragraph{Message In-Memory Processing}
 \noindent
+The in-memory buffer is implemented as a linked-list of block structures:
+\begin{lstlisting}[language=JavaScript,basicstyle=\scriptsize]
+{
+  tags: Uint8Array,
+  data: Float64Array,
+  strings: string[],
+  properties: map<number, string>
+}
+\end{lstlisting}
 
-The key invariant that needs to be preserved is that the values of each argument 
-must not be changed between the time when the log call happens and when the 
-argument is processed for formatting. Certain values including booleans, numbers, 
-and strings, are immutable according to the language semantics so we can just 
-copy the references directly into our in-memory array. However, our 
+To allow efficient marshalling of the data from our JavaScript logger frontend 
+to the C++ N-API code that handles the formatting we encode all values into 
+$64$bit based representation (stored in the \texttt{data} property). We use a set 
+of enumeration \texttt{tags} (stored in the \texttt{tags} property) to track 
+what kind of value the corresponding $64$bit value represents. We have special 
+handling for string and object properyt values, described below, that use the 
+\texttt{strings} array and \texttt{properties} map to index and keep alive these values.
 
+When implementing a sematic logging system the key invariant that needs to be 
+preserved is that the values of each argument must not be changed between the 
+time when the log call happens and when the argument is processed for 
+formatting. Certain values including booleans, numbers, and strings, are 
+immutable according to the language semantics so we can just copy the 
+references directly into our in-memory array. However, in cases where the 
+argument is a mutable object we must take explicit actions. A simple solution 
+would be to JSON \texttt{stringify} the argument immedaitely, and while this 
+prevents mutation and allows semantic formatting, it comprimises possible 
+performance gains we are looking for. Instead we recursively flatten the object 
+into the in-memory buffer with the code shown here:
+\lstinputlisting[language=JavaScript,basicstyle=\scriptsize]{Code/flatten.js}
+
+This code represents the transition from the \emph{formats} and \emph{arguments} 
+inputs into the \emph{in-memory buffer} shown in~\autoref{fig:arch}. This code 
+starts off by checking if we are either in a cycle or the depth bound has been 
+reached. If either of these occour we put a special tag, \texttt{CycleTag} or 
+\texttt{DepthBoundTag} respectively, into the tags array and return. If not we 
+continue with the pre-order traveral of the object graph by updating the cycle 
+info, adding the special \texttt{LParenTag} to the buffer, and enumerating the 
+object properties. For each property we check if the length bound is met, adding 
+the special \texttt{LengthBoundTag} and breaking if needed, if not we add the 
+property and value information to the in-memory buffer. The property value \texttt{p} 
+is a special string value which is very likely to be repeated so we use a map 
+from properties to unique numeric identifiers to compress and convert them into 
+a number which can be stored in the \texttt{data} component of the in-memory buffer 
+via the \texttt{addPropertyEntry} function. The value associated is recursively 
+processed via the \texttt{addGeneralEntry} call which switches on the type of the 
+value, booleans and numbers are converted directly to \texttt{Float64} representations, 
+strings are mapped by index in the \texttt{strings} array, and \texttt{Date} objects 
+are converted to $64$bit timestamps using the \texttt{valueOf} method. Similar to 
+standard JSON formatting other values are simplified but, instead of just dropping 
+them, we use a special \texttt{OpaqueValueTag}. After all the properties have 
+been processed we update the cycle tracking information and add a closing 
+\texttt{RParenTag}.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.5\textwidth]{Figures/InMemoryExample}
+    \caption{In-Memory buffer processing example}
+    \label{fig:inmemory}
+\end{figure}
+
+To illustrate how this code works in practice consider the case of processing the 
+object argument:
+
+\begin{lstlisting}[language=JavaScript,basicstyle=\scriptsize,numbers=none]
+{
+  f: 3,
+  g: 'ok',
+  o: { g: false, id: (x) => x }
+}
+\end{lstlisting}
+
+The resulting state of the in-memory buffer is shown in~\autoref{fig:inmemory}. 
+In this example we can see how the object structure has been flattened into 
+the buffer with the \lstinline!'{'! and \lstinline!'}'! tags denoting the bounds 
+of each object. Each of the properties has been registered in the map (with a fresh 
+numeric identifier) and this is stored in the \texttt{data} array. For example the 
+property \lstinline!g! is mapped to $1$ and in both occournces in the object 
+structure the entry in the \texttt{tags} array is set to \lstinline!'p'! for 
+property and the value in the \texttt{data} array is set to match the corresponding 
+numeric identifier $1$. The numeric and boolean values are mapped in the obvious 
+way, directly for the number and to $0$/$1$ for the boolean with the appropriate 
+tag values set. Similar to the properties the string value \lstinline!'ok'! is 
+mapped to an integer index, index $0$, in the \texttt{strings} array. Finally, 
+since functions are not serializable, the value associated with the \lstinline!id! 
+property is dropped and we simply store the \texttt{OpaqueValueTag} (\lstinline!'?'!) 
+in the corresponding position of the \texttt{tags} array.
 
 \paragraph{Message Staging and Emit}
+\noindent
+
+make sure to discuss callbacks + on demand synchrous emit
+
+also detailed emit on "unusual" events
+
+\paragraph{Logging APIs}
 \noindent
 
 \subsection{Native C++ Implementation}
@@ -183,3 +272,6 @@ Format checking
 Mutability checking
 
 Code regen on level changes
+
+Fast string + property handling
+
