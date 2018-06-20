@@ -149,6 +149,8 @@ strings and then the logger has optimized internal paths to get the needed
 values. In these cases the \texttt{kind} field is set to the enumeration 
 for the macro and the \texttt{argPosition} is undefined.
 
+\todo{LIST MACROS HERE}
+
 A common logging practice is to include raw objects, formatted as JSON, into the 
 message. This is a convinient way to include rich data into a message but can 
 lead to unexpectedly large logging loads when, what the developer expected to 
@@ -159,7 +161,7 @@ control over this depth/length and can be adjusted in the format string when a
 developer want to capture more (or less) information than what is provided by the 
 defaults.
 
-\paragraph{Message In-Memory Processing}
+\paragraph{In-Memory Message Processing}
 \noindent
 The in-memory buffer is implemented as a linked-list of block structures:
 \begin{lstlisting}[language=JavaScript,basicstyle=\scriptsize]
@@ -190,6 +192,7 @@ would be to JSON \texttt{stringify} the argument immedaitely, and while this
 prevents mutation and allows semantic formatting, it comprimises possible 
 performance gains we are looking for. Instead we recursively flatten the object 
 into the in-memory buffer with the code shown here:
+
 \lstinputlisting[language=JavaScript,basicstyle=\scriptsize]{Code/flatten.js}
 
 This code represents the transition from the \emph{formats} and \emph{arguments} 
@@ -249,29 +252,81 @@ since functions are not serializable, the value associated with the \lstinline!i
 property is dropped and we simply store the \texttt{OpaqueValueTag} (\lstinline!'?'!) 
 in the corresponding position of the \texttt{tags} array.
 
-\paragraph{Message Staging and Emit}
+\paragraph{Message Staging}
 \noindent
+The in-memory design allows us to support \emph{Design Principle 3} by buffering a 
+window of high detail messages, in case they are needed for diagnostics, and then 
+asynchronously filtering and flushing out high level telemetry messages to stable 
+storage. Whenever a message is written into the in-memory buffer we do a simple 
+\texttt{writeCount} check, to limit the flush rate, on the number of messages written 
+since the last flush if more than this threshold have been written we schedule an 
+asynchronous flush process on the event-loop. The flush code filters the messages 
+based the current \emph{emit} level and processes all messages that exceed the 
+specified \texttt{age} and \texttt{memory} thresholds. The implementation of the 
+filter/process step from~autoref{fig:arch} is:
 
-make sure to discuss callbacks + on demand synchrous emit
+\lstinputlisting[language=JavaScript,basicstyle=\scriptsize]{Code/process.js}
 
-also detailed emit on "unusual" events
+This code works by looping over the messages in the in-memory buffer passed in, 
+\lstinline!buff!, and will either process all the messages in the buffer or 
+stop when the \lstinline!ageCheck! or \lstinline!sizeCheck! conditions no longer 
+hold. These conditions check if a message is older than the specified 
+\lstinline!age! measured from the current time and that overall memory 
+consumption is less than \lstinline!size! respectively. The intent behind the 
+age limit is to prevent the overly eager discarding of log messages that might 
+be relevant for debugging. While the intent behind the size condition is to ensure 
+that an application which has a heavy burst of logging will not cause excessive 
+memory consumption even if the messages have not aged out yet.
 
-\paragraph{Logging APIs}
+If an issue, currently defined as an unhandled exception or an exit with non-zero code, 
+is encountered during execution the logger will immediately flush all the logger 
+messages to the serializer regardless of age or level. This ensures that there is maximal 
+detail for the developer when trying to diagnose the issue. \projn also supports 
+programtic force-flushing of the log, with the \texttt{forceFlush} method, for cases where there 
+is an issue that the developer wants to understand but does not result in a hard failure. 
+
+
+\paragraph{Emit Callback}
 \noindent
+Once the in-memory buffer has been processed the logger passes the filtered set of 
+log messages to the background \emph{asynchronous formatter} (described in~\autoref{sec:nativeimpl}) 
+which, when formatting is complete, will default to invoking a callback into the 
+JavaScript application. \todo{continue here}
 
-\subsection{Native C++ Implementation}
+\subsection{Native Formatting and Optional Native Emit}
+\label{sec:nativeimpl}
+Once the in-memory buffer has been processed the logger passes the filtered set of 
+log messages to the background \emph{asynchronous formatter} in~\autoref{fig:arch} which 
+is implemented in Native code using the N-API~\cite{NAPI} module. The direct 
+implementation of this module does not have any low-level hooks into the GC of 
+the host JavaScript engine so we must fully copy any data needed before starting 
+the background processing (a limitation we discuss relaxing in~\autoref{sec:runtimesupport}). 
+However, once the data copy is done the formatting thread can run completely in parallel 
+to the main JavaScript thread and can use an optimized C++ formatting implementation. This 
+not only allows us to reduce the overall formatting cost but also to move this cost 
+entrirely off the hot-path of JavaScript exection.
 
-Background N-API formatter
+In addition to background formatting \projn also supports background emitting, 
+shown as the \emph{background emit} block in~\autoref{fig:arch}, of 
+logging data to files, stdout, or a remote url provided at configuration time. This 
+allows us to skip re-marshalling the formatted data into a JavaScript string as well 
+as reduces the number of JavaScript callbacks and associated time spent on the 
+main thread there.
 
-Background uploads
+\subsection{Logging APIs}
+
+conditional logging, begin/end interval, child logging, shared loggers
 
 \subsection{Custom Runtime Implementation}
-
+\label{sec:runtimesupport}
 Format checking
 
 Mutability checking
 
 Code regen on level changes
 
+Logging aware dead-code eliminaiton
+
 Fast string + property handling
 
+IO load aware emitting

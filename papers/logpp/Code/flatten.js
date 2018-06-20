@@ -29,4 +29,4 @@ function addExpandedObject(obj, depth, length) {
   //Set processing as false for cycle detection
   this.jsonCycleSet.delete(obj);
   this.addTagEntry(RParenTag);
-};
+}

@@ -229,13 +229,13 @@ The contributions of this paper include:
 \item The view that logging is a fundamental aspect of programming and should be
 included as a first class part of language, compiler, and runtime design.
 
-\item A novel logging technique that uses immutability semantics in the
-programming language to enable ultra-low cost logging which is
-YY$\times$-ZZ$\times$ faster than existing approaches.
-
 \item A novel dual-level approach to log generation and writing that allows a
 programmer to log execution data eagerly but only pay the cost of writting it to
 the log if it turns out to be interesting/relevant.
+
+\item Using this dual-level approach we show how to seperate and support the 
+desire to use logging for both debugging when an error condition is encoutered 
+and for telemety purposes to monintor general application behavior. 
 
 \item A suite of innovative log format and log level management techniques that 
 provide a consistent and unified log output that is easy to manage and feed into 
