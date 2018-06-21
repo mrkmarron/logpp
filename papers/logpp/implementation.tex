@@ -55,14 +55,15 @@ the main \texttt{app.js} file. As stated in \emph{design principle 5} we
 do not want the included sub-module \texttt{foo.js} to be able to, unexpectedly, 
 change the logging level for the main app (the call to \texttt{setOutputLevel} on 
 line 9). We also want to allows the root logger to enable/disable log outputs 
-from these subloggers.
+from these subloggers. 
 
 To support these features the \projn logger keeps a list of all created loggers 
 and a special \emph{root logger} which is the first logger created in the main 
 module of the application. When updating logging levels or creating a new logger 
 we check if action is comming from the root logger and, if not, either convert 
 the call to a \texttt{nop} or look at the root logger configuration to see if 
-we need to override any parameters.
+we need to override any parameters. These features cover the needs of controlling 
+logging from multiple modules as desribed in \emph{Design Principle 5}.
 
 In our running example the state manager will intercept the creation of the logger 
 on line 2 in \texttt{foo.js}. Since the logger created here is not the root logger
@@ -95,7 +96,8 @@ being saved to the in-memory log.
 To improve performance and enable the log output to be easily machine parsed we 
 adopt a \emph{semantic logging} approach where the log call copies the format 
 information and message arguments to a secondary location instead of formatting them 
-immediately. Since the copy operation is very low cost this minimizes the 
+immediately. This implementation choice supports the needs of \emph{Design Principle 2}.
+Since the copy operation is very low cost this minimizes the 
 performance impact on the main thread and allows the formatter to build up a 
 parser for all the messages it emits which can be later used to parse the log. 
 Modern software development also favors the use of consistent styles and data 
@@ -291,7 +293,11 @@ is an issue that the developer wants to understand but does not result in a hard
 Once the in-memory buffer has been processed the logger passes the filtered set of 
 log messages to the background \emph{asynchronous formatter} (described in~\autoref{sec:nativeimpl}) 
 which, when formatting is complete, will default to invoking a callback into the 
-JavaScript application. \todo{continue here}
+JavaScript application. For common cases we provide the simple default callback that 
+writes to stdout or, if a \texttt{stream} is provided, to write the logs out through 
+it. In the most general case a user can configure the logger with a custom callback, 
+called with the formatted log data, which can perform any desired post processing and 
+send the data to arbitrary (or multiple) sinks.
 
 \subsection{Native Formatting and Optional Native Emit}
 \label{sec:nativeimpl}
@@ -311,11 +317,43 @@ shown as the \emph{background emit} block in~\autoref{fig:arch}, of
 logging data to files, stdout, or a remote url provided at configuration time. This 
 allows us to skip re-marshalling the formatted data into a JavaScript string as well 
 as reduces the number of JavaScript callbacks and associated time spent on the 
-main thread there.
+main thread there. 
+
+By default the native formatter produces JSON compliant output. However, this 
+can be verbose to send and store so we offer serialization format and compression 
+options for optimization. In addition to JSON a user can configure the logger 
+to format to a simple binary encoding format which is not human readable but 
+substantially more compact (\todo{HOW MUCH}) and computationally efficient to 
+encode into. With either format the logger can also be configured to compress the 
+formatted data as well using the \texttt{zlib} library already included in 
+Node.js core.
 
 \subsection{Logging APIs}
+As described in \emph{Design Principle 4} there are frequent cases where a 
+simple call to a log statement is insufficient and a developer would normally 
+need to add explicit logging-specific logic. To avoid this clutter, and potential 
+source of errors, we provide a richer set of logging primitives:
+\begin{itemize}
+  \item \emph{conditional logging} which allows a user to specify a condition 
+  that guards the execution of the log statement. This eliminates the need to 
+  introduce logging specific control flow into the code.
+  \item \emph{child loggers} which create a logger object that prefixes all log 
+  operations called on it with a specified value (used frequently for logging in a 
+  subcomponent).
+  \item \emph{request specific logging} which allows a developer to set a different 
+  logging level and enabled categories for a specific \texttt{RequestID}. This is a 
+  common need for cloud-based applications, particularly when participating in a 
+  smapling distributed logging system~\cite{distlogger}.
+  \item \emph{interval bounding} which writes a log message at the start of an interval 
+  and accepts a payload which can be accessed when writing the end event for the interval. 
+  This allows the transparent, instead of explicit, propagation of the needed data between 
+  the related log actions.
+\end{itemize}
 
-conditional logging, begin/end interval, child logging, shared loggers
+An example of the utility of these loggers, conditional logging, is in our introductory 
+example from~\autoref{fig:introExample} where the condition on line 14 was introduced 
+soley in support of the logging output. Using our conditional logging APIs this condition 
+and log combo can be replaced by a single line \lstinline{logger.warnIf(!ok, "Error...")}.
 
 \subsection{Custom Runtime Implementation}
 \label{sec:runtimesupport}
@@ -329,4 +367,4 @@ Logging aware dead-code eliminaiton
 
 Fast string + property handling
 
-IO load aware emitting
+I/O load aware emitting
