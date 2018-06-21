@@ -287,7 +287,6 @@ detail for the developer when trying to diagnose the issue. \projn also supports
 programtic force-flushing of the log, with the \texttt{forceFlush} method, for cases where there 
 is an issue that the developer wants to understand but does not result in a hard failure. 
 
-
 \paragraph{Emit Callback}
 \noindent
 Once the in-memory buffer has been processed the logger passes the filtered set of 
@@ -357,14 +356,47 @@ and log combo can be replaced by a single line \lstinline{logger.warnIf(!ok, "Er
 
 \subsection{Custom Runtime Implementation}
 \label{sec:runtimesupport}
-Format checking
+The previous sections described the \projn logger as it can be implemented as a purely 
+userspace module in Node.js and as it is publically available. However, there are 
+issues, optimizations, and improvements that require close interaction with the 
+runtime and/or compiler. This section describes these and how we have explored their 
+implementation in Node-ChakraCore, the version of Node.js running the ChakraCore 
+JavaScript engine from Microsoft. 
 
-Mutability checking
+\paragraph{Format and Mutability Checking}
+\noindent
+Two programming errors that are specific to logging are mismatched arguments used 
+for the provided format specifiers and accidental side-effects in logging related 
+code. \projn takes the view that logger calls should, if all possible, not cause 
+an application failure and instead note invalid arguments in the output formatting. 
+Previous work~\cite{tyepcheckprintf} has shown how to include static type 
+checking for log arguments as well. A similar approach can be taken to combine 
+work on purity analysis~\cite{purity1,purity2} to ensure that any code executed 
+in a log statement does not modify externally visibile state. These features require 
+at least support in a linter, such as \emph{eslint}~\cite{eslint}, or integration 
+with the language itself.
 
-Code regen on level changes
+\paragraph{Zero-Cost Disabled Logging}
+\noindent
+Developers have low trust that logging disabled by setting levels or categories 
+will not continue to impact performance. Thus projects often experience frequent 
+code churn as logging is added for a task and then removed afterword to avoid 
+performance issues. This wastes substantial developer time, creates opportunities 
+to introduce accidental regresssions, and prevents the development of a comprehensive 
+base of logging code in an application. 
 
-Logging aware dead-code eliminaiton
+To ensure that disabled log statements truely are zero-cost requires cooperation 
+with the language spec and the JIT. To avoid parasitic costs of evaluating log 
+arguments that will be immediately discarded, like line 8 in~\autoref{fig:introExample}, 
+we must lazily evaluate them after the level, category, and (optional) condition 
+checks have completed. We also want the JIT to be particularly aware of the guards 
+around log statements, aggressively optimizing the guard paths, and performing 
+dead-code-elimination or motion on computations that are only used for log arguments.
 
+\paragraph{Fast Handling for Strings and Properties}
+\noindent
 Fast string + property handling
 
+\paragraph{Priority Aware I/O Mangement}
+\noindent
 I/O load aware emitting
