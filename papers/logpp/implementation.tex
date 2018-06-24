@@ -149,9 +149,17 @@ special macros \texttt{\#walltime}, as seen on line 11 in~\autoref{fig:appmain},
 or \texttt{\#host} in their format 
 strings and then the logger has optimized internal paths to get the needed 
 values. In these cases the \texttt{kind} field is set to the enumeration 
-for the macro and the \texttt{argPosition} is undefined.
-
-\todo{LIST MACROS HERE}
+for the macro and the \texttt{argPosition} is undefined. The list of supported 
+macro formatters includes:
+\begin{itemize}
+  \item \#host -- name of the host
+  \item \#app -- name of the root application
+  \item \#logger -- name of the logger
+  \item \#source -- source location of log statment (file, line)
+  \item \#wallclock -- wallclock timestamp (ISO formatted)
+  \item \#timestamp -- logical timestamp
+  \item \#request   -- the current request id (for http requests)
+\end{itemize}
 
 A common logging practice is to include raw objects, formatted as JSON, into the 
 message. This is a convinient way to include rich data into a message but can 
@@ -395,8 +403,52 @@ dead-code-elimination or motion on computations that are only used for log argum
 
 \paragraph{Fast Handling for Strings and Properties}
 \noindent
-Fast string + property handling
+Strings and JavaScript object properties are frequently occouring values in 
+parts of a log message. If we are limited to a purely JavaScript and N-API 
+interface we are forced to treat the properties as strings and we must 
+definsively copy the strings wihen processing them in the \emph{message staging} 
+process otherwise the JavaScript engine GC may move them while the formatter is 
+accessing the underlying memory creating a data race and corruption. 
+
+Modern JavaScript engines use internal numeric \emph{Property Identifiers} 
+instead of strings when dealing with object properties. These are much more 
+compact and efficent to process for both the engine and, in our logger, would 
+allow us to copy a single integer into our in-memory buffer instead of creating 
+our own indexing scheme. Thus, we expose a new 
+JavaScript API, \texttt{loggerGetPropertyId(propertyString)}, which returns the 
+internal numeric identfier for a property string to use in the message staging. 
+
+To avoid costs associated with data marshalling and copying string data 
+in the formatter we need to introduce 3 APIs. The first is a pair of 
+methods, \texttt{loggerRefString} in JavaScript which will tell the JavaScript 
+engine that it needs to reference count, flatten, and intern a string (if needed) 
+with a unique numeric value (which is returned), and \texttt{loggerReleaseString} 
+which decrements the reference count and unpins the string if needed. These 
+allow us to avoid copies when marshalling the string in the \emph{message staging} 
+phase. As various JavaScript engines use different internal widths for characters 
+we we add a \emph{getNativeStringCharSize} method to determine if strings 
+are \texttt{utf8} or \texttt{utf16} encoded. In combination with \texttt{getRawBytes} 
+and \texttt{createStringWithBytes} methods this allows us to avoid any encoding 
+conversions when formatting and creating strings. 
 
 \paragraph{Priority Aware I/O Mangement}
 \noindent
-I/O load aware emitting
+The final optimization we look at that requires runtime support is to ensure 
+that logging related I/O and computation do not interfere with code high-priority 
+code responding to user actions. In our implementation the msessage staging 
+and uploading of formatted log data is done on the UV event loop. This loop does 
+not have any notion of priority so we may accidentally block code responding 
+to a user action with code that is processing log data. To avoid this we could 
+add a special \emph{log work queue} to the existing Node event loop processing 
+algorithm~\cite{nodeeventloop} but we believe that the notion of priority is 
+fundamentally valuable and should be added to Node explicitly~\cite{asyncnode}. 
+This \emph{priority promise} construction makes it trival to add logging related 
+callbacks at a background task level (perhaps with a small time-limit) to ensure 
+that logging activities are completed in a timely manner without impacting user 
+responsiveness.
+
+
+
+
+
+
