@@ -54,7 +54,7 @@ xleftmargin=0.5cm
 }
 
 \newcommand{\projn}{\textsc{Log++}\xspace}
-\newcommand{\ourtitle}{Langauge, Runtime, and Compiler Aware Logging} 
+\newcommand{\ourtitle}{\projn Logging for a Cloud-Native World} 
 
 \newcommand{\todo}[1]{{\color{red}#1}}
 
@@ -109,29 +109,24 @@ xleftmargin=0.5cm
 }
 \email{marron@microsoft.com}          %% \email is recommended
 
-\maketitle
-
 \begin{abstract} 
 Logging is a fundamental part of the software development and
-monitoring lifecycle but logging support is often provided as an afterthought 
-via limited library APIs or third-party modules. We argue that given the critical
-nature of logging in modern development, the unique needs of the APIs involved,
-and the opportunities for optimization using semantic knowledge, logging should
+deployment lifecycle but logging support is often provided as an afterthought 
+via limited library APIs or third-party modules. Given the critical
+nature of logging in modern cloud, mobile, and IoT development workflows, the unique needs of the APIs involved,
+and the opportunities for optimization using semantic knowledge, we argue logging should
 be included as a central part of the language and runtime designs. This paper
-presents \projn which includes support for
-logging functionality at all levels of a programming language including, syntax,
-runtime support, and hooks for DevOps integration.
+presents a rethinking of the logger for modern \emph{cloud-native} workflows. 
 
-Using this integrated approach we build a logging system that supports near
-zero-cost for disabled log statements, low cost lazy-copying for enabled log
-statements, selective persistence of logging output, unified control of logging
-output across different libraries, and DevOps integration for use with modern
-cloud-based deployments. To evaluate these concepts we provide two
-implementations -- one fully integrated into the design of the \emph{fluent}
-programming language and a second, which has slightly reduced features and
-performance, but is available as a library for Node.js hosted JavaScript
-applications.
+Based on a set of design principles for modern logging we build a logging system,
+that supports near zero-cost for disabled log statements, low cost lazy-copying 
+for enabled log statements, selective persistence of logging output, unified control 
+of logging output across different libraries, and DevOps integration for use with 
+modern cloud-based deployments. To evaluate these concepts we implemented the \projn 
+logger for Node.js hosted JavaScript applications.
 \end{abstract}
+
+\maketitle
 
 \section{Introduction} 
 \label{sec:intro}
