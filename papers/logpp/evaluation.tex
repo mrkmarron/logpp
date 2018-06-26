@@ -18,6 +18,51 @@ expando impact
 Lets do some macro benchmarks on a couple of non-micro workloads to see the 
 impact in practice...
 
+No logging
+----
+Stat         Avg     Stdev   Max
+Latency (ms) 0.14    0.55    38.43
+Req/Sec      12011.1 2212.64 13170
+Bytes/Sec    3.66 MB 678 kB  4.03 MB
+
+132k requests in 11s, 40.4 MB read
+
+console.log
+----
+Stat         Avg     Stdev   Max
+Latency (ms) 1.18    0.83    48.53
+Req/Sec      6038.3  1082.77 6668
+Bytes/Sec    1.84 MB 328 kB  2.04 MB
+
+60k requests in 10s, 18.5 MB read
+
+pino         
+----
+Stat         Avg     Stdev  Max
+Latency (ms) 0.89    0.7    39.69
+Req/Sec      8133.3  1457.5 8861
+Bytes/Sec    2.49 MB 441 kB 2.71 MB
+
+81k requests in 10s, 24.9 MB read
+
+Logpp detail 
+----
+Stat         Avg     Stdev   Max
+Latency (ms) 0.67    0.8     42.78
+Req/Sec      8645.1  1656.58 9784
+Bytes/Sec    2.64 MB 503 kB  2.99 MB
+
+86k requests in 10s, 26.4 MB read
+
+logpp info   
+----
+Stat         Avg     Stdev   Max
+Latency (ms) 0.58    0.77    43.77
+Req/Sec      8958.55 1654.89 10075
+Bytes/Sec    2.75 MB 508 kB  3.08 MB
+
+99k requests in 11s, 30.1 MB read
+
 \subsection{Information Availability}
 Lets compare our goals in Design Principle 3 with the implementation... 
 
