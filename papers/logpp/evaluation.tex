@@ -19,7 +19,7 @@ log.info("hello at %j with %j %n -- %s",
 \end{lstlisting}
 
 \noindent
-We also use a simple server based on the popular \emph{express}~\cite{} framework 
+We also use a server based on the popular \emph{express}~\cite{} framework 
 which provides a \emph{REST} API for querying data on the S\&P 500 companies.
 
 All of the benchmarks are run on an Intel Xeon E5-1650 CPU with 6 cores at 3.50GHz, 32GB of RAM, and a SSD. 
@@ -32,7 +32,8 @@ module, the \texttt{bunyan}~\cite{bunyanlogger} logger, and the \texttt{pino}~\c
 
 \begin{table}[t]  
     \centering
-    \begin{tabular}{l | r r r r r | r }
+    {\small
+    \begin{tabular}{l | r r r r }
     Program       & \bench{Basic}  & \bench{String}   & \bench{Compound}  & \bench{Compute} \\
     \hline
     Console       & $883$ms & $852$ms & $1064$ms & $986$ms \\
@@ -43,6 +44,7 @@ module, the \texttt{bunyan}~\cite{bunyanlogger} logger, and the \texttt{pino}~\c
     \hline
     Speedup & $2.1$-$9.9\times$ & $2.0$-$9.2\times$ & $1.8$-$6.9\times$ & $2.1$-$3.2\times$ \\
     \end{tabular}
+    }
     \vspace{2mm}
     \caption{Timings for each logging framework on $10$k iterations with given format. 
     Speedup is the min-max speedup relative to the other logging frameworks.}
@@ -60,15 +62,17 @@ this performance we look at the performance impacts of specific features in \pro
 
 \begin{table}[t]  
     \centering
-    \begin{tabular}{l | r r r r r | r }
+    {\small
+    \begin{tabular}{l | r r r r }
     Program       & \bench{Basic}  & \bench{String}   & \bench{Compound}  & \bench{Compute} \\
     \hline
-    Enabled       & $883$ms & $852$ms & $1064$ms & $986$ms \\
-    Disabled      & $883$ms & $852$ms & $1064$ms & $986$ms \\
-    Sync-Lazy     & $202$ms & $200$ms & $282$ms  & $469$ms \\
-    Sync-Strict   & $202$ms & $200$ms & $282$ms  & $469$ms \\
-    Multi-Level   & $477$ms & $531$ms & $603$ms  & $920$ms \\
+    Enabled       & $xxx$ms & $xxx$ms & $xxx$ms & $xxx$ms \\
+    Disabled      & $xxx$ms & $xxx$ms & $xxx$ms & $xxx$ms \\
+    Sync-Lazy     & $xxx$ms & $xxx$ms & $xxx$ms & $xxx$ms \\
+    Sync-Strict   & $xxx$ms & $xxx$ms & $xxx$ms & $xxx$ms \\
+    Multi-Level   & $xxx$ms & $xxx$ms & $xxx$ms & $xxx$ms \\
     \end{tabular}
+    }
     \vspace{2mm}
     \caption{ASDF}
     \label{tab:featureeval}
@@ -87,67 +91,101 @@ expando impact
 
 \begin{table}[t]  
     \centering
-    \begin{tabular}{l | r r r r r | r }
+    {\small
+    \begin{tabular}{l | r r r r }
     Program       & \bench{Host}  & \bench{App}   & \bench{Wallclock}  & \bench{Timestamp} \\
     \hline
-    Explicit      & $883$ms & $852$ms & $1064$ms & $986$ms \\
-    Expando       & $202$ms & $200$ms & $282$ms  & $469$ms \\
+    Explicit      & $xxx$ms & $xxx$ms & $xxx$ms & $xxx$ms \\
+    Expando       & $xxx$ms & $xxx$ms & $xxx$ms & $xxx$ms \\
     \end{tabular}
+    }
     \vspace{2mm}
     \caption{ASDF}
     \label{tab:expando}
 \end{table}
 
 \subsection{Logging Performance}
-Lets do some macro benchmarks on a couple of non-micro workloads to see the 
-impact in practice...
+The previous sections evaluated the performance of \projn with respect to other 
+loggers on the core logging tasks and explored the impacts of various design 
+choices using microbenchmarks. This section evaluates the impact of logging on 
+a lightweight \emph{REST} API service that supports querying data on S\&P 500 
+companies. 
 
-No logging
-----
-Stat         Avg     Stdev   Max
-Latency (ms) 0.14    0.55    38.43
-Req/Sec      12011.1 2212.64 13170
-Bytes/Sec    3.66 MB 678 kB  4.03 MB
+We use \emph{autocannon}~\cite{autocannon} in the default load generation 
+setting to create a heavy load on the service to stress the logger performance.
+For comparision we include the builtin \texttt{console} methods 
+and the \texttt{pino}~\cite{pinologger} logger in addition to \projn in the defualt 
+setting.
 
-132k requests in 11s, 40.4 MB read
+This application highlights the tension between using logging as a telemetry source 
+v.s. a diagnostic tool. We updated it to use two logging levels, \texttt{DETAIL} 
+and \texttt{INFO}. In the default runs we log at both levels and include a case, 
+\emph{levels}, where \projn logs in-memory for the higer detail level but only 
+emits at the lower level.
 
-console.log
-----
-Stat         Avg     Stdev   Max
-Latency (ms) 1.18    0.83    48.53
-Req/Sec      6038.3  1082.77 6668
-Bytes/Sec    1.84 MB 328 kB  2.04 MB
+\begin{table}[t]  
+    \centering
+    {\small
+    \begin{tabular}{l | r r r }
+    Logger       & Latency (avg) & Latency (stdev) & Requests/s (avg) \\
+    \hline
+%    No Logging     & $0.14$ms & $0.55$ms & $12,011$ \\
+    Console        & $1.18$ms & $0.83$ms & $6668$   \\
+    Pino           & $0.89$ms & $0.70$ms & $8133$   \\
+    Log++          & $0.67$ms & $0.80$ms & $8645$   \\
+    Log++ (levels) & $0.58$ms & $0.77$ms & $8958$   \\
+    \end{tabular}
+    }
+    \vspace{2mm}
+    \caption{Logging performance on \emph{REST} service for \texttt{console.log}, 
+    \texttt{pino} and \texttt{Log++}. Also modified to take advantage of the \texttt{Log++} 
+    multi-level logging functionality in the \emph{Log++ (levels)} row. Average and 
+    standard deviation values for response latencies are shown along with the average 
+    number of requests served per second.}
+    \label{tab:server}
+\end{table}
 
-60k requests in 10s, 18.5 MB read
+The results in~\autoref{tab:server} show that using a logging framework designed 
+for modern development needs and built with performance in mind can have a 
+substantial impact on an application. In terms of reponses processed per second 
+\projn increses the server throughput by $30\%$ from $6668$ to $8645$ requests 
+per second. Further, \projn decreses the response time by $43\%$ 
+from $1.18$ms to $0.67$ms. Despite using in-memory buffers and batched processing, 
+which could in theory increased latency variability, the standard deviation of 
+the responses actually decreases by $0.03$ms as well.
 
-pino         
-----
-Stat         Avg     Stdev  Max
-Latency (ms) 0.89    0.7    39.69
-Req/Sec      8133.3  1457.5 8861
-Bytes/Sec    2.49 MB 441 kB 2.71 MB
-
-81k requests in 10s, 24.9 MB read
-
-Logpp detail 
-----
-Stat         Avg     Stdev   Max
-Latency (ms) 0.67    0.8     42.78
-Req/Sec      8645.1  1656.58 9784
-Bytes/Sec    2.64 MB 503 kB  2.99 MB
-
-86k requests in 10s, 26.4 MB read
-
-logpp info   
-----
-Stat         Avg     Stdev   Max
-Latency (ms) 0.58    0.77    43.77
-Req/Sec      8958.55 1654.89 10075
-Bytes/Sec    2.75 MB 508 kB  3.08 MB
-
-99k requests in 11s, 30.1 MB read
+The results in~\autoref{tab:server} also show that, in addition to the improvements 
+seen by using \projn as a drop in replacement, it is possible to further improve the 
+logger behavior by refactoring the logging statements to take advantage of the 
+multi-level logging capabilities. In the \emph{Log++ (levels)} the application is 
+changed to write log statements that are relevant for debugging, but not for general 
+telemetry, to be at the \texttt{DETAIL} level. This results in their being stored in 
+the in-memory buffer, if needed for diagnostics, but not formatted and emitted. As 
+a result the throughput increases a further $4\%$ to $8958$ and the latencey goes 
+down an additional $13\%$ to $0.58$ms on average.
 
 \subsection{Logging Data Size}
+The final metric we evaluate is how \projn can be used to reduce the amount of 
+storage and network capcity that is consumed by logging data. ASDF
+
+\begin{table}[t]  
+    \centering
+    {\small
+    \begin{tabular}{l | r r }
+    Logger        & Raw & Compressed \\
+    \hline
+    Log++          & $25,404$kb & $1,378$kb \\
+    Log++ (levels) & $11,760$kb & $841$kb   \\
+    \end{tabular}
+    }
+    \vspace{2mm}
+    \caption{Log size on \emph{REST} service for \texttt{Log++}
+    and modified to take advantage of the \texttt{Log++} 
+    multi-level logging functionality in the \emph{Log++ (levels)} row. Raw 
+    logging output size (\emph{Raw} column) and log data size after deflate 
+    compression (\emph{Compressed} column).}
+    \label{tab:compress}
+\end{table}
 
 study of simplified output log and reduction in storage/transport sizes -- 
 e.g., save XXMB of traffic/storage per day kind of thing.
