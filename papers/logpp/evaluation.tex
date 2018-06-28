@@ -1,6 +1,6 @@
 % !TeX root = Logpp.tex
-Given the implementation of \projn from~\autoref{sec:implementation} we now shift 
-to evaluating how well the resulting system meets the design goals outlined in~\autoref{sec:design}.\\
+Given the implementation of \projn from \autoref{sec:implementation} we now shift 
+to evaluating how well the resulting system meets the design goals outlined in \autoref{sec:design}.\\
 
 \noindent
 For this evaluation we use four of microbenchmarks with $10$k iterations: 
@@ -51,7 +51,7 @@ module, the \texttt{bunyan}~\cite{bunyanlogger} logger, and the \texttt{pino}~\c
     \label{tab:microcompare}
 \end{table}
 
-The results in~\autoref{tab:microcompare} show the wide performance variation across logging 
+The results in \autoref{tab:microcompare} show the wide performance variation across logging 
 frameworks (spanning nearly a factor of $10\times$). Accross all benchmarks \projn is consistently 
 the fastest logger, by a factor of at least $1.8$-$2.1\times$, when compared to the best performing 
 of the existing logging frameworks.
@@ -93,7 +93,13 @@ level (ensirely disabled).
     \label{tab:featureeval}
 \end{table}
 
-\todo{Discuss results here...}
+The results in the \emph{Sync-Lazy} and \emph{Sync-Strict} rows from 
+\autoref{tab:featureeval} show the impacts of the background formatting and 
+the in-memory batching. Disabling the background formatter thread shows that the 
+speedup by offloading formatting to the background is substantial (around 
+$2\times$ on the benchmarks). However, the impact of disabling the batching and 
+lazy processing of the in-memory buffer is also signifigant. In our benchmarks we 
+see as much as another $3.6\times$ slowdown. 
 
 The use of \emph{expando} macros in the formats, \autoref{subsec:jsimpl}, can also play a 
 large role in improving the performance of logging. \autoref{tab:expando} examines the 
@@ -165,7 +171,7 @@ emits at the lower level.
     \label{tab:server}
 \end{table}
 
-The results in~\autoref{tab:server} show that using a logging framework designed 
+The results in \autoref{tab:server} show that using a logging framework designed 
 for modern development needs and built with performance in mind can have a 
 substantial impact on an application. In terms of reponses processed per second 
 \projn increses the server throughput by $30\%$ from $6668$ to $8645$ requests 
@@ -174,7 +180,7 @@ from $1.18$ms to $0.67$ms. Despite using in-memory buffers and batched processin
 which could in theory increased latency variability, the standard deviation of 
 the responses actually decreases by $0.03$ms as well.
 
-The results in~\autoref{tab:server} also show that, in addition to the improvements 
+The results in \autoref{tab:server} also show that, in addition to the improvements 
 seen by using \projn as a drop in replacement, it is possible to further improve the 
 logger behavior by refactoring the logging statements to take advantage of the 
 multi-level logging capabilities. In the \emph{Log++ (levels)} the application is 
@@ -186,7 +192,10 @@ down an additional $13\%$ to $0.58$ms on average.
 
 \subsection{Logging Data Size}
 The final metric we evaluate is how \projn can be used to reduce the amount of 
-storage and network capcity that is consumed by logging data. ASDF
+storage and network capcity that is consumed by logging data. \autoref{tab:compress} 
+shows the log size generated when running the server benchmark with compression 
+enabled (the \emph{Compressed} column) as well as the impact of multi-level 
+logging not needed to format/emit all log data.
 
 \begin{table}[t]  
     \centering
@@ -207,7 +216,12 @@ storage and network capcity that is consumed by logging data. ASDF
     \label{tab:compress}
 \end{table}
 
-study of simplified output log and reduction in storage/transport sizes -- 
-e.g., save XXMB of traffic/storage per day kind of thing.
-
-compression impact
+As shown in \autoref{tab:compress} both compression and the ability to 
+discard detailed (and noisy) messages in the multi-level setup provide 
+large reductions in the data sizes that need to be transmitted and stored. 
+As expected compression is very effective on log data, reducing the size 
+by $94.5\%$ from $25.4$MB to $1.38$MB. The ability to discard noisy messages, 
+once it is determined they are not interesting for debugging, also has a 
+large individual impact and reduces the data size by $53.7\%$. Combined these 
+two optimizations result in a total data size reduction of a massive $96.7\%$ 
+going from $25.4$MB to just $0.84$MB.

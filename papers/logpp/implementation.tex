@@ -12,9 +12,9 @@ engine and core Node implementation directly.
 The logging system is split into five major components that (1) manage the 
 global logger states, message formats, and activities (2) the in-memory logger 
 (3) the stage processor (4) the formatter (5) and finally the emitter. These 
-components and the relations between them are shown in~\autoref{fig:arch} and 
+components and the relations between them are shown in \autoref{fig:arch} and 
 explained in detail in the rest of the section. We will also use a running 
-example in~\autoref{fig:runningExample} to illustrate various aspects of the 
+example in \autoref{fig:runningExample} to illustrate various aspects of the 
 system.
 
 \begin{figure}
@@ -48,10 +48,10 @@ manager. This component is responsible for tracking all of the loggers that
 have been created, which is the root logger, the enabled logging levels + 
 categories, and the message formats which have been defined. 
 
-As seen in~\autoref{fig:arch} and the running example may be many loggers 
+As seen in \autoref{fig:arch} and the running example may be many loggers 
 created in different parts of the application. One logger is created on line 
-2 of the main application~\autoref{fig:appmain} while a second is created 
-in the module \texttt{foo.js} in~\autoref{fig:appsub} which is included from 
+2 of the main application \autoref{fig:appmain} while a second is created 
+in the module \texttt{foo.js} in \autoref{fig:appsub} which is included from 
 the main \texttt{app.js} file. As stated in \emph{design principle 5} we 
 do not want the included sub-module \texttt{foo.js} to be able to, unexpectedly, 
 change the logging level for the main app (the call to \texttt{setOutputLevel} on 
@@ -113,11 +113,11 @@ arguments, and then, processes them.
 \end{itemize}
 
 In addition to programtically processing single log formats, as shown on line 3 
-in~\autoref{fig:appmain}, we also allow the programmer to load formats in bulk 
+in \autoref{fig:appmain}, we also allow the programmer to load formats in bulk 
 from a JSON formatted file. This allows a team to have a unified set of logging 
 messages that can be loaded/processed quickly on startup and then used repeatedly 
 throughout the applications execution. Once loaded all format objects are saved 
-in the \emph{formats} component in~\autoref{fig:arch} where they can be loaded 
+in the \emph{formats} component in \autoref{fig:arch} where they can be loaded 
 as needed for processing a log statement.
 
 The format for a logger message is:
@@ -146,7 +146,7 @@ Classic examples include adding the current walltime or the hostname as
 part of a log message. In JavaScript these require explicitly calling 
 expensive compund API sequences \texttt{new Date().toISOString()} or 
 \texttt{require('os').hostname()}. Instead we allow a developer to use 
-special macros \texttt{\#walltime}, as seen on line 11 in~\autoref{fig:appmain}, 
+special macros \texttt{\#walltime}, as seen on line 11 in \autoref{fig:appmain}, 
 or \texttt{\#host} in their format 
 strings and then the logger has optimized internal paths to get the needed 
 values. In these cases the \texttt{kind} field is set to the enumeration 
@@ -207,7 +207,7 @@ into the in-memory buffer with the code shown here:
 \lstinputlisting[language=JavaScript,basicstyle=\scriptsize]{Code/flatten.js}
 
 This code represents the transition from the \emph{formats} and \emph{arguments} 
-inputs into the \emph{in-memory buffer} shown in~\autoref{fig:arch}. This code 
+inputs into the \emph{in-memory buffer} shown in \autoref{fig:arch}. This code 
 starts off by checking if we are either in a cycle or the depth bound has been 
 reached. If either of these occour we put a special tag, \texttt{CycleTag} or 
 \texttt{DepthBoundTag} respectively, into the tags array and return. If not we 
@@ -247,7 +247,7 @@ object argument:
 }
 \end{lstlisting}
 
-The resulting state of the in-memory buffer is shown in~\autoref{fig:inmemory}. 
+The resulting state of the in-memory buffer is shown in \autoref{fig:inmemory}. 
 In this example we can see how the object structure has been flattened into 
 the buffer with the \lstinline!'{'! and \lstinline!'}'! tags denoting the bounds 
 of each object. Each of the properties has been registered in the map (with a fresh 
@@ -299,7 +299,7 @@ is an issue that the developer wants to understand but does not result in a hard
 \paragraph{Emit Callback}
 \noindent
 Once the in-memory buffer has been processed the logger passes the filtered set of 
-log messages to the background \emph{asynchronous formatter} (described in~\autoref{sec:nativeimpl}) 
+log messages to the background \emph{asynchronous formatter} (described in \autoref{sec:nativeimpl}) 
 which, when formatting is complete, will default to invoking a callback into the 
 JavaScript application. For common cases we provide the simple default callback that 
 writes to stdout or, if a \texttt{stream} is provided, to write the logs out through 
@@ -310,18 +310,18 @@ send the data to arbitrary (or multiple) sinks.
 \subsection{Native Formatting and Optional Native Emit}
 \label{sec:nativeimpl}
 Once the in-memory buffer has been processed the logger passes the filtered set of 
-log messages to the background \emph{asynchronous formatter} in~\autoref{fig:arch} which 
+log messages to the background \emph{asynchronous formatter} in \autoref{fig:arch} which 
 is implemented in Native code using the N-API~\cite{NAPI} module. The direct 
 implementation of this module does not have any low-level hooks into the GC of 
 the host JavaScript engine so we must fully copy any data needed before starting 
-the background processing (a limitation we discuss relaxing in~\autoref{sec:runtimesupport}). 
+the background processing (a limitation we discuss relaxing in \autoref{sec:runtimesupport}). 
 However, once the data copy is done the formatting thread can run completely in parallel 
 to the main JavaScript thread and can use an optimized C++ formatting implementation. This 
 not only allows us to reduce the overall formatting cost but also to move this cost 
 entrirely off the hot-path of JavaScript exection.
 
 In addition to background formatting \projn also supports background emitting, 
-shown as the \emph{background emit} block in~\autoref{fig:arch}, of 
+shown as the \emph{background emit} block in \autoref{fig:arch}, of 
 logging data to files, stdout, or a remote url provided at configuration time. This 
 allows us to skip re-marshalling the formatted data into a JavaScript string as well 
 as reduces the number of JavaScript callbacks and associated time spent on the 
@@ -359,7 +359,7 @@ source of errors, we provide a richer set of logging primitives:
 \end{itemize}
 
 An example of the utility of these loggers, conditional logging, is in our introductory 
-example from~\autoref{fig:introExample} where the condition on line 14 was introduced 
+example from \autoref{fig:introExample} where the condition on line 14 was introduced 
 soley in support of the logging output. Using our conditional logging APIs this condition 
 and log combo can be replaced by a single line \lstinline{logger.warnIf(!ok, "Error...")}.
 
@@ -396,7 +396,7 @@ base of logging code in an application.
 
 To ensure that disabled log statements truely are zero-cost requires cooperation 
 with the language spec and the JIT. To avoid parasitic costs of evaluating log 
-arguments that will be immediately discarded, like line 8 in~\autoref{fig:introExample}, 
+arguments that will be immediately discarded, like line 8 in \autoref{fig:introExample}, 
 we must lazily evaluate them after the level, category, and (optional) condition 
 checks have completed. We also want the JIT to be particularly aware of the guards 
 around log statements, aggressively optimizing the guard paths, and performing 
