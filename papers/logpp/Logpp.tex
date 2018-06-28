@@ -131,9 +131,10 @@ logger for Node.js hosted JavaScript applications.
 \section{Introduction} 
 \label{sec:intro}
 Logging has always been a important tool for software developers in
-understanding their applications. However, as DevOps oriented workflows have
+understanding their applications~\cite{logdebug,logdebug2,logstudy}. 
+However, as DevOps oriented workflows have
 become more prevalent, logging is becoming an even larger consideration when
-building applications. A key area driving this shift is the use of cloud-based
+building applications~\cite{logstudy,logstudy2}. A key area driving this shift is the use of cloud-based
 applications and the integration of application monitoring dashboards, such as
 Stack Driver~\cite{StackDriver}, NSolid~\cite{NSolid}, or
 AppInsights~\cite{AppInsights}, which ingest logs from an application, correlate
@@ -145,7 +146,7 @@ rich logging data an integral part of an applications development.
 Existing logging library implementations, as provided via core or third party
 libraries, are unable to satisfactorily meet the demands of logging in modern
 applications. As a result developers must use existing libraries with care to
-limit undesirable logging related performance impacts and \emph{log spew}, work 
+limit undesirable logging related performance impacts~\cite{learnlog} and \emph{log spew}~\cite{learnlog,logstudy2}, work 
 to control logging output from other modules to the appropriate channels, and figure
 out how to effectively parse the data that is written from various sources.
 Consider the following sample JavaScript code in~\autoref{fig:introExample} 
@@ -158,12 +159,12 @@ which illustrates concrete issues encountered by Node.js~\cite{Node} developers 
 \end{figure*}
 
 A major issue with logging is the potential for the accidental introduction 
-of serious performance problems though seemingly benign activities. In 
+of serious performance problems though seemingly benign activities~\cite{logdebug,logdebug2,logstudy,learnlog,logstudy2}. In 
 existing logging framework even if a given logging level is disabled, 
 as \texttt{debug} and \texttt{trace} levels usually are, the code to generate 
 and format the log message is still executed. This can either be due to eager 
 evaluation semantics of the source language or due to limitations in compiler 
-optimizations for dead-code elemination in languages with workarounds such as 
+optimizations for dead-code elimination in languages with workarounds such as 
 macros. This results in code that looks like it will not be executed but that in 
 reality incurs large parasitic costs and can be seen in the \texttt{logger.debug} 
 statement in the example, which at the default level does not print to the log, but will
@@ -172,11 +173,11 @@ string on every execution of the loop. This cost leads developers to defensively
 remove these statements from code instead of depending on the runtime to
 eliminate their costs when deploying the application.
 
-Next is the issue of \emph{log spew} where logging at a detailed level, which 
+Next is the issue of \emph{log spew}~\cite{learnlog,logstudy2} where logging at a detailed level, which 
 may be desireable for debugging when an issue occours, fills the log with 
 large quantities of uninteresting noise output. An example of this is the 
 \texttt{logger.info} message about the args and result of the \texttt{check} 
-call. In the case of a successful execution the content of this log statement 
+call in \autoref{fig:introExample}. In the case of a successful execution the content of this log statement 
 is not interesting and the cost of producing this plus the increased noise in 
 the logfile is pure overhead. However, if the \texttt{check} statement fails 
 then having this information about what events led up to the failure may be 
@@ -189,14 +190,14 @@ extensive, metadata such as timestamps and host information in log messages furt
 drives concerns about the performance of logging. Computing a timestamp or a 
 hostname string is inexpensive but the cost of formatting them into a message is 
 non-trivial can can add up over thousands or millions of log messages resulting 
-in unexpected performance degradations. 
+in unexpected performance degradation. 
 
 Modern developer practices around logging frequently involve post processing 
-of log data into analysis framework like Kusto~\cite{} or SPLUNK~\cite{}. 
-However, free form specification of message formats, as seen in \emph{printf} or 
+of log data into analysis framework like the Elastic stack~\cite{elastic} or Splunk~\cite{splunk}. 
+However, free form specification of message formats, as seen in \texttt{printf} or 
 concatenated value styles, are not ammenable to machine parsing. Modern logging 
-frameworks, log4j~\cite{log4j}, Winston~\cite{Winston}, Bunyan~\cite{Bunyan}, etc. 
-provide some support for consistently formatting ans structuring output but
+frameworks, log4j~\cite{log4j}, pino~\cite{pino}, bunyan~\cite{bunyan}, etc. 
+provide some support for consistently formatting and structuring output but
 fundamentally this problem is left as a problem development teams need to solve
 via coding conventions and reviews.
 

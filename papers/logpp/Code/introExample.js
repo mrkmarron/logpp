@@ -1,5 +1,5 @@
-const logger = require('winston').createLogger({ level: "info" });
-logger.add(new winston.transports.File({ filename: '/tmp/logging/app.log' }));
+const dest = fs.createWriteStream("/tmp/logging/app.log");
+const logger = require('pino')(dest, { level: "info" });
 
 function foo(name, flag) {
     console.log("Hello");
@@ -10,7 +10,7 @@ function foo(name, flag) {
     }
 
     const ok = check(name, flag);
-    logger.info(`check(${name}, ${flag}) is ${ok}`);
+    logger.info("check(%s, %b) is %b)", name, flag, ok);
     if (!ok) {
         logger.warn("Error ...");
     }
