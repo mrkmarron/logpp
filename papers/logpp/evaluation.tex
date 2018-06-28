@@ -46,7 +46,7 @@ module, the \texttt{bunyan}~\cite{bunyanlogger} logger, and the \texttt{pino}~\c
     \end{tabular}
     }
     \vspace{2mm}
-    \caption{Timings for each logging framework on $10$k iterations with given format. 
+    \caption{\small Timings for each logging framework on $10$k iterations with given format. 
     Speedup is the min-max speedup relative to the other logging frameworks.}
     \label{tab:microcompare}
 \end{table}
@@ -59,6 +59,16 @@ of the existing logging frameworks.
 \subsection{Logging Optimization Impacts}
 To understand how much each of our design choices and optimizations contributed to 
 this performance we look at the performance impacts of specific features in \projn. 
+autoref{tab:featureeval} shows the \projn baseline, the logger when we disable the 
+background formatting thread (\emph{Sync-Lazy}), the logger when we disable background 
+formatting and disable batching of log messages in the in-memory buffer (\emph{Sync-Strict}). 
+We also look at how discarding before formatting and disabling log statements via multi-level 
+logging features impacts performance. The \emph{Levels (50\%)} row shows the performance 
+when $50\%$ of the log statements are at the \texttt{INFO} level and $50\%$ are at the 
+\emph{DETAIL} level (processed into the in-memory buffer but discarded before format). 
+The \emph{Levels (33\%)} row shows the performance when $33\%$ of the log statements are 
+at the \texttt{INFO} level, $33\%$ are at the \emph{DETAIL} level, and $33\%$ are at the \emph{DEBUG} 
+level (ensirely disabled).
 
 \begin{table}[t]  
     \centering
@@ -74,20 +84,21 @@ this performance we look at the performance impacts of specific features in \pro
     \end{tabular}
     }
     \vspace{2mm}
-    \caption{ASDF}
+    \caption{\small Baseline performance in \emph{Log++} row with disabled background 
+    format in \emph{Sync-Lazy} and disabled background format \& disabled lazy 
+    batch processing in \emph{Sync-Strict}. The \emph{Levels (50\%)} and 
+    \emph{Levels (33\%)} rows show performance when $50\%$ of log messages are 
+    in-memory level only and when $33\%$ are in-memory only and $33\%$ are entirely 
+    disabled respectively.}
     \label{tab:featureeval}
 \end{table}
 
-Lets do some microbencharks on logging and break down the impact of various 
-implementation/design ideas...
+\todo{Discuss results here...}
 
-enabled full
-
-disabled
-
-multi-level impact
-
-expando impact
+The use of \emph{expando} macros in the formats, \autoref{subsec:jsimpl}, can also play a 
+large role in improving the performance of logging. \autoref{tab:expando} examines the 
+performance difference when logging values using these macros vs. the cost of manually 
+computing, formatting, and logging them.
 
 \begin{table}[t]  
     \centering
@@ -100,9 +111,18 @@ expando impact
     \end{tabular}
     }
     \vspace{2mm}
-    \caption{ASDF}
+    \caption{\small Comparision of log messages using \emph{expando} formats vs. manual computation 
+    and formatting of values for \emph{hostname}, \emph{application name}, \emph{wall time}, and 
+    a monotinic \emph{timestamp}}.
     \label{tab:expando}
 \end{table}
+
+As seen in \autoref{tab:expando}, in cases such as adding the \emph{hostname} of the current machine 
+or the very common desire of including the current date/time (\emph{wallclock}), there can be huge 
+performance gains, $258\times$ and $4.7\times$ respectively, when using the expando macros. In other cases, 
+such as the name of the current \emph{app} or a monotonic \emph{timestamp} value, the performance 
+gains are a smaller but non-trivial $51\%$ and $12\%$. Instead the benefit is primarially in simpler/clear 
+logging code.
 
 \subsection{Logging Performance}
 The previous sections evaluated the performance of \projn with respect to other 
@@ -133,13 +153,12 @@ emits at the lower level.
     Console        & $1.18$ms & $0.83$ms & $6668$   \\
     Pino           & $0.89$ms & $0.70$ms & $8133$   \\
     Log++          & $0.67$ms & $0.80$ms & $8645$   \\
-    Log++ (off)    & $x.xx$ms & $x.xx$ms & $xxxx$   \\
     Log++ (levels) & $0.58$ms & $0.77$ms & $8958$   \\
     \end{tabular}
     }
     \vspace{2mm}
-    \caption{Logging performance on \emph{REST} service for \texttt{console.log}, 
-    \texttt{pino} and \texttt{Log++} (both enabled and off). Also modified to take advantage of the \texttt{Log++} 
+    \caption{\small Logging performance on \emph{REST} service for \texttt{console.log}, 
+    \texttt{pino} and \texttt{Log++}. Also modified to take advantage of the \texttt{Log++} 
     multi-level logging functionality in the \emph{Log++ (levels)} row. Average and 
     standard deviation values for response latencies are shown along with the average 
     number of requests served per second.}
@@ -180,7 +199,7 @@ storage and network capcity that is consumed by logging data. ASDF
     \end{tabular}
     }
     \vspace{2mm}
-    \caption{Log size on \emph{REST} service for \texttt{Log++}
+    \caption{\small Log size on \emph{REST} service for \texttt{Log++}
     and modified to take advantage of the \texttt{Log++} 
     multi-level logging functionality in the \emph{Log++ (levels)} row. Raw 
     logging output size (\emph{Raw} column) and log data size after deflate 
