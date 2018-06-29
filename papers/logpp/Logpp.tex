@@ -256,6 +256,39 @@ for use in performance evaluations.
 
 \section{Related Work}
 \label{sec:relwork}
+While logging is a fundamental part of many software development workflows it has 
+received relatively little attention overall from the academic community and, to the 
+best of our knowledge, no prior work on the design of the core logging framework. 
+
+\paragraph{Logging Practices:}
+\noindent
+The closest theme of prior research is focused on empirical investigation of logging 
+use in practice and tools to support good logging practices~\cite{logstudy,logstudy2}. 
+Using a large scale evaluation of OSS projects~\cite{logstudy} studied code changes 
+involving logging code to understand how and why developers were using logging. 
+Work on closed source applications~\cite{logstudy2} reached many of the same conclusions. 
+These studies provided valuable insights which were used in distilling the design 
+principles used in this work.
+
+\paragraph{Improved Logging:}
+\noindent
+A larger area of work has been into techniques to support best practices for 
+logger use. From a type system perspective~\cite{tyepcheckprintf} developed 
+a type system and checker to ensure format specifiers and their arguments were 
+well typed. Work in and LCAnalyzer~\cite{logginganti} proposes 
+techniques to help developers with finding poor logging 
+uses. Other work develops tools, such as  LogAdvisor~\cite{learnlog}, LogEnhancer~\cite{LogEnhancer}, 
+and ErrLog~\cite{ErrLog}, which help developers identify locations and values which should 
+be logged to support later diagnostics or analysis operations.
+
+\paragraph{Log Analysis:}
+\noindent
+Work on the topic of using logs to support other software development activities is 
+more extensive. This work includes post mortem debugging~\cite{loganalysis,sherlog,autolog}, anomaly 
+detection~\cite{detection}, feature use studies~\cite{twitter}, and automated analysis of performance 
+issue root causes~\cite{performance}. 
+This body of work highlights the potential value of high quality logging data and the 
+opportunities for research and tooling that depends on it.
 
 \section{Conclusion}
 This paper introduced a set of design principles for logging with the view that 
@@ -271,6 +304,10 @@ of logging output across different libraries, and API design to optimize common 
 tasks. As a result \projn outperforms existing state of the art logging frameworks and 
 represents an important development in advancing the state of the art for 
 modern modern cloud, mobile, and IoT development workflows.
+
+\section*{Acknowledgments}
+I would like to thank Matteo Collina, Matthew C. Loring, and Mike Kaufman for their insights into logging and 
+useful feedback on this work.
 
 \balance
 
