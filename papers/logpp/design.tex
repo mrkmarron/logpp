@@ -17,19 +17,20 @@ statement should not change the semantic runtime behavior of the application.
 When logging frameworks are included as libraries the compiler/JIT does not, 
 in general, have any deep understanding of the enabled/disabled semantics of 
 the logger. As a result the compiler/JIT will not be able to fully eliminate 
-dead-code associated with disabled logging statements and will pay, individually 
+dead-code associated with disabled logging statements and will pay, an individually 
 small but widespread, parasitic costs for these disabled logging statements. 
 These costs can be very difficult to diagnose, as they are widely dispersed and 
 individually small, but can add up to several percentage points of application 
-runtime.To avoid these parasitic costs we propose including logging primitives 
+runtime. To avoid these parasitic costs we propose including logging primitives 
 in the core specification of the programming language or, if that is not possible, 
 adding compiler/JIT specializations to support them. 
 
 An additional advantage of lifting log semantics to the language specification 
 level is the ability to statically verify logging uses and handle errors that 
-occour during log expression evaluation. Common errors include 
-format specifier violations~\cite{tyepcheckprintf} and accidental state 
-modification in the logging message computation. If the language semantics 
+occur during log expression evaluation. Common errors include 
+format specifier violations~\cite{tyepcheckprintf}, accidental state 
+modification in the logging message computation, and other logging anti-patterns~\cite{logginganti}. 
+If the language semantics 
 specify logging API's then both of these error classes can be statically 
 checked to avoid runtime errors or hisenbugs that appear/disappear when logging 
 levels are changed.
@@ -46,21 +47,30 @@ To minimize the cost of computing arguments to the log statement and speed their
 processing we propose a novel log format specification mechanism using 
 \emph{preprocessed} and stored log formats along with a set of \emph{log expandos} 
 which can be used a shorthand in a log to specify common, but expensive/complicated, 
-value to compute. The use of preprocessed format messages allows us to save time, 
+to compute log argument values. The use of preprocessed format messages allows us to save time, 
 the type checking and processing of each argument does not require parsing the 
 format string, and instead of eagerly stringifying each parameter we can do a quick 
-immutable copy to be formatted later if needed. Expandos provide convinient 
+immutable copy to be formatted later if needed. Expandos provide convenient 
 ways to add data into the log, such as the current date/time, the host IP, or a 
-current request ID, that would either be more expensive or more awkward to compute 
-explicitly on a regular basis.
+current request ID~\cite{asynchjs}, that would either be more expensive or more awkward to compute 
+explicitly on a regular basis. We can eliminate the main-thread cost of formatting by batching 
+the log messages and instead doing the format work on a background task thread.
+
+
+\begin{figure*}
+    \centering
+    \includegraphics[width=0.8\textwidth]{Figures/ArchDiagram}
+    \caption{Logger architecture}
+    \label{fig:arch}
+\end{figure*}
 
 \subsection{Logging Functionality}
 \label{subsec:functionalitydesign}
 \begin{design}
 Logging serves two related, but somewhat conflicting roles, in modern systems 
-a logger should support both of them simultaniously without comprimising the 
+and should support both of them simultaneously without compromising the 
 effectiveness of either one. The first role is to provide detailed information 
-on the sequence of events preceeding a bug to aid the developer in tiraging and 
+on the sequence of events preceding a bug to aid the developer in triaging and 
 reproducing the issue. The second role is to provide general telemetry 
 information and visibility into the overall behavior of the application. 
 \end{design}
@@ -74,7 +84,7 @@ detailed logging can be flushed to aid in debugging. In the second level these
 detailed messages can be filtered out and only the high-level telemetry focused 
 messages can be saved, formatted, and written into the stable log. This filtering 
 avoids the pollution the saved logs with overly detailed information while 
-preserving the needed data for monitoring the overall status of the application. 
+preserving the needed data for monitoring the overall status of the application~\cite{logstudy,logstudy2}. 
 
 \begin{design}
 Logging code should not obscure the logic of the application that it is 
@@ -97,14 +107,14 @@ adding primitive methods for supporting all of these scenarios without requiring
 additional developer implemented logic.
 
 \begin{design}
-Applications are often built leveraging numerous third-party compenents which 
+Applications are often built leveraging numerous third-party components which 
 may include their own logging functionality and try to configure their own 
 output endpoints. This information may either be entirely uninteresting to the 
 hosting application or there may be some parts of this logging output which the 
 host applcaition wants to be aware of and include as part of its log.
 \end{design}
 
-Supporting this workflow requires that the langugage and/or runtime standardize 
+Supporting this workflow requires that the language and/or runtime standardize 
 a number of features. The first is the set of logging levels and way to define 
 categories. Without these it is not even possible for the loggers to agree on 
 what is expected to be output. The next is a unified way to aggregate and output 

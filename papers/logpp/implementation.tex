@@ -10,19 +10,12 @@ engine and core Node implementation directly.
 
 \subsection{Implementation Overview}
 The logging system is split into five major components that (1) manage the 
-global logger states, message formats, and activities (2) the in-memory logger 
-(3) the stage processor (4) the formatter (5) and finally the emitter. These 
+global logger states, message formats, and activities (2) the in-memory buffer logger 
+(3) the emit staging processor (4) the formatter (5) and finally the emitter. These 
 components and the relations between them are shown in \autoref{fig:arch} and 
 explained in detail in the rest of the section. We will also use a running 
 example in \autoref{fig:runningExample} to illustrate various aspects of the 
 system.
-
-\begin{figure}
-    \centering
-    \includegraphics[width=0.5\textwidth,angle=-90]{Figures/ArchDiagram}
-    \caption{Logger architecture}
-    \label{fig:arch}
-\end{figure}
 
 \begin{figure*}[t]
 \begin{minipage}[b]{0.47\textwidth}
@@ -45,12 +38,12 @@ system.
 \noindent
 The first component we look at in the implementation is the global log state 
 manager. This component is responsible for tracking all of the loggers that 
-have been created, which is the root logger, the enabled logging levels + 
+have been created, which one of them (if any) is the root logger, the enabled logging levels + 
 categories, and the message formats which have been defined. 
 
-As seen in \autoref{fig:arch} and the running example may be many loggers 
-created in different parts of the application. One logger is created on line 
-2 of the main application \autoref{fig:appmain} while a second is created 
+As seen in \autoref{fig:arch} and the example code in \autoref{fig:runningExample}, there be many loggers 
+created in different parts of the application. One logger, named ``app'', is created on line 
+2 of the main application \autoref{fig:appmain} while a second, named ``foo'', is created 
 in the module \texttt{foo.js} in \autoref{fig:appsub} which is included from 
 the main \texttt{app.js} file. As stated in \emph{design principle 5} we 
 do not want the included sub-module \texttt{foo.js} to be able to, unexpectedly, 
@@ -61,17 +54,17 @@ from these subloggers.
 To support these features the \projn logger keeps a list of all created loggers 
 and a special \emph{root logger} which is the first logger created in the main 
 module of the application. When updating logging levels or creating a new logger 
-we check if action is comming from the root logger and, if not, either convert 
+we check if action is coming from the root logger and, if not, either convert 
 the call to a \texttt{nop} or look at the root logger configuration to see if 
 we need to override any parameters. These features cover the needs of controlling 
-logging from multiple modules as desribed in \emph{Design Principle 5}.
+logging from multiple modules as described in \emph{Design Principle 5}.
 
 In our running example the state manager will intercept the creation of the logger 
 on line 2 in \texttt{foo.js}. Since the logger created here is not the root logger
 the state manager will intercept this construction, set the in-memory log level to 
 the overridden \texttt{WARN} level instead of the default value of \texttt{DETAIL}, 
-prevent the modification of the \emph{emit-level} or the output sink, and will 
-store the newly created logger in a list of sub-loggers. 
+prevent the modification of the \emph{emit-level} on line 9, and will 
+store the newly created logger in a list of subloggers. 
 
 Tracking the list of all created sub-loggers also allows a developer to share a 
 single logger between several files in the same module. The name parameter in the 
@@ -112,14 +105,15 @@ and then saves it for later use.
 arguments, and then, processes them.
 \end{itemize}
 
-In addition to programtically processing single log formats, as shown on line 3 
+In addition to programmatically processing single log formats, as shown on line 3 
 in \autoref{fig:appmain}, we also allow the programmer to load formats in bulk 
 from a JSON formatted file. This allows a team to have a unified set of logging 
 messages that can be loaded/processed quickly on startup and then used repeatedly 
 throughout the applications execution. Once loaded all format objects are saved 
 in the \emph{formats} component in \autoref{fig:arch} where they can be loaded 
-as needed for processing a log statement.
+as needed for processing a log statement.\\
 
+\noindent
 The format for a logger message is:
 \begin{lstlisting}[language=JavaScript,basicstyle=\scriptsize]
 {
@@ -135,7 +129,7 @@ The format for a logger message is:
 \end{lstlisting}
 
 This representation allows us to quickly scan an process the arguments as 
-described in the \emph{Message In-Memory Processing} section. The kind 
+described in the \emph{In-Memory Message  Processing} section. The kind 
 information is used for both identifying what type of value is expected 
 when formatting an argument, e.g. \texttt{number}, \texttt{string}, etc., 
 but we also use it to support \emph{format macros}.
@@ -144,7 +138,7 @@ To support the easy/efficient logging on a number of common values that
 are not easily (or cheaply) computable we provide \emph{format macros}. 
 Classic examples include adding the current walltime or the hostname as 
 part of a log message. In JavaScript these require explicitly calling 
-expensive compund API sequences \texttt{new Date().toISOString()} or 
+expensive compound API sequences \texttt{new Date().toISOString()} or 
 \texttt{require('os').hostname()}. Instead we allow a developer to use 
 special macros \texttt{\#walltime}, as seen on line 11 in \autoref{fig:appmain}, 
 or \texttt{\#host} in their format 
@@ -163,8 +157,8 @@ macro formatters includes:
 \end{itemize}
 
 A common logging practice is to include raw objects, formatted as JSON, into the 
-message. This is a convinient way to include rich data into a message but can 
-lead to unexpectedly large logging loads when, what the developer expected to 
+message. This is a convenient way to include rich data into a message but can 
+lead to unexpectedly excessive logging loads when, what the developer expected to 
 be a small object, turns out to be quite large. To prevent this we have a specialized 
 JSON-style processor that will bound the depth/length of object expansion during 
 formatting. The \texttt{expandDepth} and \texttt{expandLength} arguments provide 
@@ -189,24 +183,24 @@ to the C++ N-API code that handles the formatting we encode all values into
 $64$bit based representation (stored in the \texttt{data} property). We use a set 
 of enumeration \texttt{tags} (stored in the \texttt{tags} property) to track 
 what kind of value the corresponding $64$bit value represents. We have special 
-handling for string and object properyt values, described below, that use the 
-\texttt{strings} array and \texttt{properties} map to index and keep alive these values.
+handling for string and object property values, described below, that use the 
+\texttt{strings} array and \texttt{properties} map to index and keep these values alive.
 
 When implementing a sematic logging system the key invariant that needs to be 
 preserved is that the values of each argument must not be changed between the 
 time when the log call happens and when the argument is processed for 
 formatting. Certain values including booleans, numbers, and strings, are 
 immutable according to the language semantics so we can just copy the 
-references directly into our in-memory array. However, in cases where the 
+values/references directly into our in-memory array. However, in cases where the 
 argument is a mutable object we must take explicit actions. A simple solution 
-would be to JSON \texttt{stringify} the argument immedaitely, and while this 
-prevents mutation and allows semantic formatting, it comprimises possible 
+would be to JSON \texttt{stringify} the argument immediately, and while this 
+prevents mutation and allows semantic formatting, it compromises possible 
 performance gains we are looking for. Instead we recursively flatten the object 
 into the in-memory buffer with the code shown here:
 
 \lstinputlisting[language=JavaScript,basicstyle=\scriptsize]{Code/flatten.js}
 
-This code represents the transition from the \emph{formats} and \emph{arguments} 
+This code represents the transition from the formats and logger call arguments 
 inputs into the \emph{in-memory buffer} shown in \autoref{fig:arch}. This code 
 starts off by checking if we are either in a cycle or the depth bound has been 
 reached. If either of these occour we put a special tag, \texttt{CycleTag} or 
@@ -231,7 +225,14 @@ been processed we update the cycle tracking information and add a closing
 
 \begin{figure}
     \centering
-    \includegraphics[width=0.5\textwidth]{Figures/InMemoryExample}
+\begin{lstlisting}[basicstyle=\small,numbers=none]
+tags: [ {, p, n, p, s, p, {, p, ?, }, } ]
+data: [ _, 0, 3, 1, 0, 2, _, 1, _, _, _ ]
+
+strings: [ 'ok' ]
+props:   { f -> 0, g -> 1, o -> 2 }
+
+\end{lstlisting}
     \caption{In-Memory buffer processing example}
     \label{fig:inmemory}
 \end{figure}
@@ -243,7 +244,7 @@ object argument:
 {
   f: 3,
   g: 'ok',
-  o: { g: false, id: (x) => x }
+  o: { g: (x) => x }
 }
 \end{lstlisting}
 
@@ -252,7 +253,7 @@ In this example we can see how the object structure has been flattened into
 the buffer with the \lstinline!'{'! and \lstinline!'}'! tags denoting the bounds 
 of each object. Each of the properties has been registered in the map (with a fresh 
 numeric identifier) and this is stored in the \texttt{data} array. For example the 
-property \lstinline!g! is mapped to $1$ and in both occournces in the object 
+property \lstinline!g! is mapped to $1$ and in both occurrences in the object 
 structure the entry in the \texttt{tags} array is set to \lstinline!'p'! for 
 property and the value in the \texttt{data} array is set to match the corresponding 
 numeric identifier $1$. The numeric and boolean values are mapped in the obvious 
@@ -293,7 +294,7 @@ If an issue, currently defined as an unhandled exception or an exit with non-zer
 is encountered during execution the logger will immediately flush all the logger 
 messages to the serializer regardless of age or level. This ensures that there is maximal 
 detail for the developer when trying to diagnose the issue. \projn also supports 
-programtic force-flushing of the log, with the \texttt{forceFlush} method, for cases where there 
+programatic force-flushing of the log, with the \texttt{forceFlush} method, for cases where there 
 is an issue that the developer wants to understand but does not result in a hard failure. 
 
 \paragraph{Emit Callback}
@@ -318,10 +319,10 @@ the background processing (a limitation we discuss relaxing in \autoref{sec:runt
 However, once the data copy is done the formatting thread can run completely in parallel 
 to the main JavaScript thread and can use an optimized C++ formatting implementation. This 
 not only allows us to reduce the overall formatting cost but also to move this cost 
-entrirely off the hot-path of JavaScript exection.
+entirely off the hot-path of JavaScript execution.
 
 In addition to background formatting \projn also supports background emitting, 
-shown as the \emph{background emit} block in \autoref{fig:arch}, of 
+shown as the \emph{asynchronous transport} block in \autoref{fig:arch}, of 
 logging data to files, stdout, or a remote url provided at configuration time. This 
 allows us to skip re-marshalling the formatted data into a JavaScript string as well 
 as reduces the number of JavaScript callbacks and associated time spent on the 
@@ -331,7 +332,7 @@ By default the native formatter produces JSON compliant output. However, this
 can be verbose to send and store so we offer serialization format and compression 
 options for optimization. In addition to JSON a user can configure the logger 
 to format to a simple binary encoding format which is not human readable but 
-substantially more compact (\todo{HOW MUCH}) and computationally efficient to 
+more compact and computationally efficient to 
 encode into. With either format the logger can also be configured to compress the 
 formatted data as well using the \texttt{zlib} library already included in 
 Node.js core.
@@ -351,25 +352,25 @@ source of errors, we provide a richer set of logging primitives:
   \item \emph{request specific logging} which allows a developer to set a different 
   logging level and enabled categories for a specific \texttt{RequestID}. This is a 
   common need for cloud-based applications, particularly when participating in a 
-  smapling distributed logging system~\cite{distlogger}.
+  sampling distributed logging system.
   \item \emph{interval bounding} which writes a log message at the start of an interval 
   and accepts a payload which can be accessed when writing the end event for the interval. 
-  This allows the transparent, instead of explicit, propagation of the needed data between 
-  the related log actions.
+  This allows the transparent, instead of explicit, propagation of the relevant data between 
+  the log actions.
 \end{itemize}
 
-An example of the utility of these loggers, conditional logging, is in our introductory 
-example from \autoref{fig:introExample} where the condition on line 14 was introduced 
-soley in support of the logging output. Using our conditional logging APIs this condition 
+An example of the utility of these loggers, conditional logging, is in
+\autoref{fig:introExample} where the condition on line 14 was introduced 
+solely in for logging purposes. Using our conditional logging APIs this check 
 and log combo can be replaced by a single line \lstinline{logger.warnIf(!ok, "Error...")}.
 
 \subsection{Custom Runtime Implementation}
 \label{sec:runtimesupport}
 The previous sections described the \projn logger as it can be implemented as a purely 
-userspace module in Node.js and as it is publically available. However, there are 
+userspace module in Node.js and as it is publicly available. However, there are 
 issues, optimizations, and improvements that require close interaction with the 
 runtime and/or compiler. This section describes these and how we have explored their 
-implementation in Node-ChakraCore, the version of Node.js running the ChakraCore 
+implementation in Node-ChakraCore~\cite{NodeChakraCore}, the version of Node.js running the ChakraCore 
 JavaScript engine from Microsoft. 
 
 \paragraph{Format and Mutability Checking}
@@ -380,8 +381,8 @@ code. \projn takes the view that logger calls should, if all possible, not cause
 an application failure and instead note invalid arguments in the output formatting. 
 Previous work~\cite{tyepcheckprintf} has shown how to include static type 
 checking for log arguments as well. A similar approach can be taken to combine 
-work on purity analysis~\cite{purity1,purity2} to ensure that any code executed 
-in a log statement does not modify externally visibile state. These features require 
+work on purity analysis~\cite{choipurity,mypurity} to ensure that any code executed 
+in a log statement does not modify externally visible state. These features require 
 at least support in a linter, such as \emph{eslint}~\cite{eslint}, or integration 
 with the language itself.
 
@@ -404,11 +405,11 @@ dead-code-elimination or motion on computations that are only used for log argum
 
 \paragraph{Fast Handling for Strings and Properties}
 \noindent
-Strings and JavaScript object properties are frequently occouring values in 
+JavaScript object properties and string are frequently occurring values in 
 parts of a log message. If we are limited to a purely JavaScript and N-API 
 interface we are forced to treat the properties as strings and we must 
-definsively copy the strings wihen processing them in the \emph{message staging} 
-process otherwise the JavaScript engine GC may move them while the formatter is 
+defensively copy the strings when processing them in the \emph{emit processor} staging 
+phase otherwise the JavaScript engine GC may move them while the formatter is 
 accessing the underlying memory creating a data race and corruption. 
 
 Modern JavaScript engines use internal numeric \emph{Property Identifiers} 
@@ -416,35 +417,35 @@ instead of strings when dealing with object properties. These are much more
 compact and efficent to process for both the engine and, in our logger, would 
 allow us to copy a single integer into our in-memory buffer instead of creating 
 our own indexing scheme. Thus, we expose a new 
-JavaScript API, \texttt{loggerGetPropertyId(propertyString)}, which returns the 
+JavaScript API, \texttt{loggerGetPropertyId}, which returns the 
 internal numeric identfier for a property string to use in the message staging. 
 
 To avoid costs associated with data marshalling and copying string data 
-in the formatter we need to introduce 3 APIs. The first is a pair of 
+in the formatter we need to introduce three APIs. The first is a pair of 
 methods, \texttt{loggerRefString} in JavaScript which will tell the JavaScript 
 engine that it needs to reference count, flatten, and intern a string (if needed) 
-with a unique numeric value (which is returned), and \texttt{loggerReleaseString} 
+with a unique numeric value (which is returned), and a method \texttt{loggerReleaseString} 
 which decrements the reference count and unpins the string if needed. These 
-allow us to avoid copies when marshalling the string in the \emph{message staging} 
+allow us to avoid copies when marshalling the string in the message staging 
 phase. As various JavaScript engines use different internal widths for characters 
-we we add a \emph{getNativeStringCharSize} method to determine if strings 
-are \texttt{utf8} or \texttt{utf16} encoded. In combination with \texttt{getRawBytes} 
-and \texttt{createStringWithBytes} methods this allows us to avoid any encoding 
-conversions when formatting and creating strings. 
+we add \texttt{getNativeStringCharSize} to determine if strings 
+are \texttt{utf8} or \texttt{utf16} encoded. In combination with the methods \texttt{getRawBytes} 
+to get the underlying buffer and \texttt{createStringWithBytes} to create a string this allows us to avoid any encoding 
+conversions during the formatting. 
 
 \paragraph{Priority Aware I/O Mangement}
 \noindent
-The final optimization we look at that requires runtime support is to ensure 
-that logging related I/O and computation do not interfere with code high-priority 
+The final optimization we look at is to ensure 
+that logging related I/O and computation do not interfere with high-priority 
 code responding to user actions. In our implementation the msessage staging 
 and uploading of formatted log data is done on the UV event loop. This loop does 
 not have any notion of priority so we may accidentally block code responding 
 to a user action with code that is processing log data. To avoid this we could 
 add a special \emph{log work queue} to the existing Node event loop processing 
-algorithm~\cite{nodeeventloop} but we believe that the notion of priority is 
-fundamentally valuable and should be added to Node explicitly~\cite{asyncnode}. 
+algorithm but we believe that the notion of priority is 
+fundamentally valuable and should be added to Node explicitly~\cite{asynchjs}. 
 This \emph{priority promise} construction makes it trival to add logging related 
-callbacks at a background task level (perhaps with a small time-limit) to ensure 
+callbacks at a background task level to ensure 
 that logging activities are completed in a timely manner without impacting user 
 responsiveness.
 

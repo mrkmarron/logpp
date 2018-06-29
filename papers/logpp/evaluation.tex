@@ -1,9 +1,9 @@
 % !TeX root = Logpp.tex
 Given the implementation of \projn from \autoref{sec:implementation} we now shift 
-to evaluating how well the resulting system meets the design goals outlined in \autoref{sec:design}.\\
+to evaluating how the resulting system meets the design goals outlined in \autoref{sec:design}.\\
 
 \noindent
-For this evaluation we use four of microbenchmarks with $10$k iterations: 
+For this evaluation we use four microbenchmarks which are each run for $10$k iterations: 
 
 \begin{lstlisting}[language=JavaScript,basicstyle=\scriptsize,numbers=none]
 //Basic
@@ -19,7 +19,7 @@ log.info("hello at %j with %j %n -- %s",
 \end{lstlisting}
 
 \noindent
-We also use a server based on the popular \emph{express}~\cite{} framework 
+We also use a server based on the popular \emph{express}~\cite{express} framework 
 which provides a \emph{REST} API for querying data on the S\&P 500 companies.
 
 All of the benchmarks are run on an Intel Xeon E5-1650 CPU with 6 cores at 3.50GHz, 32GB of RAM, and a SSD. 
@@ -28,7 +28,7 @@ The software stack is Windows 10 (17134) and Node v10.0.
 \subsection{Microbenchmarks}
 Our first evalaution is with current state of the art logging approaches in 
 Node.js. These include the builtin \texttt{console} methods, the \texttt{debug}~\cite{debuglogger} 
-module, the \texttt{bunyan}~\cite{bunyanlogger} logger, and the \texttt{pino}~\cite{pinologger} logger.
+logger, the \texttt{bunyan}~\cite{bunyan} logger, and the \texttt{pino}~\cite{pino} logger.
 
 \begin{table}[t]  
     \centering
@@ -52,14 +52,14 @@ module, the \texttt{bunyan}~\cite{bunyanlogger} logger, and the \texttt{pino}~\c
 \end{table}
 
 The results in \autoref{tab:microcompare} show the wide performance variation across logging 
-frameworks (spanning nearly a factor of $10\times$). Accross all benchmarks \projn is consistently 
+frameworks (spanning nearly a factor of $10\times$). Across all benchmarks \projn is consistently 
 the fastest logger, by a factor of at least $1.8$-$2.1\times$, when compared to the best performing 
 of the existing logging frameworks.
 
 \subsection{Logging Optimization Impacts}
 To understand how much each of our design choices and optimizations contributed to 
 this performance we look at the performance impacts of specific features in \projn. 
-autoref{tab:featureeval} shows the \projn baseline, the logger when we disable the 
+\autoref{tab:featureeval} shows the \projn baseline, the logger when we disable the 
 background formatting thread (\emph{Sync-Lazy}), the logger when we disable background 
 formatting and disable batching of log messages in the in-memory buffer (\emph{Sync-Strict}). 
 We also look at how discarding before formatting and disabling log statements via multi-level 
@@ -68,7 +68,7 @@ when $50\%$ of the log statements are at the \texttt{INFO} level and $50\%$ are 
 \emph{DETAIL} level (processed into the in-memory buffer but discarded before format). 
 The \emph{Levels (33\%)} row shows the performance when $33\%$ of the log statements are 
 at the \texttt{INFO} level, $33\%$ are at the \emph{DETAIL} level, and $33\%$ are at the \emph{DEBUG} 
-level (ensirely disabled).
+level (entirely disabled).
 
 \begin{table}[t]  
     \centering
@@ -98,7 +98,7 @@ The results in the \emph{Sync-Lazy} and \emph{Sync-Strict} rows from
 the in-memory batching. Disabling the background formatter thread shows that the 
 speedup by offloading formatting to the background is substantial (around 
 $2\times$ on the benchmarks). However, the impact of disabling the batching and 
-lazy processing of the in-memory buffer is also signifigant. In our benchmarks we 
+lazy processing of the in-memory buffer is also significant. In our benchmarks we 
 see as much as another $3.6\times$ slowdown. 
 
 The use of \emph{expando} macros in the formats, \autoref{subsec:jsimpl}, can also play a 
@@ -119,7 +119,7 @@ computing, formatting, and logging them.
     \vspace{2mm}
     \caption{\small Comparision of log messages using \emph{expando} formats vs. manual computation 
     and formatting of values for \emph{hostname}, \emph{application name}, \emph{wall time}, and 
-    a monotinic \emph{timestamp}}.
+    a monotonic \emph{timestamp}}.
     \label{tab:expando}
 \end{table}
 
@@ -127,7 +127,7 @@ As seen in \autoref{tab:expando}, in cases such as adding the \emph{hostname} of
 or the very common desire of including the current date/time (\emph{wallclock}), there can be huge 
 performance gains, $258\times$ and $4.7\times$ respectively, when using the expando macros. In other cases, 
 such as the name of the current \emph{app} or a monotonic \emph{timestamp} value, the performance 
-gains are a smaller but non-trivial $51\%$ and $12\%$. Instead the benefit is primarially in simpler/clear 
+gains are a smaller but non-trivial $51\%$ and $12\%$. Instead the benefit is primarily in simpler/cleaner
 logging code.
 
 \subsection{Logging Performance}
@@ -140,11 +140,11 @@ companies.
 We use \emph{autocannon}~\cite{autocannon} in the default load generation 
 setting to create a heavy load on the service to stress the logger performance.
 For comparision we include the builtin \texttt{console} methods 
-and the \texttt{pino}~\cite{pinologger} logger in addition to \projn in the defualt 
+and the \texttt{pino}~\cite{pino} logger in addition to \projn in the default 
 setting.
 
 This application highlights the tension between using logging as a telemetry source 
-v.s. a diagnostic tool. We updated it to use two logging levels, \texttt{DETAIL} 
+vs. a diagnostic tool. We updated it to use two logging levels, \texttt{DETAIL} 
 and \texttt{INFO}. In the default runs we log at both levels and include a case, 
 \emph{levels}, where \projn logs in-memory for the higer detail level but only 
 emits at the lower level.
@@ -163,7 +163,7 @@ emits at the lower level.
     \end{tabular}
     }
     \vspace{2mm}
-    \caption{\small Logging performance on \emph{REST} service for \texttt{console.log}, 
+    \caption{\small Logging performance on the \emph{REST} service server for \texttt{console.log}, 
     \texttt{pino} and \texttt{Log++}. Also modified to take advantage of the \texttt{Log++} 
     multi-level logging functionality in the \emph{Log++ (levels)} row. Average and 
     standard deviation values for response latencies are shown along with the average 
@@ -173,26 +173,26 @@ emits at the lower level.
 
 The results in \autoref{tab:server} show that using a logging framework designed 
 for modern development needs and built with performance in mind can have a 
-substantial impact on an application. In terms of reponses processed per second 
-\projn increses the server throughput by $30\%$ from $6668$ to $8645$ requests 
-per second. Further, \projn decreses the response time by $43\%$ 
+substantial impact on an application. In terms of responses processed per second 
+\projn increases the server throughput by $30\%$ from $6668$ to $8645$ requests 
+per second. Further, \projn decreases the response time by $43\%$ 
 from $1.18$ms to $0.67$ms. Despite using in-memory buffers and batched processing, 
-which could in theory increased latency variability, the standard deviation of 
-the responses actually decreases by $0.03$ms as well.
+which could in theory increase variability of the response latency, the standard deviation of 
+the responses actually decreases slightly as well.
 
 The results in \autoref{tab:server} also show that, in addition to the improvements 
 seen by using \projn as a drop in replacement, it is possible to further improve the 
 logger behavior by refactoring the logging statements to take advantage of the 
-multi-level logging capabilities. In the \emph{Log++ (levels)} the application is 
+multi-level logging capabilities. For the \emph{Log++ (levels)} row the application is 
 changed to write log statements that are relevant for debugging, but not for general 
-telemetry, to be at the \texttt{DETAIL} level. This results in their being stored in 
+telemetry, at the \texttt{DETAIL} level. This results in their being stored in 
 the in-memory buffer, if needed for diagnostics, but not formatted and emitted. As 
-a result the throughput increases a further $4\%$ to $8958$ and the latencey goes 
+a result the throughput increases a further $4\%$ to $8958$ and the latency goes 
 down an additional $13\%$ to $0.58$ms on average.
 
 \subsection{Logging Data Size}
 The final metric we evaluate is how \projn can be used to reduce the amount of 
-storage and network capcity that is consumed by logging data. \autoref{tab:compress} 
+storage and network capacity that is consumed by logging data. \autoref{tab:compress} 
 shows the log size generated when running the server benchmark with compression 
 enabled (the \emph{Compressed} column) as well as the impact of multi-level 
 logging not needed to format/emit all log data.
@@ -208,7 +208,7 @@ logging not needed to format/emit all log data.
     \end{tabular}
     }
     \vspace{2mm}
-    \caption{\small Log size on \emph{REST} service for \texttt{Log++}
+    \caption{\small Log size on the \emph{REST} service server for \texttt{Log++}
     and modified to take advantage of the \texttt{Log++} 
     multi-level logging functionality in the \emph{Log++ (levels)} row. Raw 
     logging output size (\emph{Raw} column) and log data size after deflate 
