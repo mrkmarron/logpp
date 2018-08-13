@@ -11,7 +11,7 @@ var path = require("path");
 
 var dest = fs.createWriteStream(path.join(__dirname, "performanceout.txt"));
 
-var plogExtreme = require("pino")({ extreme: true }, dest);
+var plog = require("pino")(dest);
 
 var logpp = require("../src/logger")("basic", { flushTarget: "stream", stream: dest, prefix: false });
 logpp.addFormat("deep", "%j");
@@ -55,7 +55,7 @@ var run = bench([
     },
     function benchPinoExtremeDeep(cb) {
         for (var i = 0; i < max; i++) {
-            plogExtreme.info(deep);
+            plog.info(deep);
         }
         setImmediate(cb);
     },

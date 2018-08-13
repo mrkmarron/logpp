@@ -11,7 +11,7 @@ var path = require("path");
 
 var dest = fs.createWriteStream(path.join(__dirname, "performanceout.txt"));
 
-var plogExtreme = require("pino")({ extreme: true }, dest);
+var plog = require("pino")(dest);
 
 var logpp = require("../src/logger")("basic", { flushTarget: "stream", stream: dest, prefix: false });
 logpp.addFormat("hello", "#host #wallclock #timestamp hello world -- logpp");
@@ -44,9 +44,9 @@ var run = bench([
         }
         setImmediate(cb);
     },
-    function Basic_PinoExtreme(cb) {
+    function InterpolateMulti_Pino(cb) {
         for (var i = 0; i < max; i++) {
-            plogExtreme.info("hello world -- pino");
+            plog.info("hello world -- pino");
         }
         setImmediate(cb);
     },

@@ -239,7 +239,14 @@ Napi::Value AbortAsyncWork(const Napi::CallbackInfo& info)
     if (s_environment.GetAsyncFormatWorker() != nullptr)
     {
         s_environment.AddBlockFromFormatterAbort(s_environment.GetAsyncFormatWorker()->GetProcessingBlock());
-        s_environment.GetAsyncFormatWorker()->Cancel();
+        try
+        {
+            s_environment.GetAsyncFormatWorker()->Cancel();
+        }
+        catch (...)
+        {
+            ;
+        }
         s_environment.ClearAsyncFormatWorker();
     }
 
