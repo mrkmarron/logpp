@@ -1,9 +1,9 @@
 % !TeX root = Logpp.tex
-Given the implementation of \projn from \autoref{sec:implementation} we now shift 
-to evaluating how the resulting system meets the design goals outlined in \autoref{sec:design}.\\
+Given the implementation of \projn from \autoref{sec:implementation} this section
+focuses on evaluating the resulting system and how it meets the design goals outlined in \autoref{sec:design}.\\
 
 \noindent
-For this evaluation we use four microbenchmarks which are each run for $10$k iterations: 
+For the evaluation we use four microbenchmarks which are each run for $10$k iterations: 
 
 \begin{lstlisting}[language=JavaScript,basicstyle=\scriptsize,numbers=none]
 //Basic
@@ -20,15 +20,17 @@ log.info("hello at %j with %j %n -- %s",
 
 \noindent
 We also use a server based on the popular \emph{express}~\cite{express} framework 
-which provides a \emph{REST} API for querying data on the S\&P 500 companies.
+which provides a \emph{REST} API for querying data on S\&P 500 companies.
 
-All of the benchmarks are run on an Intel Xeon E5-1650 CPU with 6 cores at 3.50GHz, 32GB of RAM, and a SSD. 
+All of the benchmarks are run on an Intel Xeon E5-1650 CPU with 6 cores at 3.50GHz, 32GB of RAM, and SSD. 
 The software stack is Windows 10 (17134) and Node v10.0.
 
 \subsection{Microbenchmarks}
-Our first evalaution is with current state of the art logging approaches in 
-Node.js. These include the builtin \texttt{console} methods, the \texttt{debug}~\cite{debuglogger} 
+Our first evaluation is with current state of the art Node.js logging approaches. 
+These include the builtin \texttt{console} methods, the \texttt{debug}~\cite{debuglogger} 
 logger, the \texttt{bunyan}~\cite{bunyan} logger, and the \texttt{pino}~\cite{pino} logger.
+Each benchmark was run 10 times discarding the highest and lowest times and reporting the 
+average of the remaining runs.
 
 \begin{table}[t]  
     \centering
@@ -36,11 +38,11 @@ logger, the \texttt{bunyan}~\cite{bunyan} logger, and the \texttt{pino}~\cite{pi
     \begin{tabular}{l | r r r r }
     Program       & \bench{Basic}  & \bench{String}   & \bench{Compound}  & \bench{Compute} \\
     \hline
-    Console       & $883$ms & $852$ms & $1064$ms & $1239$ms \\
-    Debug         & $202$ms & $200$ms & $282$ms  & $469$ms \\
-    Bunyan        & $477$ms & $531$ms & $603$ms  & $920$ms \\
-    Pino          & $188$ms & $190$ms & $296$ms  & $630$ms \\
-    Log++         & $89$ms  & $93$ms  & $155$ms  & $304$ms \\
+    Console       & $883$ ms & $852$ ms & $1064$ ms & $1239$ ms \\
+    Debug         & $202$ ms & $200$ ms & $282$ ms  & $469$ ms \\
+    Bunyan        & $477$ ms & $531$ ms & $603$ ms  & $920$ ms \\
+    Pino             & $188$ ms & $190$ ms & $296$ ms  & $630$ ms \\
+    Log++         & $89$ ms  & $93$ ms  & $155$ ms  & $304$ ms \\
     \hline
     Speedup & $2.1$-$9.9\times$ & $2.0$-$9.2\times$ & $1.8$-$6.9\times$ & $2.1$-$4.1\times$ \\
     \end{tabular}
@@ -76,11 +78,11 @@ level (entirely disabled).
     \begin{tabular}{l | r r r r }
     Program       & \bench{Basic}  & \bench{String}   & \bench{Compound}  & \bench{Compute} \\
     \hline
-    Log++         & $89$ms  & $93$ms  & $155$ms  & $304$ms  \\
-    Sync-Lazy     & $220$ms & $216$ms & $389$ms  & $636$ms  \\
-    Sync-Strict   & $659$ms & $788$ms & $1035$ms & $1323$ms \\
-    Levels (50\%) & $67$ms  & $72$ms  & $137$ms  & $223$ms  \\
-    Levels (33\%) & $61$ms  & $65$ms  & $129$ms  & $189$ms  \\
+    Log++         & $89$ ms  & $93$ ms  & $155$ ms  & $304$ ms  \\
+    Sync-Lazy     & $220$ ms & $216$ ms & $389$ ms  & $636$ ms  \\
+    Sync-Strict   & $659$ ms & $788$ ms & $1035$ ms & $1323$ ms \\
+    Levels (50\%) & $67$ ms  & $72$ ms  & $137$ ms  & $223$ ms  \\
+    Levels (33\%) & $61$ ms  & $65$ ms  & $129$ ms  & $189$ ms  \\
     \end{tabular}
     }
     \vspace{2mm}
@@ -112,12 +114,12 @@ computing, formatting, and logging them.
     \begin{tabular}{l | r r r r }
     Program       & \bench{Host}  & \bench{App}   & \bench{Wallclock}  & \bench{Timestamp} \\
     \hline
-    Explicit      & $8533$ms & $65$ms & $192$ms & $41$ms \\
-    Expando       & $33$ms   & $32$ms & $41$ms  & $36$ms \\
+    Explicit      & $8533$ ms & $65$ ms & $192$ ms & $41$ ms \\
+    Expando       & $33$ ms   & $32$ ms & $41$ ms  & $36$ ms \\
     \end{tabular}
     }
     \vspace{2mm}
-    \caption{\small Comparision of log messages using \emph{expando} formats vs. manual computation 
+    \caption{\small Comparison of log messages using \emph{expando} formats vs. manual computation 
     and formatting of values for \emph{hostname}, \emph{application name}, \emph{wall time}, and 
     a monotonic \emph{timestamp}}.
     \label{tab:expando}
@@ -132,21 +134,21 @@ logging code.
 
 \subsection{Logging Performance}
 The previous sections evaluated the performance of \projn with respect to other 
-loggers on the core logging tasks and explored the impacts of various design 
+loggers on core logging tasks and explored the impacts of various design 
 choices using microbenchmarks. This section evaluates the impact of logging on 
 a lightweight \emph{REST} API service that supports querying data on S\&P 500 
 companies. 
 
 We use \emph{autocannon}~\cite{autocannon} in the default load generation 
-setting to create a heavy load on the service to stress the logger performance.
-For comparision we include the builtin \texttt{console} methods 
+setting to create a consistent load for a 10 second run on the service.
+For comparison we include the builtin \texttt{console} methods 
 and the \texttt{pino}~\cite{pino} logger in addition to \projn in the default 
 setting.
 
 This application highlights the tension between using logging as a telemetry source 
 vs. a diagnostic tool. We updated it to use two logging levels, \texttt{DETAIL} 
 and \texttt{INFO}. In the default runs we log at both levels and include a case, 
-\emph{levels}, where \projn logs in-memory for the higer detail level but only 
+\emph{levels}, where \projn logs in-memory for the higher detail level but only 
 emits at the lower level.
 
 \begin{table}[t]  
@@ -156,10 +158,10 @@ emits at the lower level.
     Logger       & Latency (avg) & Latency (stdev) & Requests/s (avg) \\
     \hline
 %    No Logging     & $0.14$ms & $0.55$ms & $12,011$ \\
-    Console        & $1.18$ms & $0.83$ms & $6668$   \\
-    Pino           & $0.89$ms & $0.70$ms & $8133$   \\
-    Log++          & $0.67$ms & $0.80$ms & $8645$   \\
-    Log++ (levels) & $0.58$ms & $0.77$ms & $8958$   \\
+    Console        & $1.18$ ms & $0.83$ ms & $6668$   \\
+    Pino           & $0.89$ ms & $0.70$ ms & $8133$   \\
+    Log++          & $0.67$ ms & $0.80$ ms & $8645$   \\
+    Log++ (levels) & $0.58$ ms & $0.77$ ms & $8958$   \\
     \end{tabular}
     }
     \vspace{2mm}
@@ -193,7 +195,7 @@ down an additional $13\%$ to $0.58$ms on average.
 \subsection{Logging Data Size}
 The final metric we evaluate is how \projn can be used to reduce the amount of 
 storage and network capacity that is consumed by logging data. \autoref{tab:compress} 
-shows the log size generated when running the server benchmark with compression 
+shows the log size generated per second when running the server benchmark with compression 
 enabled (the \emph{Compressed} column) as well as the impact of multi-level 
 logging not needed to format/emit all log data.
 
@@ -203,12 +205,12 @@ logging not needed to format/emit all log data.
     \begin{tabular}{l | r r }
     Logger        & Raw & Compressed \\
     \hline
-    Log++          & $25,404$kb & $1,378$kb \\
-    Log++ (levels) & $11,760$kb & $841$kb   \\
+    Log++          & $2540$ kb/s & $137$ kb/s \\
+    Log++ (levels) & $1176$ kb/s & $84$ kb/s   \\
     \end{tabular}
     }
     \vspace{2mm}
-    \caption{\small Log size on the \emph{REST} service server for \texttt{Log++}
+    \caption{\small Log data generated per second on the \emph{REST} service server for \texttt{Log++}
     and modified to take advantage of the \texttt{Log++} 
     multi-level logging functionality in the \emph{Log++ (levels)} row. Raw 
     logging output size (\emph{Raw} column) and log data size after deflate 
@@ -220,8 +222,8 @@ As shown in \autoref{tab:compress} both compression and the ability to
 discard detailed (and noisy) messages in the multi-level setup provide 
 large reductions in the data sizes that need to be transmitted and stored. 
 As expected compression is very effective on log data, reducing the size 
-by $94.5\%$ from $25.4$MB to $1.38$MB. The ability to discard noisy messages, 
+by $94.5\%$ from $2.54$~MB/s to $0.13$~MB/s. The ability to discard noisy messages, 
 once it is determined they are not interesting for debugging, also has a 
 large individual impact and reduces the data size by $53.7\%$. Combined these 
 two optimizations result in a total data size reduction of a massive $96.7\%$ 
-going from $25.4$MB to just $0.84$MB.
+going from $2.54$~MB/s to just $0.08$~MB/s.
