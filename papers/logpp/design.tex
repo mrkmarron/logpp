@@ -7,32 +7,32 @@ these into two classes -- performance oriented and functionality oriented.
 \label{subsec:performancedesign}
 
 \begin{design}
-The cost of a disabled logging statement, one that is at a logging level that 
-is disabled, should have zero-cost at runtime. This includes both the direct 
+The cost of a logging statement at a logging level that 
+is disabled should have zero-cost at runtime. This includes both the direct 
 cost of the logging action and the indirect cost of of building a format 
 string and processing any arguments. Further, disabling/enabling a log 
-statement should not change the semantic runtime behavior of the application.
+statement should not change the semantics the application.
 \end{design}
 
 When logging frameworks are included as libraries the compiler/JIT does not, 
 in general, have any deep understanding of the enabled/disabled semantics of 
 the logger. As a result the compiler/JIT will not be able to fully eliminate 
-dead-code associated with disabled logging statements and will pay, an individually 
-small but widespread, parasitic costs for these disabled logging statements. 
+dead-code associated with disabled logging statements and will incur, individually 
+small but widespread, parasitic costs for each disabled logging statement. 
 These costs can be very difficult to diagnose, as they are widely dispersed and 
 individually small, but can add up to several percentage points of application 
 runtime. To avoid these parasitic costs we propose including logging primitives 
 in the core specification of the programming language or, if that is not possible, 
-adding compiler/JIT specializations to support them. 
+adding compiler/JIT specializations to optimize them. 
 
 An additional advantage of lifting log semantics to the language specification 
 level is the ability to statically verify logging uses and handle errors that 
 occur during log expression evaluation. Common errors include 
 format specifier violations~\cite{tyepcheckprintf}, accidental state 
-modification in the logging message computation, and other logging anti-patterns~\cite{logginganti}. 
+modification~\cite{mypurity,choipurity} in the logging message computation, and other logging anti-patterns~\cite{logginganti}. 
 If the language semantics 
 specify logging API's then both of these error classes can be statically 
-checked to avoid runtime errors or hisenbugs that appear/disappear when logging 
+checked to avoid runtime errors or heisenbugs that appear/disappear when logging 
 levels are changed.
 
 \begin{design}
@@ -40,17 +40,17 @@ The cost of an enabled logging statement has two components -- (1) the cost to
 compute the set of arguments to the log statement and (2) the cost to format and 
 write this data into the log. The cost of computing the argument values is, in 
 general unavoidable, and must be done on the hot path of execution. However, 
-the cost of (2) should be reduced and/or moved off hot path as much as possible.
+the cost of (2) should be reduced and/or moved off the hot path as much as possible.
 \end{design}
 
 To minimize the cost of computing arguments to the log statement and speed their 
 processing we propose a novel log format specification mechanism using 
 \emph{preprocessed} and stored log formats along with a set of \emph{log expandos} 
-which can be used a shorthand in a log to specify common, but expensive/complicated, 
+which can be used as a shorthand in a log to specify common, but expensive/complicated, 
 to compute log argument values. The use of preprocessed format messages allows us to save time, 
 the type checking and processing of each argument does not require parsing the 
 format string, and instead of eagerly stringifying each parameter we can do a quick 
-immutable copy to be formatted later if needed. Expandos provide convenient 
+immutable copy of the argument which can be formatted later. Expandos provide convenient 
 ways to add data into the log, such as the current date/time, the host IP, or a 
 current request ID~\cite{asynchjs}, that would either be more expensive or more awkward to compute 
 explicitly on a regular basis. We can eliminate the main-thread cost of formatting by batching 
@@ -67,12 +67,14 @@ the log messages and instead doing the format work on a background task thread.
 \subsection{Logging Functionality}
 \label{subsec:functionalitydesign}
 \begin{design}
-Logging serves two related, but somewhat conflicting roles, in modern systems 
-and should support both of them simultaneously without compromising the 
-effectiveness of either one. The first role is to provide detailed information 
+Logging serves two related, but somewhat conflicting roles, in modern systems. 
+The first role is to provide detailed information 
 on the sequence of events preceding a bug to aid the developer in triaging and 
 reproducing the issue. The second role is to provide general telemetry 
 information and visibility into the overall behavior of the application. 
+This observation leads to the third design principle: logging should 
+support both tasks simultaneously without compromising the 
+effectiveness of either one.
 \end{design}
 
 To support these distinct roles we propose a dual-level logging approach. In the 
@@ -91,7 +93,7 @@ Logging code should not obscure the logic of the application that it is
 supporting. Thus, a logger should provide specialized logging primitives 
 that cover common cases, such as conditional logging, that would otherwise 
 require a developer to add new logic flow into their application specifically 
-for the logger.
+for logging purposes.
 \end{design}
 
 Common scenarios that often involve additional control or data flow logic 
@@ -108,10 +110,10 @@ additional developer implemented logic.
 
 \begin{design}
 Applications are often built leveraging numerous third-party components which 
-may include their own logging functionality and try to configure their own 
-output endpoints. This information may either be entirely uninteresting to the 
-hosting application or there may be some parts of this logging output which the 
-host applcaition wants to be aware of and include as part of its log.
+may include their own logging functionality and may try to configure their own 
+output endpoints. A logging framework should provide a mechanism for composing 
+log outputs and controlling log-state configurations of included modules and 
+other software components.
 \end{design}
 
 Supporting this workflow requires that the language and/or runtime standardize 
@@ -121,6 +123,6 @@ what is expected to be output. The next is a unified way to aggregate and output
 messages to a common destination. Finally, since the toplevel application needs 
 to have the final authority over which levels/categories are enabled for which 
 modules and where the data goes, a logger must have the concept of a 
-\emph{root logger} which can modify these values and \emph{child loggers} which 
+\emph{root logger} which can modify these values and \emph{sub-loggers} which 
 are included in the root application but should behave in accordance with the 
 specifications provided by the root logger.

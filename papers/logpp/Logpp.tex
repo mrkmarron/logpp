@@ -1,4 +1,4 @@
-\documentclass[sigplan,10pt,review]{acmart}
+\documentclass[sigplan,10pt]{acmart}
 
 \settopmatter{printfolios=true}
 
@@ -130,57 +130,57 @@ logger for Node.js hosted JavaScript applications.
 
 \section{Introduction} 
 \label{sec:intro}
-Logging has always been a important tool for software developers in
-understanding their applications~\cite{logdebug,logdebug2,logstudy}. 
+Logging has always been a important tool for software developers to 
+gain understanding into their applications~\cite{logdebug,logdebug2,logstudy}. 
 However, as DevOps oriented workflows have
 become more prevalent, logging is becoming an even larger consideration when
 building applications~\cite{logstudy,logstudy2}. A key area driving this shift is the use of cloud-based
 applications and the integration of application monitoring dashboards, such as
-Stack Driver~\cite{StackDriver}, NSolid~\cite{NSolid}, or
+Stack Driver~\cite{StackDriver}, N$|$Solid~\cite{NSolid}, or
 AppInsights~\cite{AppInsights}, which ingest logs from an application, correlate
-this information with other aspects of the system, and provide this in a useful
+this information with other aspects of the system, and provide the results in a friendly
 dashboard format for developers. The additional value provided by these
 dashboards and the ability to quickly act on this data makes the inclusion of
-rich logging data an integral part of an applications development.
+rich logging data an integral part of application development.
 
 Existing logging library implementations, as provided via core or third party
 libraries, are unable to satisfactorily meet the demands of logging in modern
-applications. As a result developers must use existing libraries with care to
-limit undesirable logging related performance impacts~\cite{learnlog} and \emph{log spew}~\cite{learnlog,logstudy2}, work 
+applications. As a result developers must use these loggers with care to
+limit undesirable performance impacts~\cite{learnlog} and \emph{log spew}~\cite{learnlog,logstudy2}, work 
 to control logging output from other modules to the appropriate channels, and figure
 out how to effectively parse the data that is written from various sources.
-Consider the following sample JavaScript code in~\autoref{fig:introExample} 
+Consider the JavaScript code in~\autoref{fig:introExample} 
 which illustrates concrete issues encountered by Node.js~\cite{Node} developers today.
 
 \begin{figure*}[t]
 \lstinputlisting[language=JavaScript,basicstyle=\small]{Code/introExample.js}
-\caption{Example logging usage in JavaScript}
+\caption{Examples of logging usage in JavaScript}
 \label{fig:introExample}
 \end{figure*}
 
 A major issue with logging is the potential for the accidental introduction 
 of serious performance problems though seemingly benign activities~\cite{logdebug,logdebug2,logstudy,learnlog,logstudy2}. In 
-existing logging framework even if a given logging level is disabled, 
+existing logging frameworks even when a logging level is disabled, 
 as \texttt{debug} and \texttt{trace} levels usually are, the code to generate 
 and format the log message is still executed. This can either be due to eager 
 evaluation semantics of the source language or due to limitations in compiler 
 optimizations for dead-code elimination in languages with workarounds such as 
-macros. This results in code that looks like it will not be executed but that in 
-reality incurs large parasitic costs and can be seen in the \texttt{logger.debug} 
+macros. This results in code that looks like it will not be executed but that, in 
+reality, incurs large parasitic costs as can be seen in the \texttt{logger.debug} 
 statement in the example, which at the default level does not print to the log, but will
 still result in the creation of the literal object and generation of a format
 string on every execution of the loop. This cost leads developers to defensively
 remove these statements from code instead of depending on the runtime to
-eliminate their costs when deploying the application.
+eliminate their costs when deploying an application.
 
 Next is the issue of \emph{log spew}~\cite{learnlog,logstudy2} where logging at a detailed level, which 
-may be desireable for debugging when an issue occours, fills the log with 
+may be desirable for debugging when an issue occurs, fills the log with 
 large quantities of uninteresting noise output. An example of this is the 
 \texttt{logger.info} message about the args and result of the \texttt{check} 
 call in \autoref{fig:introExample}. In the case of a successful execution the content of this log statement 
-is not interesting and the cost of producing this plus the increased noise in 
+is not interesting and the cost of producing it plus the increased noise in 
 the logfile is pure overhead. However, if the \texttt{check} statement fails 
-then having this information about what events led up to the failure may be 
+then having information about what events led up to the failure may be 
 critical in diagnosing/fixing the issue. In current logging frameworks this is 
 an unavoidable conundrum and, in any case where the trace history is needed, 
 the logging statements must be added and the cost/noise accepted as a cost.
@@ -193,9 +193,9 @@ non-trivial can can add up over thousands or millions of log messages resulting
 in unexpected performance degradation. 
 
 Modern developer practices around logging frequently involve post processing 
-of log data into analysis framework like the Elastic stack~\cite{elastic} or Splunk~\cite{splunk}. 
+of log data into analysis frameworks like the Elastic stack~\cite{elastic} or Splunk~\cite{splunk}. 
 However, free form specification of message formats, as seen in \texttt{printf} or 
-concatenated value styles, are not ammenable to machine parsing. Modern logging 
+concatenated value styles, are not amenable to machine parsing. Modern logging 
 frameworks, log4j~\cite{log4j}, pino~\cite{pino}, bunyan~\cite{bunyan}, etc. 
 provide some support for consistently formatting and structuring output but
 fundamentally this problem is left as a problem development teams need to solve
@@ -204,10 +204,10 @@ via coding conventions and reviews.
 The final issue we consider is the growing pain of integrating multiple software 
 modules, each of which may use a different form of logging. In our running example 
 we have \texttt{console.log} writing to the \texttt{stdout} and a
-popular framework called \texttt{Winston} which has been configured to write to
+popular framework called \texttt{pino} which has been configured to write to
 a file. As a result some log output will appear on the console while other
 output will end up in a file. Further, if a developer changes the logging output
-level for \texttt{Winston}, from say \texttt{info} to \texttt{warn}, this will
+level for \texttt{pino}, from say \texttt{info} to \texttt{warn}, this will
 not change the output level of the \texttt{console} output. Developers can work
 around this to some degree by enforcing the use of a single logging framework
 for their code but they will not always be able to control the frameworks used
@@ -226,12 +226,12 @@ The contributions of this paper include:
 included as a first class part of language, compiler, and runtime design.
 
 \item A novel dual-level approach to log generation and writing that allows a
-programmer to log execution data eagerly but only pay the cost of writting it to
+programmer to log execution data eagerly but only pay the cost of writing it to
 the log if it turns out to be interesting/relevant.
 
-\item Using this dual-level approach we show how to seperate and support the 
-desire to use logging for both debugging when an error condition is encoutered 
-and for telemety purposes to monintor general application behavior. 
+\item Using this dual-level approach we show how to separate and support the 
+desire to use logging for both debugging when an error condition is encountered 
+and for telemetry purposes to monitor general application behavior. 
 
 \item A suite of innovative log format and log level management techniques that 
 provide a consistent and unified log output that is easy to manage and feed into 
