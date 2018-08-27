@@ -309,13 +309,15 @@ This paper introduced a set of design principles for logging with the view that
 logging is a fundamental part of the software development and deployment lifecycle. 
 By thinking of logging this way and how it can be closely coupled with the rest of the 
 language and runtime for best performance and usability we developed a novel logging 
-system with several innovative features. The first is a unique multi-level logging 
-system that allows for simultaneous high fidelity debug oriented logging and low data 
-rate telemetry logging. Next, by integration with the Node.js runtime, we showed how 
-to implement near zero-cost disabled log statements, low cost lazy-copying 
-for enabled log statements, background thread formatting, unified control 
-of logging output across different libraries, and API design to optimize common logging 
-tasks. As a result \projn outperforms existing state of the art logging frameworks and 
+system with several innovative features. 
+%The first is a unique multi-level logging 
+%system that allows for simultaneous high fidelity debug oriented logging and low data 
+%rate telemetry logging. Next, by integration with the Node.js runtime, we showed how 
+%to implement near zero-cost disabled log statements, low cost lazy-copying 
+%for enabled log statements, background thread formatting, unified control 
+%of logging output across different libraries, and API design to optimize common logging 
+%tasks. 
+As a result \projn outperforms existing state of the art logging frameworks and 
 represents an important development in advancing the state of the art for 
 modern modern cloud, mobile, and IoT development workflows.
 
