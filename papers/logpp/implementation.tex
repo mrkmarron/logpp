@@ -36,7 +36,7 @@ The first component we look at in the implementation is the global log state
 manager. This component is responsible for tracking all of the loggers that 
 have been created, which one of them (if any) is the root logger, the enabled logging levels + 
 categories, and the message formats which have been defined. The loggers are shown as $L_{\text{root}}$ 
-and $L_{\text{c1}} \ldots L_{\text{c1j}}$ in  \autoref{fig:arch} and each one is associated with a Level Filter 
+and $L_{\text{c1}} \ldots L_{\text{cj}}$ in  \autoref{fig:arch} and each one is associated with a Level Filter 
 that controls which levels are enabled/disabled for it. The global category filter controls which categories are 
 enabled/disabled on a global basis.
 
@@ -260,7 +260,7 @@ storage. Whenever a message is written into the in-memory buffer we do a simple
 since the last flush. If more than this threshold have been written we schedule an 
 asynchronous flush process on the event-loop. The flush code filters the messages 
 based on the current \emph{emit} level and processes all messages that exceed the 
-specified \texttt{age} and \texttt{memory} thresholds. The implementation of the 
+specified \texttt{age} or \texttt{memory} thresholds. The implementation of the 
 filter/process step from~\autoref{fig:arch} is:
 
 \lstinputlisting[language=JavaScript,basicstyle=\scriptsize]{Code/process.js}
