@@ -72,17 +72,17 @@ places, the same logger object will be returned.
 
 Finally, the state manager is responsible for maintaining information on the current 
 \emph{emit levels}, the enabled/disabled categories, and the sublogger override information. 
-Each logger has an independent level at which it can write into the in-memory log but 
-the state manager maintains a global set of enabled/disabled categories which each logger 
-uses and a global logging level for eventual emit processing. Only the root logger is 
-allowed to update the categories and emit levels. 
+Each logger has an independent level at which it can write into the in-memory log. However,  
+the state manager maintains a global set of enabled/disabled categories for all loggers 
+and a global logging level for eventual emit processing, which only the root logger is 
+allowed to update. 
 
 In our running example the main application has a log statement on lines $12$ and $14$ 
-that are in the \texttt{Perf} category and will put a message with the current walltime 
-in the log. As the first log statement happens before the \texttt{Perf} category has 
-been enabled it will not be processed. However, after enabling the \texttt{Perf} category 
-on line $13$ the log operation on line $14$ will be processed and result in a message 
-being saved to the in-memory log.
+in the \texttt{Perf} category to put a message with the current walltime 
+in the log. The first log statement happens before the \texttt{Perf} category has 
+been enabled it will not be processed. After enabling the \texttt{Perf} category 
+on line $13$ the log operation on line $14$ will be processed and results in a message 
+saved to the in-memory log.
 
 \paragraph{Message Formats}
 \noindent

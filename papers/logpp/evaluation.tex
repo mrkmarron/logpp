@@ -2,28 +2,28 @@
 Given the implementation of \projn from \autoref{sec:implementation} this section
 focuses on evaluating the resulting system and how it meets the design goals outlined in \autoref{sec:design}.\\
 
-\noindent
-For the evaluation we use four microbenchmarks which are each run for $10$k iterations: 
+For the evaluation we use four microbenchmarks, listed below, which are each run for $10$k iterations. 
+We also use a server based on the popular \emph{express}~\cite{express} framework 
+which provides a \emph{REST} API for querying data on S\&P 500 companies.
+All of the benchmarks are run on an Intel Xeon E5-1650 CPU with $6$ cores at $3.50$GHz, 
+$32$GB of RAM, and SSD. The software stack is Windows 10 (17134) and Node v10.0.\\
+
 
 \begin{lstlisting}[language=JavaScript,basicstyle=\scriptsize,numbers=none]
 //Basic
 log.info("hello world -- logger")
+
 //String
 log.info("hello %s", "world")
+
 //Compound
 log.info("hello %s %j %d", "world", { obj: true }, 4)
+
 //Compute
 log.info("hello at %j with %j %n -- %s", 
          new Date(), ["i", { f: i, g: "#" + i }], 
          i - 5, (i % 2 === 0 ? "ok" : "skip"))
 \end{lstlisting}
-
-\noindent
-We also use a server based on the popular \emph{express}~\cite{express} framework 
-which provides a \emph{REST} API for querying data on S\&P 500 companies.
-
-All of the benchmarks are run on an Intel Xeon E5-1650 CPU with 6 cores at 3.50GHz, 32GB of RAM, and SSD. 
-The software stack is Windows 10 (17134) and Node v10.0.
 
 \subsection{Microbenchmarks}
 Our first evaluation is with current state of the art Node.js logging approaches. 
@@ -34,6 +34,8 @@ average of the remaining runs.
 
 \begin{table}[t]  
     \centering
+    \caption{\small Timings for each logging framework on $10$k iterations with given format. 
+    Speedup is the min-max speedup relative to the other logging frameworks.}
     {\small
     \begin{tabular}{l | r r r r }
     Program       & \bench{Basic}  & \bench{String}   & \bench{Compound}  & \bench{Compute} \\
@@ -47,9 +49,6 @@ average of the remaining runs.
     Speedup & $2.1$-$9.9\times$ & $2.0$-$9.2\times$ & $1.8$-$6.9\times$ & $2.1$-$4.1\times$ \\
     \end{tabular}
     }
-    \vspace{2mm}
-    \caption{\small Timings for each logging framework on $10$k iterations with given format. 
-    Speedup is the min-max speedup relative to the other logging frameworks.}
     \label{tab:microcompare}
 \end{table}
 
@@ -74,6 +73,12 @@ level (entirely disabled).
 
 \begin{table}[t]  
     \centering
+    \caption{\small Baseline performance in \emph{Log++} row with disabled background 
+    format in \emph{Sync-Lazy} and disabled background format \& disabled lazy 
+    batch processing in \emph{Sync-Strict}. The \emph{Levels (50\%)} and 
+    \emph{Levels (33\%)} rows show performance when $50\%$ of log messages are 
+    in-memory level only and when $33\%$ are in-memory only and $33\%$ are entirely 
+    disabled respectively.}
     {\small
     \begin{tabular}{l | r r r r }
     Program       & \bench{Basic}  & \bench{String}   & \bench{Compound}  & \bench{Compute} \\
@@ -85,13 +90,6 @@ level (entirely disabled).
     Levels (33\%) & $61$ ms  & $65$ ms  & $129$ ms  & $189$ ms  \\
     \end{tabular}
     }
-    \vspace{2mm}
-    \caption{\small Baseline performance in \emph{Log++} row with disabled background 
-    format in \emph{Sync-Lazy} and disabled background format \& disabled lazy 
-    batch processing in \emph{Sync-Strict}. The \emph{Levels (50\%)} and 
-    \emph{Levels (33\%)} rows show performance when $50\%$ of log messages are 
-    in-memory level only and when $33\%$ are in-memory only and $33\%$ are entirely 
-    disabled respectively.}
     \label{tab:featureeval}
 \end{table}
 
@@ -110,6 +108,9 @@ computing, formatting, and logging them.
 
 \begin{table}[t]  
     \centering
+    \caption{\small Comparison of log messages using \emph{expando} formats vs. manual computation 
+    and formatting of values for \emph{hostname}, \emph{application name}, \emph{wall time}, and 
+    a monotonic \emph{timestamp}}.
     {\small
     \begin{tabular}{l | r r r r }
     Program       & \bench{Host}  & \bench{App}   & \bench{Wallclock}  & \bench{Timestamp} \\
@@ -118,10 +119,6 @@ computing, formatting, and logging them.
     Expando       & $33$ ms   & $32$ ms & $41$ ms  & $36$ ms \\
     \end{tabular}
     }
-    \vspace{2mm}
-    \caption{\small Comparison of log messages using \emph{expando} formats vs. manual computation 
-    and formatting of values for \emph{hostname}, \emph{application name}, \emph{wall time}, and 
-    a monotonic \emph{timestamp}}.
     \label{tab:expando}
 \end{table}
 
@@ -138,7 +135,6 @@ loggers on core logging tasks and explored the impacts of various design
 choices using microbenchmarks. This section evaluates the impact of logging on 
 a lightweight \emph{REST} API service that supports querying data on S\&P 500 
 companies. 
-
 We use \emph{autocannon}~\cite{autocannon} in the default load generation 
 setting to create a consistent load for a 10 second run on the service.
 For comparison we include the builtin \texttt{console} methods 
@@ -153,9 +149,14 @@ emits at the lower level.
 
 \begin{table}[t]  
     \centering
+    \caption{\small Logging performance on the \emph{REST} service server for \texttt{console.log}, 
+    \texttt{pino} and \texttt{Log++}. Also modified to take advantage of the \texttt{Log++} 
+    multi-level logging functionality in the \emph{Log++ (levels)} row. Average and 
+    standard deviation values for response latencies are shown along with the average 
+    number of requests served per second.}
     {\small
     \begin{tabular}{l | r r r }
-    Logger       & Latency (avg) & Latency (stdev) & Requests/s (avg) \\
+    Logger       & Latency (avg) & Latency (stdev) & Req./s (avg) \\
     \hline
 %    No Logging     & $0.14$ms & $0.55$ms & $12,011$ \\
     Console        & $1.18$ ms & $0.83$ ms & $6668$   \\
@@ -164,12 +165,6 @@ emits at the lower level.
     Log++ (levels) & $0.58$ ms & $0.77$ ms & $8958$   \\
     \end{tabular}
     }
-    \vspace{2mm}
-    \caption{\small Logging performance on the \emph{REST} service server for \texttt{console.log}, 
-    \texttt{pino} and \texttt{Log++}. Also modified to take advantage of the \texttt{Log++} 
-    multi-level logging functionality in the \emph{Log++ (levels)} row. Average and 
-    standard deviation values for response latencies are shown along with the average 
-    number of requests served per second.}
     \label{tab:server}
 \end{table}
 
@@ -178,7 +173,7 @@ for modern development needs and built with performance in mind can have a
 substantial impact on an application. In terms of responses processed per second 
 \projn increases the server throughput by $30\%$ from $6668$ to $8645$ requests 
 per second. Further, \projn decreases the response time by $43\%$ 
-from $1.18$ms to $0.67$ms. Despite using in-memory buffers and batched processing, 
+from $1.18$ms to $0.67$ms. Despite using buffers and batched processing, 
 which could in theory increase variability of the response latency, the standard deviation of 
 the responses actually decreases slightly as well.
 
@@ -194,13 +189,18 @@ down an additional $13\%$ to $0.58$ms on average.
 
 \subsection{Logging Data Size}
 The final metric we evaluate is how \projn can be used to reduce the amount of 
-storage and network capacity that is consumed by logging data. \autoref{tab:compress} 
+storage and network capacity consumed by logging data. \autoref{tab:compress} 
 shows the log size generated per second when running the server benchmark with compression 
 enabled (the \emph{Compressed} column) as well as the impact of multi-level 
 logging not needed to format/emit all log data.
 
 \begin{table}[t]  
     \centering
+    \caption{\small Log data generated per second on the \emph{REST} service server for \texttt{Log++}
+    and modified to take advantage of the \texttt{Log++} 
+    multi-level logging functionality in the \emph{Log++ (levels)} row. Raw 
+    logging output size (\emph{Raw} column) and log data size after deflate 
+    compression (\emph{Compressed} column).}
     {\small
     \begin{tabular}{l | r r }
     Logger        & Raw & Compressed \\
@@ -209,12 +209,6 @@ logging not needed to format/emit all log data.
     Log++ (levels) & $1176$ kb/s & $84$ kb/s   \\
     \end{tabular}
     }
-    \vspace{2mm}
-    \caption{\small Log data generated per second on the \emph{REST} service server for \texttt{Log++}
-    and modified to take advantage of the \texttt{Log++} 
-    multi-level logging functionality in the \emph{Log++ (levels)} row. Raw 
-    logging output size (\emph{Raw} column) and log data size after deflate 
-    compression (\emph{Compressed} column).}
     \label{tab:compress}
 \end{table}
 

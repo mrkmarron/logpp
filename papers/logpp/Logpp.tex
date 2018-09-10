@@ -1,8 +1,7 @@
-\documentclass[sigplan,10pt,review]{acmart}
+\documentclass[sigplan,10pt,screen]{acmart}
 
-\settopmatter{printfolios=true}
+%%\settopmatter{printfolios=true}
 
-\usepackage{times}
 \usepackage{amsmath}
 \usepackage{amsfonts}
 \usepackage{amssymb}
@@ -78,22 +77,14 @@ xleftmargin=0.5cm
 
 \begin{document}
 
-%\toappear{Draft Document -- \url{https://github.com/mrkmarron/logpp}}
-
-%% Conference information
-%% Supplied to authors by publisher for camera-ready submission;
-%% use defaults for review submission.
-\acmConference[Submission '18]{Submission}{\url{https://github.com/mrkmarron/logpp}}{}
-\acmYear{2018}
-\acmISBN{} % \acmISBN{978-x-xxxx-xxxx-x/YY/MM}
-\acmDOI{} % \acmDOI{10.1145/nnnnnnn.nnnnnnn}
-\startPage{1}
-
-\setcopyright{none}
-%\setcopyright{acmcopyright}
-%\setcopyright{acmlicensed}
-%\setcopyright{rightsretained}
-%\copyrightyear{2018}           %% If different from \acmYear
+\copyrightyear{2018} 
+\acmYear{2018} 
+\setcopyright{acmlicensed}
+\acmConference[DLS '18]{Proceedings of the 14th ACM SIGPLAN International Symposium on Dynamic Languages}{November 6, 2018}{Boston, MA, USA}
+\acmBooktitle{Proceedings of the 14th ACM SIGPLAN International Symposium on Dynamic Languages (DLS '18), November 6, 2018, Boston, MA, USA}
+\acmPrice{15.00}
+\acmDOI{10.1145/3276945.3276952}
+\acmISBN{978-1-4503-6030-2/18/11}
 
 %% Bibliography style
 \bibliographystyle{ACM-Reference-Format}
@@ -125,6 +116,32 @@ of logging output across different libraries, and DevOps integration for use wit
 modern cloud-based deployments. To evaluate these concepts we implemented the \projn 
 logger for Node.js hosted JavaScript applications.
 \end{abstract}
+
+\begin{CCSXML}
+<ccs2012>
+<concept>
+<concept_id>10011007.10011006.10011041</concept_id>
+<concept_desc>Software and its engineering~Compilers</concept_desc>
+<concept_significance>500</concept_significance>
+</concept>
+<concept>
+<concept_id>10011007.10011006.10011041.10011048</concept_id>
+<concept_desc>Software and its engineering~Runtime environments</concept_desc>
+<concept_significance>500</concept_significance>
+</concept>
+<concept>
+<concept_id>10011007.10011006.10011008</concept_id>
+<concept_desc>Software and its engineering~General programming languages</concept_desc>
+<concept_significance>300</concept_significance>
+</concept>
+</ccs2012>
+\end{CCSXML}
+
+\ccsdesc[500]{Software and its engineering~Compilers}
+\ccsdesc[500]{Software and its engineering~Runtime environments}
+\ccsdesc[300]{Software and its engineering~General programming languages}
+
+\keywords{Logging, JavaScript, Runtime Monitoring}
 
 \maketitle
 
@@ -217,7 +234,7 @@ To address these issues we propose an approach where logging is viewed as a firs
 class feature in the design/implementation of a programming language and runtime 
 instead of simply another library to be included. Taking this view enables us to 
 leverage language semantics, focused compiler optimizations, and semantic knowledge 
-in the runtime to provide a uniform and high performance logging API.
+in the runtime to provide a uniform and high performance logging API.\\
 
 \noindent
 The contributions of this paper include:

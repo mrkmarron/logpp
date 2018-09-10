@@ -54,11 +54,11 @@ immutable copy of the argument which can be formatted later. Expandos provide co
 ways to add data into the log, such as the current date/time, the host IP, or a 
 current request ID~\cite{asynchjs}, that would either be more expensive or more awkward to compute 
 explicitly on a regular basis. We can eliminate the main-thread cost of formatting by batching 
-the log messages and instead doing the format work on a background task thread.
+the log messages and instead doing the format work on a background thread.
 
 \begin{figure*}
     \centering
-    \includegraphics[width=0.8\textwidth]{Figures/ArchDiagram}
+    \includegraphics[width=0.7\textwidth]{Figures/ArchDiagram}
     \caption{Logger architecture}
     \label{fig:arch}
 \end{figure*}
@@ -111,17 +111,17 @@ additional developer implemented logic.
 Applications are often built leveraging numerous third-party components which 
 may include their own logging functionality and may try to configure their own 
 output endpoints. A logging framework should provide a mechanism for composing 
-log outputs and controlling log-state configurations of included modules and 
-other software components.
+log outputs and controlling logging related configurations of included modules and 
+components.
 \end{design}
 
-Supporting this workflow requires that the language and/or runtime standardize 
+Supporting this workflow requires that the language and/or runtime to standardize 
 a number of features. The first is the set of logging levels and way to define 
 categories. Without these it is not even possible for the loggers to agree on 
 what is expected to be output. The next is a unified way to aggregate and output 
 messages to a common destination. Finally, since the toplevel application needs 
 to have the final authority over which levels/categories are enabled for which 
 modules and where the data goes, a logger must have the concept of a 
-\emph{root logger} which can modify these values and \emph{sub-loggers} which 
-are included in the root application but should behave in accordance with the 
+\emph{root logger} which can modify these values and \emph{sub-loggers}
+from included modules which should behave in accordance with the 
 specifications provided by the root logger.
