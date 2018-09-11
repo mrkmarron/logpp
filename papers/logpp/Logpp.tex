@@ -282,12 +282,12 @@ logging frameworks.
 \noindent
 Existing logging frameworks provide simplified versions of some of the systems described 
 in this work. Recently the concept of semantic logging has appeared in loggers for 
-Java~\cite{log4j} and C\#~\cite{serilog}. However, the prevelence of logging JSON 
+Java~\cite{log4j} and C\#~\cite{serilog}. However, the prevalence of logging JSON 
 style objects in JavaScript, v.s., mostly primitive values in Java or C\#, presents 
-a challenge that we reesolve efficiently with the flattening algorithm in \autoref{subsec:jsimpl}. 
+a challenge that we resolve efficiently with the flattening algorithm in \autoref{subsec:jsimpl}. 
 Buffering and formatted logging are also a very common design choices, e.g., in pino~\cite{pino} 
 or bunyan~\cite{bunyan}, but they focus on buffering formatted data or using pure 
-JSON for the structuring. In contrast this work bufferes compound data + message format 
+JSON for the structuring. In contrast this work buffers compound data + message format 
 information in our in-memory buffer design and allows both JSON style formats as well as 
 parsable \texttt{printf} style messages. 
 

@@ -8,7 +8,7 @@ function processMsgs(pos, buff, dest, age, size) {
     }
 
     if(!isEmitLevelEnabled(buff.data[cpos])) {
-      cpos = scanToMsgEnd(buff, cpos);
+      cpos = scanAndDiscardMsg(buff, cpos);
     }
     else {
       cpos = copyMsg(buff, cpos, dest);

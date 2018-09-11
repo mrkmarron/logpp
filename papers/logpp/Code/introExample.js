@@ -5,7 +5,7 @@ function foo(name, flag) {
     console.log("Hello");
     logger.info("World");
     for (var i = 0; i < 1000; ++i) {
-        logger.debug(`Data = ${{ nval: name, cval: i }}`);
+        logger.debug("Data = " + JSON.stringify({ nval: name, cval: i }));
         ...
     }
 
